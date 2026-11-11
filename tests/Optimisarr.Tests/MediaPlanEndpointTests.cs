@@ -47,6 +47,23 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
     }
 
     [Fact]
+    public async Task Plan_uses_the_inventorys_audio_codecs_to_say_an_mp4_library_writes_matroska()
+    {
+        var (_, mediaId) = await SeedAsync(library =>
+        {
+            library.TargetContainer = "mp4";
+            library.VideoAudioCodec = "copy";
+        }, audioCodecs: "truehd");
+        using var client = Admin();
+
+        var file = (await client.GetFromJsonAsync<JsonElement>($"/api/media/{mediaId}/plan")).GetProperty("file");
+
+        Assert.Equal("mkv", file.GetProperty("container").GetString());
+        Assert.Equal("tape.mkv", file.GetProperty("fileName").GetString());
+        Assert.False(file.GetProperty("mayBecomeMatroska").GetBoolean());
+    }
+
+    [Fact]
     public async Task Plan_gives_the_reason_a_file_is_skipped()
     {
         var (_, mediaId) = await SeedAsync(videoCodec: "hevc");
@@ -80,6 +97,50 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/media/1/plan")).StatusCode);
     }
 
+    [Fact]
+    public async Task The_dry_run_unlock_preview_counts_what_would_start_without_being_asked()
+    {
+        using var client = Admin();
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/settings/dry-run-unlock");
+        var (replacing, replacingMedia) = await SeedAsync(library =>
+        {
+            library.MediaType = MediaType.Film;
+            library.AutoReplace = true;
+            library.AutoDedupeEnabled = true;
+        });
+        // Saving elsewhere wins over an old "replace automatically", so this job would not be replaced.
+        var (elsewhere, elsewhereMedia) = await SeedAsync(library =>
+        {
+            library.AutoReplace = true;
+            library.MoveOnComplete = true;
+            library.TargetFolder = Path.Combine(api.LibraryDirectory, "..", "elsewhere");
+        });
+        using var scope = api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        db.Jobs.AddRange(
+            new Job { MediaFileId = replacingMedia, LibraryId = replacing, Status = JobStatus.ReadyToReplace, VerificationPassed = true },
+            new Job { MediaFileId = elsewhereMedia, LibraryId = elsewhere, Status = JobStatus.ReadyToReplace, VerificationPassed = true });
+        await db.SaveChangesAsync();
+        try
+        {
+            var after = await client.GetFromJsonAsync<JsonElement>("/api/settings/dry-run-unlock");
+
+            Assert.Equal(before.GetProperty("jobsToReplace").GetInt32() + 1, after.GetProperty("jobsToReplace").GetInt32());
+            Assert.Equal(
+                before.GetProperty("librariesCleaningDuplicatesDaily").GetInt32() + 1,
+                after.GetProperty("librariesCleaningDuplicatesDaily").GetInt32());
+            Assert.True(after.GetProperty("needsConfirmation").GetBoolean());
+            Assert.True(after.TryGetProperty("originalsToDelete", out _));
+            Assert.True(after.TryGetProperty("duplicatesToDelete", out _));
+        }
+        finally
+        {
+            // The fixture's database is shared: leave no job another test could try to replace.
+            await db.Jobs.Where(job => job.MediaFileId == replacingMedia || job.MediaFileId == elsewhereMedia).ExecuteDeleteAsync();
+            await db.Libraries.Where(library => library.Id == replacing).ExecuteUpdateAsync(set => set.SetProperty(l => l.AutoDedupeEnabled, false));
+        }
+    }
+
     private HttpClient Admin()
     {
         var client = api.CreateClient();
@@ -90,7 +151,8 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
     private async Task<(int LibraryId, int MediaId)> SeedAsync(
         Action<Library>? configure = null,
         string videoCodec = "h264",
-        MediaFileStatus status = MediaFileStatus.Probed)
+        MediaFileStatus status = MediaFileStatus.Probed,
+        string audioCodecs = "aac")
     {
         var root = Path.Combine(api.LibraryDirectory, "plan-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -110,6 +172,7 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
             MediaKind = MediaKind.Video, Container = "matroska,webm", VideoCodec = videoCodec, PixelFormat = "yuv420p",
             Width = 1920, Height = 1080, DurationSeconds = 100, AudioLanguages = "eng, fra", AudioTrackCount = 2,
             SubtitleLanguages = "eng", SubtitleTrackCount = 1, MaxAudioChannels = 6, ProbedAt = DateTimeOffset.UtcNow,
+            AudioCodecs = audioCodecs,
         };
         db.MediaFiles.Add(file);
         await db.SaveChangesAsync();

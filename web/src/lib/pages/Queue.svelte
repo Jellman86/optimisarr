@@ -21,7 +21,7 @@
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import JobResult from '../components/JobResult.svelte'
-  import { plainCheckName } from '../plain-checks'
+  import { pictureQualityWasMeasured, plainCheckName } from '../plain-checks'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import SoundtrackSearchReport from '../components/SoundtrackSearchReport.svelte'
@@ -627,6 +627,13 @@
     return failed.length === 1 && failed[0].name === 'Perceptual quality (VMAF)'
   }
 
+  // A higher-quality retry is worth offering only when a measured score fell short and the
+  // quality search has not already tried its highest setting: otherwise it repeats a known miss.
+  function canRetryHigher(job: Job): boolean {
+    if (!isVmafOnlyFailure(job) || searchReport(job)?.result?.decision?.fellBack === true) return false
+    return (fullReport(job)?.checks ?? []).some((check) => check.outcome === 'Failed' && pictureQualityWasMeasured(check))
+  }
+
   function vmafSamplingLabel(value: string): string {
     if (value === 'Full file') return i18n.m.queue.vmaf_sampling_full
     if (value === 'Three 40-second samples (early, middle and late)') return i18n.m.queue.vmaf_sampling_three
@@ -825,7 +832,7 @@
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
           {/if}
           <JobResult job={selectedJob} checks={parseReport(selectedJob)} {dryRun} {retentionDays}
-            canRetryHigher={isVmafOnlyFailure(selectedJob)}
+            canRetryHigher={canRetryHigher(selectedJob)}
             replacing={replacingId === selectedJob.id} replaceBlocked={replacingAll || replacingId !== null}
             onreplace={() => selectedJob && replace(selectedJob)} onunlocked={() => (dryRun = false)} />
           {#if selectedJob.status === 'AwaitingSizeReview'}
@@ -993,7 +1000,7 @@
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
           <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id} title={i18n.m.queue.exclude_title}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
-          {#if isVmafOnlyFailure(selectedJob)}
+          {#if canRetryHigher(selectedJob)}
             <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
               {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry_higher_quality}
             </button>

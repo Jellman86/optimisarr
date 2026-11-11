@@ -1210,9 +1210,20 @@ for (const width of [375, 1440]) {
   }
 }
 
-async function mockReplacementSettings(page: Page, settings: Record<string, unknown>, save?: (route: Route) => Promise<void> | void) {
+const nothingPending = { retentionDays: 30, originalsToDelete: 0, originalBytes: 0, duplicatesToDelete: 0, duplicateBytes: 0, librariesCleaningDuplicatesDaily: 0, jobsToReplace: 0, needsConfirmation: false }
+
+async function mockReplacementSettings(
+  page: Page,
+  settings: Record<string, unknown>,
+  save?: (route: Route) => Promise<void> | void,
+  unlockEffects: Record<string, unknown> | null = nothingPending,
+) {
   let current = settings
   const saved: Record<string, unknown>[] = []
+  // What unlocking would start. Null stands for a server that cannot say.
+  await page.route('**/api/settings/dry-run-unlock', route => unlockEffects
+    ? json(route, unlockEffects)
+    : route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }))
   await page.route('**/api/settings', async route => {
     if (route.request().method() !== 'PUT') return json(route, current)
     saved.push(route.request().postDataJSON())
@@ -1223,15 +1234,15 @@ async function mockReplacementSettings(page: Page, settings: Record<string, unkn
   return saved
 }
 
-function failedJob(failedCheck: string) {
+function failedJob(failedCheck: string, detail = 'Below what this library asks for.', extra: Record<string, unknown> = {}) {
   return {
     ...job(9, 'Failed', false),
     relativePath: 'Film 9.mkv', failureCategory: 'Verification', clearable: true,
     errorMessage: `Verification failed: ${failedCheck}`,
     verificationReportJson: JSON.stringify({ checks: [
       { name: 'Decode health', outcome: 'Passed', detail: 'Complete decode finished without errors.' },
-      { name: failedCheck, outcome: 'Failed', detail: 'Below what this library asks for.' },
-    ] }),
+      { name: failedCheck, outcome: 'Failed', detail },
+    ], ...extra }),
   }
 }
 
@@ -1270,8 +1281,11 @@ test('with replacing locked, Replace is off with the reason and one click unlock
   await expect(replace).toHaveAccessibleDescription('Replace is off because replacing is locked (dry-run).')
   await expect(result.locator('[data-replace-undo]')).toContainText('until you approve it in Quarantine')
   const unlock = result.locator('[data-dry-run-unlock]')
-  await expect(unlock).toContainText('This unlocks replacing for every library, not only this file.')
-  await expect(unlock).toContainText('Libraries set to replace automatically will then replace without asking.')
+  // Dry-run holds back more than the Replace button, and the text says all of it.
+  await expect(unlock).toContainText('This turns dry-run off for every library, not only this file.')
+  await expect(unlock).toContainText('libraries set to replace automatically do so without asking')
+  await expect(unlock).toContainText('originals and duplicate copies in Quarantine are deleted for good once they pass the time limit')
+  await expect(unlock).toContainText('libraries set to clean up duplicate copies every day start doing so')
   await expect(unlock).toContainText('You can lock it again in Settings → Files & safety.')
   expect(saved).toEqual([])
 
@@ -1346,4 +1360,90 @@ test('each check is named in plain words and keeps the name a log would quote', 
   await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveText('Plays from start to end without errors')
   await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveAttribute('title', 'Decode health')
   await expect(dialog.locator('[data-check-name="Perceptual quality (VMAF)"]')).toHaveText('Picture quality')
+})
+
+test('when unlocking would delete or replace straight away, it shows the counts and needs a second press', async ({ page }) => {
+  await mockQueue(page)
+  const saved = await mockReplacementSettings(page, { dryRunMode: true, replacementQuarantineRetentionDays: 14 }, undefined, {
+    retentionDays: 14, originalsToDelete: 3, originalBytes: 12_000_000_000, duplicatesToDelete: 1, duplicateBytes: 4_000_000_000,
+    librariesCleaningDuplicatesDaily: 2, jobsToReplace: 5, needsConfirmation: true,
+  })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  const unlock = page.locator('#queue-job-dialog [data-dry-run-unlock]')
+
+  await unlock.getByRole('button', { name: 'Unlock replacing' }).click()
+
+  const confirm = unlock.locator('[data-dry-run-confirm]')
+  await expect(confirm).toContainText('Unlocking will do this straight away')
+  await expect(confirm.locator('[data-unlock-effect="replace"]')).toHaveText('5 verified files waiting in libraries that replace automatically will replace their originals.')
+  await expect(confirm.locator('[data-unlock-effect="originals"]')).toContainText('3 originals in Quarantine are past the time limit and will be deleted for good')
+  await expect(confirm.locator('[data-unlock-effect="duplicates"]')).toContainText('1 quarantined duplicate copy is past the time limit and will be deleted for good')
+  await expect(confirm.locator('[data-unlock-effect="dedupe"]')).toHaveText('2 libraries will start finding and quarantining duplicate copies every day.')
+  expect(saved).toEqual([])
+
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(confirm).toHaveCount(0)
+  await expect(page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' })).toBeDisabled()
+  expect(saved).toEqual([])
+
+  await unlock.getByRole('button', { name: 'Unlock replacing' }).click()
+  await unlock.getByRole('button', { name: 'Unlock and let this happen' }).click()
+  await expect(page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' })).toBeEnabled()
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ dryRunMode: false })
+})
+
+test('when the server cannot say what unlocking would start, the confirmation is still asked for', async ({ page }) => {
+  await mockQueue(page)
+  const saved = await mockReplacementSettings(page, { dryRunMode: true, replacementQuarantineRetentionDays: 14 }, undefined, null)
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  const unlock = page.locator('#queue-job-dialog [data-dry-run-unlock]')
+
+  await unlock.getByRole('button', { name: 'Unlock replacing' }).click()
+
+  await expect(unlock.locator('[data-unlock-effect="unknown"]')).toContainText('Optimisarr couldn’t check what unlocking would start right now.')
+  expect(saved).toEqual([])
+})
+
+test('a quality search that already tried its highest setting is not told to try higher again', async ({ page }) => {
+  await mockQueue(page)
+  const fellBack = failedJob('Perceptual quality (VMAF)', 'Harmonic mean 92.4; needed 93.', { perceptualSearch: { result: { decision: { fellBack: true } } } })
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [fellBack]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog.locator('[data-advice="retry"]')).toHaveCount(0)
+  await expect(dialog.locator('[data-advice="target"]')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Retry at higher quality', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+})
+
+test('a picture check that could not be measured is not blamed on the target', async ({ page }) => {
+  await mockQueue(page)
+  const unmeasured = failedJob('Perceptual quality (VMAF)', 'Quality could not be measured: ffmpeg exited with code 1')
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [unmeasured]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog.locator('[data-advice="unmeasured"]')).toContainText('There is no score to compare, so changing the target would not help.')
+  await expect(dialog.locator('[data-advice="target"]')).toHaveCount(0)
+  await expect(dialog.locator('[data-advice="retry"]')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Retry at higher quality', exact: true })).toHaveCount(0)
+})
+
+test('the failure headline leaves the advice to the result card and says target, not gate', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failedJob('Perceptual quality (VMAF)', 'Harmonic mean 92.4; needed 93.')]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog).toContainText('Its picture-quality score fell below this library’s target.')
+  await expect(dialog).not.toContainText('lower the gate')
+  await expect(dialog).not.toContainText('Retry at higher quality, or lower the target')
+  await expect(dialog.locator('[data-advice="retry"]')).toBeVisible()
 })

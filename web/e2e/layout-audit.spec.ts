@@ -106,6 +106,7 @@ async function mockApp(page: Page) {
       total: fixtures.files.length, counts: { all: fixtures.files.length, eligible: fixtures.files.length, skipped: 0, unprobed: 0 },
     })
     if (/^\/api\/media\/\d+\/plan$/.test(path)) return json(route, fixtures.plan)
+    if (path === '/api/settings/dry-run-unlock') return json(route, fixtures.unlockEffects)
     if (path === '/api/replacements') return json(route, fixtures.replacements)
     if (path === '/api/quarantine/duplicates') return json(route, [{ id: '11111111-1111-1111-1111-111111111111', state: 'Quarantined', heldSince: '2026-11-07T10:00:00Z', attentionReason: null, keptPaths: ['/data/films/A very long film title that needs to wrap on a phone (2026)/A very long film title that needs to wrap on a phone (2026).mkv'], copies: [{ path: '/data/films/Backup/A very long film title that needs to wrap on a phone (2026).mkv', quarantinePath: '/data/films/.optimisarr-dedupe/1/Backup/A very long film title that needs to wrap on a phone (2026).mkv', sizeBytes: 4_000_000_000 }] }])
     if (/\/duplicates\/cleanup\/preview$/.test(path)) return json(route, { ready: true, groups: 1, copies: 1, bytesToFree: 1024, leftAlone: { SharedExtra: 2 } })

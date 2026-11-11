@@ -52,9 +52,9 @@
       options = loadedOptions
       settings = loadedSettings
     } catch (err) {
-      if (!disposed) error = err instanceof Error ? err.message : i18n.m.onePlan.error_load
+      if (!disposed && id === mediaFileId) error = err instanceof Error ? err.message : i18n.m.onePlan.error_load
     } finally {
-      if (!disposed) loading = false
+      if (!disposed && id === mediaFileId) loading = false
     }
   }
 
@@ -93,15 +93,18 @@
     const picture = plan?.picture
     if (!picture) return []
     const changes: string[] = []
+    // The exact size is known only when no black bars are still to be measured; otherwise the limit is.
     if (picture.width && picture.height) changes.push(t(i18n.m.onePlan.picture_shrunk, { width: picture.width, height: picture.height }))
-    if (picture.frameRateCap) changes.push(t(i18n.m.onePlan.picture_fps, { fps: picture.frameRateCap }))
+    else if (picture.shrinkToHeight) changes.push(t(i18n.m.librarySummary.video_shrink, { height: picture.shrinkToHeight }))
+    // A cap is a rule: it changes this file only if the file runs above it, which the job measures.
+    if (picture.frameRateCap) changes.push(t(i18n.m.librarySummary.video_fps, { fps: picture.frameRateCap }))
     if (picture.tonemapToSdr) changes.push(i18n.m.librarySummary.video_tonemap)
     if (picture.deinterlace) changes.push(i18n.m.onePlan.picture_deinterlaced)
     if (picture.cropBlackBars) changes.push(i18n.m.onePlan.picture_cropped)
     if (picture.noiseReduction !== 'Off') {
       changes.push(t(i18n.m.librarySummary.video_noise, { level: picture.noiseReduction === 'Strong' ? i18n.m.libraries.noise_strong : i18n.m.libraries.noise_light }))
     }
-    if (library?.superResolutionEnabled) changes.push(i18n.m.librarySummary.video_upscale)
+    if (picture.upscales) changes.push(i18n.m.librarySummary.video_upscale)
     return changes
   })
 
@@ -213,7 +216,7 @@
             <span role="cell" data-label={i18n.m.onePlan.col_after}>
               {plan.sound.codec
                 ? t(i18n.m.onePlan.sound_converted, { codec: codecName(plan.sound.codec), kbps: plan.sound.bitrateKbps ?? '' })
-                : i18n.m.onePlan.sound_copied}
+                : plan.picture?.upscales ? i18n.m.onePlan.sound_copied_upscale : i18n.m.onePlan.sound_copied}
               {#if plan.sound.downmixToStereo}{' '}{i18n.m.librarySummary.audio_downmix}{/if}
               {#if plan.kind === 'Video'}
                 {#if removed(plan.audioTracks).length > 0}
@@ -245,6 +248,24 @@
                 <span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.librarySummary.tag_removes_tracks}</span>
               {:else if plan.subtitleTracks === null && library?.keepSubtitleLanguages}{i18n.m.onePlan.tracks_unknown}
               {:else}{i18n.m.onePlan.tracks_all_kept}{/if}
+            </span>
+          </div>
+        {/if}
+
+        {#if plan.image}
+          {@const image = plan.image}
+          <div class="plan-row" role="row" data-plan-row="image">
+            <span role="rowheader">{i18n.m.libraries.images}</span>
+            <span role="cell" data-label={i18n.m.onePlan.col_now}>
+              {codecName(source.videoCodec) || '—'}{#if source.width && source.height}{` · ${source.width} × ${source.height}`}{/if}
+            </span>
+            <span role="cell" data-label={i18n.m.onePlan.col_after}>
+              {t(i18n.m.onePlan.image_converted, { format: codecName(image.format), quality: image.quality })}
+              {' '}{image.resizeMode === 'MaxLongEdge' ? t(i18n.m.librarySummary.images_fit, { pixels: image.resizeValue })
+                : image.resizeMode === 'Percent' ? t(i18n.m.librarySummary.images_percent, { percent: image.resizeValue })
+                  : i18n.m.librarySummary.images_not_resized}
+              {#if image.recompressesLossy}{' '}{i18n.m.onePlan.image_recompressed}{/if}
+              {#if image.resizeMode !== 'None' || image.recompressesLossy}<span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.librarySummary.tag_changes_picture}</span>{/if}
             </span>
           </div>
         {/if}

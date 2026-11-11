@@ -88,6 +88,7 @@ try {
   if(path==='/api/candidates')return json(route,f.candidates)
   if(path==='/api/exclusions')return json(route,[{id:1,mediaFileId:6,libraryId:1,path:'/data/films/'+f.files[5].relativePath,relativePath:f.files[5].relativePath,source:'RepeatedFailures',reason:'Quality target not met after the recovery retry. Original retained.',createdAt:f.when}])
   if(/^\/api\/media\/\d+\/plan$/.test(path))return json(route,f.plan)
+  if(path==='/api/settings/dry-run-unlock')return json(route,f.unlockEffects)
   if(path==='/api/inventory')return json(route,{items:f.files.map(file=>({file,eligible:file.id!==3,reason:file.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.'})),total:f.files.length,counts:{all:f.files.length,eligible:7,skipped:1,unprobed:0}})
   if(path==='/api/replacements')return json(route,f.replacements)
   if(path==='/api/quarantine/duplicates')return json(route,[])

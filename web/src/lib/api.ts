@@ -1178,12 +1178,19 @@ export type MediaPlan = {
     crf: number | null
     width: number | null
     height: number | null
+    /** The height limit the new size is worked out from; the exact size is null while black bars are still to be measured. */
+    shrinkToHeight: number | null
+    /** A rule, not a finding: it only changes a file that runs above it. */
     frameRateCap: number | null
     tonemapToSdr: boolean
     deinterlace: boolean
     cropBlackBars: boolean
     noiseReduction: NoiseReduction
+    /** The job would run through AI upscaling, which copies its sound. */
+    upscales: boolean
   } | null
+  /** Null unless the file is an image. */
+  image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
   /** A null codec means every kept track is copied untouched. */
   sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean } | null
   /** Null when the file was probed before track languages were recorded. */
@@ -1192,6 +1199,18 @@ export type MediaPlan = {
   file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
 }
 export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
+
+/** What turning dry-run off would start without anyone pressing anything further. */
+export type DryRunUnlockEffects = {
+  retentionDays: number
+  originalsToDelete: number
+  originalBytes: number
+  duplicatesToDelete: number
+  duplicateBytes: number
+  librariesCleaningDuplicatesDaily: number
+  jobsToReplace: number
+  needsConfirmation: boolean
+}
 
 export type InventoryRow = {
   file: MediaFile
@@ -1541,6 +1560,7 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   superResolutionStatus: (engine: SuperResolutionEngine) => request<SuperResolutionStatus>(`/api/system/super-resolution/${engine}`),
   probeSuperResolution: (engine: SuperResolutionEngine) => request<SuperResolutionProbe>(`/api/system/super-resolution/${engine}/probe`, { method: 'POST' }),
+  dryRunUnlockEffects: () => request<DryRunUnlockEffects>('/api/settings/dry-run-unlock'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),

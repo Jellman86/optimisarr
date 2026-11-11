@@ -54,7 +54,17 @@ export function plainCheckName(name: string, labels: Labels): string {
   return key ? labels[key] : name
 }
 
-/** Whether a failed check is one of picture quality, which changing the library's target can address. */
+/** Whether a check is the picture-quality one. */
 export function isPictureQualityCheck(name: string): boolean {
   return /^Perceptual quality \(VMAF\)/.test(name)
+}
+
+/**
+ * Whether a failed picture-quality check has a score behind it. When the measurement itself
+ * failed there is nothing to compare, so a different target would change nothing. The server
+ * says which in the check's detail.
+ */
+export function pictureQualityWasMeasured(check: { name: string; detail: string }): boolean {
+  return isPictureQualityCheck(check.name)
+    && !/^Quality could not be measured|^VMAF aggregates were missing/.test(check.detail)
 }

@@ -3,17 +3,29 @@ using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Rules;
 
-/// <summary>What a re-encode does to the picture. A null size or cap means it is left as it is.</summary>
+/// <summary>
+/// What a re-encode does to the picture. A null size or cap means it is left as it is.
+/// <see cref="Width"/> and <see cref="Height"/> are the exact new size, known only when no black
+/// bars are to be removed; <see cref="ShrinkToHeight"/> is the limit the size is worked out from.
+/// <see cref="FrameRateCap"/> and <see cref="CropBlackBars"/> are rules, not findings: whether
+/// they change this file is known only once the job has measured it.
+/// </summary>
 public sealed record PlannedPicture(
     string Codec,
     int? Crf,
     int? Width,
     int? Height,
+    int? ShrinkToHeight,
     int? FrameRateCap,
     bool TonemapToSdr,
     bool Deinterlace,
     bool CropBlackBars,
-    NoiseReduction NoiseReduction);
+    NoiseReduction NoiseReduction,
+    bool Upscales);
+
+/// <summary>What happens to an image. <see cref="RecompressesLossy"/> is true when the source is
+/// already a compressed image, so it loses quality a second time.</summary>
+public sealed record PlannedImage(string Format, int Quality, ImageDownscaleMode ResizeMode, int ResizeValue, bool RecompressesLossy);
 
 /// <summary>What happens to the sound. A null codec means every kept track is copied untouched.</summary>
 public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo);
@@ -22,9 +34,9 @@ public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixT
 public sealed record PlannedTrack(int Index, string? Language, bool Kept);
 
 /// <summary>
-/// The file that would be written. <see cref="MayBecomeMatroska"/> is true when an MP4 result can
-/// still move to Matroska, which is only known once the job has read the file's subtitle and audio
-/// formats.
+/// The file that would be written. Audio that MP4 cannot carry is already known from the
+/// inventory and is reflected in the name. <see cref="MayBecomeMatroska"/> is true when an MP4
+/// result can still move to Matroska because of picture subtitles, which only the job reads.
 /// </summary>
 public sealed record PlannedFile(string Container, string FileName, bool Renamed, bool MayBecomeMatroska);
 
@@ -39,7 +51,8 @@ public sealed record OptimisationPlan(
     PlannedSound? Sound,
     IReadOnlyList<PlannedTrack>? AudioTracks,
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
-    PlannedFile File);
+    PlannedFile File,
+    PlannedImage? Image = null);
 
 public static class OptimisationPlanner
 {
@@ -50,7 +63,14 @@ public static class OptimisationPlanner
     public const string Image = "Image";
 
     /// <param name="crf">The library's own quality number, or its preset's when it has none.</param>
-    public static OptimisationPlan Plan(MediaProperties media, RuleSettings rules, int? crf)
+    /// <param name="sourceHasMp4IncompatibleAudio">The inventory's audio codecs include one MP4 cannot hold.</param>
+    /// <param name="upscales">The job would run through AI upscaling, with the rules that run gives it.</param>
+    public static OptimisationPlan Plan(
+        MediaProperties media,
+        RuleSettings rules,
+        int? crf,
+        bool sourceHasMp4IncompatibleAudio = false,
+        bool upscales = false)
     {
         var spec = TranscodeSpecResolver.Resolve(
             rules,
@@ -61,6 +81,7 @@ public static class OptimisationPlanner
             crf,
             preset: null,
             media.Kind,
+            sourceHasMp4IncompatibleAudio: sourceHasMp4IncompatibleAudio,
             sourceImageCodec: media.VideoCodec,
             sourceMaxAudioChannels: media.MaxAudioChannels,
             sourceAudioLanguages: media.AudioLanguages,
@@ -74,15 +95,22 @@ public static class OptimisationPlanner
             container,
             fileName,
             Renamed: !string.Equals(fileName, Path.GetFileName(media.RelativePath), StringComparison.Ordinal),
-            // Only a video written as MP4 can still be moved: picture subtitles and some copied
-            // audio formats do not fit in MP4, and the inventory does not record either.
+            // Only a video written as MP4 can still be moved, and only by picture subtitles: the
+            // inventory records how many subtitle tracks there are, not what kind they are.
             MayBecomeMatroska: media.Kind == MediaKind.Video
                 && rules.TargetContainer is not null
+                && (media.SubtitleTrackCount > 0 || media.SubtitleLanguages is { Count: > 0 })
                 && TranscodeSpecResolver.IsMp4Container(container));
 
         if (media.Kind == MediaKind.Image)
         {
-            return new OptimisationPlan(media.Kind, Image, null, null, null, null, file);
+            var image = new PlannedImage(
+                rules.TargetImageFormat,
+                rules.ImageQuality,
+                rules.ImageDownscaleMode,
+                rules.ImageDownscaleValue,
+                RecompressesLossy: media.VideoCodec is { } imageCodec && !ImageTarget.IsLossless(imageCodec));
+            return new OptimisationPlan(media.Kind, Image, null, null, null, null, file, image);
         }
 
         if (media.Kind == MediaKind.Audio)
@@ -102,13 +130,17 @@ public static class OptimisationPlanner
             ? new PlannedPicture(
                 spec.VideoCodec!,
                 spec.Crf,
-                spec.DownscaleTo?.Width,
-                spec.DownscaleTo?.Height,
+                // With bars to remove, the size is worked out from the picture left after the
+                // crop, which only the job measures. Before that, only the limit is known.
+                rules.CropBlackBars ? null : spec.DownscaleTo?.Width,
+                rules.CropBlackBars ? null : spec.DownscaleTo?.Height,
+                spec.DownscaleTo is null ? null : rules.VideoDownscaleHeight,
                 rules.MaxFrameRate,
                 spec.TonemapToSdr,
                 VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, media.FieldOrder),
                 rules.CropBlackBars,
-                rules.NoiseReduction)
+                rules.NoiseReduction,
+                upscales)
             : null;
 
         return new OptimisationPlan(

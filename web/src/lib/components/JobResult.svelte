@@ -4,7 +4,7 @@
   // There is no "replace anyway": a file that missed a check never replaces an original.
   import type { Job, VerificationCheck } from '../api'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
-  import { isPictureQualityCheck } from '../plain-checks'
+  import { isPictureQualityCheck, pictureQualityWasMeasured } from '../plain-checks'
   import DryRunUnlock from './DryRunUnlock.svelte'
 
   let { job, checks, dryRun, retentionDays, canRetryHigher, replacing, replaceBlocked, onreplace, onunlocked }: {
@@ -26,7 +26,9 @@
   const failed = $derived((checks ?? []).filter((check) => check.outcome === 'Failed'))
   const passed = $derived(job.status === 'ReadyToReplace' && job.verificationPassed === true && !job.finalizing)
   const missed = $derived(job.status === 'Failed' && failed.length > 0)
-  const missedPicture = $derived(failed.some((check) => isPictureQualityCheck(check.name)))
+  // A lower target only helps when there was a score that fell short of it.
+  const missedPicture = $derived(failed.some(pictureQualityWasMeasured))
+  const unmeasuredPicture = $derived(failed.some((check) => isPictureQualityCheck(check.name) && !pictureQualityWasMeasured(check)))
   const undo = $derived(retentionDays === null
     ? i18n.m.jobResult.replace_undo
     : retentionDays === 0
@@ -60,6 +62,9 @@
     <ul>
       {#if canRetryHigher}
         <li data-advice="retry"><strong>{i18n.m.jobResult.advice_retry_title}</strong> {t(i18n.m.jobResult.advice_retry_body, { action: i18n.m.queue.action_retry_higher_quality })}</li>
+      {/if}
+      {#if unmeasuredPicture}
+        <li data-advice="unmeasured"><strong>{i18n.m.jobResult.advice_unmeasured_title}</strong> {i18n.m.jobResult.advice_unmeasured_body}</li>
       {/if}
       {#if missedPicture}
         <li data-advice="target">

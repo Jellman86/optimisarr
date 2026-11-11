@@ -14,6 +14,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -106,6 +107,7 @@ internal static class MediaAndQueueEndpoints
             int id,
             OptimisarrDbContext db,
             CandidateService candidates,
+            SettingsStore settings,
             CancellationToken cancellationToken) =>
         {
             var file = await db.MediaFiles.AsNoTracking().Include(f => f.Library)
@@ -122,11 +124,22 @@ internal static class MediaAndQueueEndpoints
 
             var candidate = (await candidates.EvaluateAsync(file.LibraryId, cancellationToken))
                 .FirstOrDefault(c => c.MediaFileId == id);
-            var rules = LibraryRuleResolution.Resolve(file.Library);
+            var saved = LibraryRuleResolution.Resolve(file.Library);
+            // The same two facts the dispatcher works out before it plans a job: whether this file
+            // would be upscaled, which copies its audio, and whether its audio fits in MP4.
+            var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var upscales = saved.TargetVideoCodec is not null && SuperResolutionRouting.Applies(
+                superResolution.Enabled, file.Library?.SuperResolutionEnabled == true, file.MediaKind, replaceBound: true);
+            var rules = QueueDispatcher.SuperResolutionRules(saved, upscales);
+            var mp4IncompatibleAudio = file.MediaKind == MediaKind.Video
+                && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, file.Path))
+                && AudioContainerCompatibility.ContainsMp4Incompatible(file.AudioCodecs);
             var plan = OptimisationPlanner.Plan(
                 CandidateService.PropertiesOf(file),
                 rules,
-                file.Library?.QualityCrf ?? rules.DefaultCrf);
+                file.Library?.QualityCrf ?? rules.DefaultCrf,
+                mp4IncompatibleAudio,
+                upscales);
             return Results.Ok(MediaPlanDto.From(file, candidate, plan));
         })
         .WithName("GetMediaPlan")
@@ -704,7 +717,8 @@ internal sealed record MediaPlanDto(
     PlannedSound? Sound,
     IReadOnlyList<PlannedTrack>? AudioTracks,
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
-    PlannedFile File)
+    PlannedFile File,
+    MediaPlanImageDto? Image)
 {
     public static MediaPlanDto From(MediaFile file, Candidate? candidate, OptimisationPlan plan) => new(
         file.Id,
@@ -719,13 +733,16 @@ internal sealed record MediaPlanDto(
             file.AudioCodecs, file.MaxAudioChannels, file.AudioTrackCount, file.SubtitleTrackCount),
         plan.Picture is { } picture
             ? new MediaPlanPictureDto(
-                picture.Codec, picture.Crf, picture.Width, picture.Height, picture.FrameRateCap,
-                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString())
+                picture.Codec, picture.Crf, picture.Width, picture.Height, picture.ShrinkToHeight, picture.FrameRateCap,
+                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales)
             : null,
         plan.Sound,
         plan.AudioTracks,
         plan.SubtitleTracks,
-        plan.File);
+        plan.File,
+        plan.Image is { } image
+            ? new MediaPlanImageDto(image.Format, image.Quality, image.ResizeMode.ToString(), image.ResizeValue, image.RecompressesLossy)
+            : null);
 }
 
 /// <summary>The file as it is now: the "before" side of the plan, from what the last probe recorded.</summary>
@@ -750,8 +767,13 @@ internal sealed record MediaPlanPictureDto(
     int? Crf,
     int? Width,
     int? Height,
+    int? ShrinkToHeight,
     int? FrameRateCap,
     bool TonemapToSdr,
     bool Deinterlace,
     bool CropBlackBars,
-    string NoiseReduction);
+    string NoiseReduction,
+    bool Upscales);
+
+/// <summary>Enums are sent as their names, as the rest of the API sends them.</summary>
+internal sealed record MediaPlanImageDto(string Format, int Quality, string ResizeMode, int ResizeValue, bool RecompressesLossy);

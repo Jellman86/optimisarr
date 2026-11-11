@@ -170,6 +170,11 @@ The plan is worked out from the file and its library's settings as they are now:
 - **Video**, **Audio**, **Subtitles** and **File** each show what the file is now and what it would be
   after. A setting that changes the picture, removes a track or renames the file is tagged where it is
   described.
+- What only the job can measure is said as a rule, not as a fact: a frame-rate cap applies if the
+  file runs above it, black bars are cut off if any are found, and the exact new size is given only
+  when there are no bars still to measure. A job that would be upscaled with AI says so, and says its
+  sound is copied. An image says its format, any resize, and when an already compressed image is
+  compressed again.
 - **Size** says "Not known until it's encoded". There is no honest number before an encode. **Preview**
   encodes a short part so you can see a result first.
 - **What happens to the original** follows the library's choice under **Schedule & replace**.
@@ -297,16 +302,24 @@ Open a job that has finished its checks to see the result.
 A job that **passed every check** says what replacing does before you press the button: the original
 moves to Quarantine, how long you can put it back, and that you get the space back only when the
 original is deleted. On a fresh install replacing is locked (dry-run), so **Replace original** is off
-and says why. **Unlock replacing** beside it turns dry-run off in one click. That unlocks replacing for
-every library, not only this file, and libraries set to replace automatically will then replace
-without asking. You can lock it again in **Settings → Files & safety**.
+and says why. **Unlock replacing** beside it turns dry-run off for every library, not only this file.
+
+Dry-run holds back more than the Replace button, and the text beside the button says so. With it
+off, libraries set to replace automatically replace without asking, originals and duplicate copies in
+Quarantine are deleted for good once they pass the time limit, and libraries set to clean up
+duplicate copies every day start doing so. On a fresh install none of that has anything to act on,
+and one press unlocks. When something would happen straight away, the button first shows what, with
+counts from the server (files waiting to be replaced, quarantined files past the time limit, libraries
+with daily duplicate clean-up), and needs a second press. If the server cannot say, the second press
+is still asked for. You can lock it again in **Settings → Files & safety**.
 
 A job that **missed a check** says what you can do instead:
 
-- **Retry at higher quality**, when picture quality was the only check missed. The library's settings
-  do not change.
-- **Change the quality target for the whole library**, when a picture-quality check was missed. This
-  changes the check itself, for every file in the library.
+- **Retry at higher quality**, when a measured picture-quality score was the only check missed and
+  the quality search had not already tried its highest setting. The library's settings do not change.
+- **Change the quality target for the whole library**, when a picture-quality score fell short. This
+  changes the check itself, for every file in the library. It is not offered when picture quality
+  could not be measured at all: there is no score to compare, so the advice is to retry.
 - **Exclude** the file, so it is not offered or queued again.
 
 There is no "replace anyway". A file that missed a check never replaces an original.

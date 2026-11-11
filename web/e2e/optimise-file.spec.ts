@@ -34,7 +34,8 @@ const source = {
 const plan = {
   mediaFileId: 7, libraryId: 1, eligible: true, reason: 'Video codec differs from the library’s HEVC target.',
   kind: 'Video', action: 'Encode', source,
-  picture: { codec: 'hevc', crf: 24, width: null, height: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off' },
+  picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+  image: null,
   sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false },
   audioTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: false }],
   subtitleTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: true }],
@@ -94,7 +95,7 @@ test('the plan says what would change, part by part, and opening it queues nothi
 
   await expect(row(page, 'file')).toContainText('Renamed to Orbit.2025.2160p.x265.mp4.')
   await expect(row(page, 'file').locator('[data-plan-tag]')).toHaveText('Renames files')
-  await expect(row(page, 'file')).toContainText('it is saved as MKV instead')
+  await expect(row(page, 'file')).toContainText('If its subtitles are pictures, as on a Blu-ray or DVD, it is saved as MKV instead')
 
   await expect(row(page, 'size')).toContainText('Not known until it’s encoded.')
   await expect(row(page, 'size')).toContainText('It must come out smaller, or the original is kept.')
@@ -104,13 +105,79 @@ test('the plan says what would change, part by part, and opening it queues nothi
 })
 
 test('a picture change is tagged where it is described', async ({ page }) => {
-  await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, width: 1920, height: 1080, tonemapToSdr: true, cropBlackBars: true } } })
+  await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, width: 1920, height: 1080, shrinkToHeight: 1080, tonemapToSdr: true } } })
   await page.goto('/#/inventory/optimise/7')
 
   await expect(row(page, 'video')).toContainText('Made smaller, to 1920 × 1080.')
   await expect(row(page, 'video')).toContainText('Converts HDR to SDR.')
-  await expect(row(page, 'video')).toContainText('Black bars are cut off.')
   await expect(row(page, 'video').locator('[data-plan-tag]')).toHaveText('Changes the picture')
+})
+
+test('what only the job can measure is said as a rule, not as a fact about this file', async ({ page }) => {
+  // With black bars still to be measured, the server sends the height limit and no exact size.
+  await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, shrinkToHeight: 1080, frameRateCap: 30, cropBlackBars: true } } })
+  await page.goto('/#/inventory/optimise/7')
+  const video = row(page, 'video')
+
+  await expect(video).toContainText('Shrinks video taller than 1080p down to 1080p.')
+  await expect(video).not.toContainText('Made smaller, to')
+  await expect(video).toContainText('Halves frame rates above 30 fps.')
+  await expect(video).toContainText('Black bars are cut off, if any are found.')
+})
+
+test('upscaling is shown only when the server says this job would be upscaled, and its sound is copied', async ({ page }) => {
+  await mockPlan(page, { library: { superResolutionEnabled: true } })
+  await page.goto('/#/inventory/optimise/7')
+  await expect(row(page, 'video')).toContainText('Re-encodes video')
+  await expect(row(page, 'video')).not.toContainText('Upscales with AI')
+
+  await mockPlan(page, { library: { superResolutionEnabled: true }, plan: { ...plan, picture: { ...plan.picture, upscales: true }, sound: { codec: null, bitrateKbps: null, downmixToStereo: false } } })
+  await page.reload()
+
+  await expect(row(page, 'video')).toContainText('Upscales with AI before the checks.')
+  await expect(row(page, 'audio')).toContainText('AI upscaling copies the sound as it is.')
+  await expect(row(page, 'audio')).not.toContainText('Converted to')
+})
+
+test('an image plan says its format, any resize and when the image is compressed a second time', async ({ page }) => {
+  const photo = {
+    ...plan, kind: 'Image', action: 'Image', picture: null, sound: null, audioTracks: null, subtitleTracks: null,
+    source: { ...source, relativePath: 'Trip/IMG_0002.jpg', container: 'image2', videoCodec: 'mjpeg', width: 4000, height: 3000, durationSeconds: null, audioCodecs: null, audioTrackCount: null, subtitleTrackCount: null },
+    file: { container: 'webp', fileName: 'IMG_0002.webp', renamed: true, mayBecomeMatroska: false },
+    image: { format: 'webp', quality: 70, resizeMode: 'MaxLongEdge', resizeValue: 3840, recompressesLossy: true },
+  }
+  await mockPlan(page, { plan: photo, library: { mediaType: 'Photo' } })
+  await page.goto('/#/inventory/optimise/7')
+  const image = row(page, 'image')
+
+  await expect(image).toContainText('Converted to WebP at quality 70.')
+  await expect(image).toContainText('Shrinks images to fit 3840 px on the long edge.')
+  await expect(image).toContainText('This image is already compressed, so it loses a little quality a second time.')
+  await expect(image.locator('[data-plan-tag]')).toHaveText('Changes the picture')
+  await expect(row(page, 'file')).toContainText('Renamed to IMG_0002.webp.')
+})
+
+test('a slow answer for one file does not show, or leave loading, on the file opened since', async ({ page }) => {
+  await mockPlan(page)
+  let fail = () => {}
+  const asked = new Promise<void>(resolve => {
+    void page.route('**/api/media/7/plan', async route => {
+      resolve()
+      await new Promise<void>(release => { fail = release })
+      await route.fulfill({ status: 500, json: { error: 'The first file could not be planned.' } })
+    })
+  })
+  await page.goto('/#/inventory/optimise/7')
+  await asked
+  await page.goto('/#/inventory/optimise/8')
+  await expect(page.locator('[data-plan-verdict]')).toHaveAttribute('data-plan-verdict', 'no')
+  const answered = page.waitForResponse('**/api/media/7/plan')
+
+  fail()
+  await answered
+
+  await expect(page.locator('[data-one-file-plan]')).toBeVisible()
+  await expect(page.locator('main')).not.toContainText('The first file could not be planned.')
 })
 
 test('a fixed quality setting says whether the result is measured', async ({ page }) => {

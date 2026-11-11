@@ -177,12 +177,15 @@ export const plan = {
   source: { relativePath: files[0].relativePath, sizeBytes: files[0].sizeBytes, container: 'matroska', videoCodec: 'h264', width: 1920, height: 1080,
     durationSeconds: files[0].durationSeconds, isHdr: false, isDolbyVision: false, interlaced: false,
     audioCodecs: 'eac3', maxAudioChannels: 6, audioTrackCount: 2, subtitleTrackCount: 2 },
-  picture: { codec: 'hevc', crf: 24, width: null, height: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off' },
+  picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+  image: null,
   sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false },
   audioTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: true }],
   subtitleTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: true }],
   file: { container: 'mp4', fileName: 'Lumen Coast.mp4', renamed: true, mayBecomeMatroska: true },
 }
+// What unlocking dry-run would start on the documentation server: nothing is pending.
+export const unlockEffects = { retentionDays: 14, originalsToDelete: 0, originalBytes: 0, duplicatesToDelete: 0, duplicateBytes: 0, librariesCleaningDuplicatesDaily: 0, jobsToReplace: 0, needsConfirmation: false }
 export const candidates = files.map(f => ({ mediaFileId:f.id, libraryId:1, relativePath:f.relativePath,sizeBytes:f.sizeBytes,videoCodec:f.videoCodec,ruleProfile:'ConservativeHevc',eligible:f.id!==3,reason:f.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.',mediaKind:'Video' }))
 export const workers = ['Studio Mac', 'Studio PC'].map((name,i)=>({id:i+1,name,operatingSystem:i?'Windows':'macOS',architecture:i?'x64':'arm64',protocolVersion:5,sidecarVersion:applicationVersion,cpuBusyFraction:.12,gpuBusyFraction:.08,loadReportedAt:when,videoEncoders:[i?'hevc_nvenc':'hevc_videotoolbox'],audioEncoders:['aac'],hardwareDecoders:[i?'cuda':'videotoolbox'],vmaf:'Cpu',freeScratchBytes:400e9,maxConcurrency:1,pairedAt:when,lastSeenAt:when,revokedAt:null,online:true,drainRequestedAt:null,heldLeases:0,activeJobs:[],lastProblem:null,lastProblemAt:null}))
 // Original vector illustrations created for documentation, not posters from a media provider.

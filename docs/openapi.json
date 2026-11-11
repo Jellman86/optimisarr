@@ -1248,6 +1248,79 @@
         ],
         "type": "object"
       },
+      "DryRunUnlockEffects": {
+        "properties": {
+          "duplicateBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "duplicatesToDelete": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "jobsToReplace": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "librariesCleaningDuplicatesDaily": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "needsConfirmation": {
+            "type": "boolean"
+          },
+          "originalBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "originalsToDelete": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "retentionDays": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "retentionDays",
+          "originalsToDelete",
+          "originalBytes",
+          "duplicatesToDelete",
+          "duplicateBytes",
+          "librariesCleaningDuplicatesDaily",
+          "jobsToReplace"
+        ],
+        "type": "object"
+      },
       "ExactDuplicateAlias": {
         "properties": {
           "id": {
@@ -3255,6 +3328,16 @@
           "file": {
             "$ref": "#/components/schemas/PlannedFile"
           },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaPlanImageDto"
+              }
+            ]
+          },
           "kind": {
             "type": "string"
           },
@@ -3323,7 +3406,45 @@
           "sound",
           "audioTracks",
           "subtitleTracks",
-          "file"
+          "file",
+          "image"
+        ],
+        "type": "object"
+      },
+      "MediaPlanImageDto": {
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "recompressesLossy": {
+            "type": "boolean"
+          },
+          "resizeMode": {
+            "type": "string"
+          },
+          "resizeValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "format",
+          "quality",
+          "resizeMode",
+          "resizeValue",
+          "recompressesLossy"
         ],
         "type": "object"
       },
@@ -3368,7 +3489,19 @@
           "noiseReduction": {
             "type": "string"
           },
+          "shrinkToHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "tonemapToSdr": {
+            "type": "boolean"
+          },
+          "upscales": {
             "type": "boolean"
           },
           "width": {
@@ -3386,11 +3519,13 @@
           "crf",
           "width",
           "height",
+          "shrinkToHeight",
           "frameRateCap",
           "tonemapToSdr",
           "deinterlace",
           "cropBlackBars",
-          "noiseReduction"
+          "noiseReduction",
+          "upscales"
         ],
         "type": "object"
       },
@@ -11060,6 +11195,29 @@
               }
             },
             "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/dry-run-unlock": {
+      "get": {
+        "operationId": "PreviewDryRunUnlock",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunUnlockEffects"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
