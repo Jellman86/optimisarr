@@ -35,7 +35,7 @@
     /** A real file from this library, to show where its copy would be saved. */
     exampleRelativePath?: string | null
     /** Null until the server's settings have loaded. */
-    retentionDays?: number | null
+    retentionDays?: number | null | 'unavailable'
     dryRun?: boolean
   } = $props()
 
@@ -152,7 +152,9 @@
                 {i18n.m.filesChoice.original_stays}
               {:else}
                 {i18n.m.filesChoice.original_quarantine}
-                {#if retentionDays !== null}
+                {#if retentionDays === 'unavailable'}
+                  {i18n.m.librarySummary.originals_unknown}
+                {:else if retentionDays !== null}
                   {retentionDays > 0
                     ? plural(retentionDays, i18n.m.filesChoice.original_deleted_one, i18n.m.filesChoice.original_deleted_other)
                     : i18n.m.filesChoice.original_kept}

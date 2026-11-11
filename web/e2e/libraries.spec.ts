@@ -373,7 +373,7 @@ test('the overview says what the library does in sentences, with a tag for anyth
   await expect(summary.locator('[data-summary-line="files"]')).toContainText('Only video files over 200 MB. Skips files already in HEVC (H.265)')
   await expect(summary.locator('[data-summary-line="files"] [data-summary-detail]')).toHaveText('12 picked · 3 skipped, each with its reason in Candidates')
   await expect(summary.locator('[data-summary-line="video"]')).toContainText('Each file gets the smallest size that still scores 93 (Visually lossless) against the original.')
-  await expect(summary.locator('[data-summary-line="video"] [data-summary-tag="neutral"]')).toHaveText('File names stay the same')
+  await expect(summary.locator('[data-summary-line="video"] [data-summary-tag="warn"]')).toHaveText(['Renames some files'])
   await expect(summary.locator('[data-summary-line="audio"] [data-summary-tag="warn"]')).toHaveText('Removes tracks')
   await expect(summary.locator('[data-summary-line="checks"]')).toContainText('A new file must play from start to end, be the same length')
   await expect(summary.locator('[data-summary-line="schedule"]')).toContainText('You queue files yourself. A file that passes waits for you, then replaces the original. Originals stay in Quarantine for 30 days, then they are deleted.')
@@ -1561,7 +1561,7 @@ test('a new library keeps each file container, and an existing one shows what it
   await page.goto('/#/libraries/new/video')
   await expect(page.locator('#lib-container')).toHaveValue('source')
   await expect(page.locator('#lib-container option:checked')).toHaveText('Same as source (keeps file names)')
-  await expect(row(page, 'Container').locator('[data-setting-tag]')).toHaveText('File names stay the same')
+  await expect(row(page, 'Container').locator('[data-setting-tag]')).toHaveText('Renames some files')
 
   await page.goto('/#/libraries/1/configure/video')
   await expect(page.locator('#lib-container')).toHaveValue('mp4')
@@ -1583,7 +1583,7 @@ test('choosing a preset keeps same as source, because keeping file names is not 
 
 test('a refused save folder holds Save back on every page of the editor and the callout names the problem', async ({ page }) => {
   await mockLibraries(page)
-  await page.goto('/#/libraries/1/configure/automate')
+  await page.goto('/#/libraries/1/configure/schedule')
   await filesChoice(page, 'elsewhere').check()
   await page.getByRole('button', { name: 'Browse', exact: true }).click()
   const picker = page.getByRole('dialog', { name: 'Choose a folder' })
@@ -1593,13 +1593,13 @@ test('a refused save folder holds Save back on every page of the editor and the 
   await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toBeVisible()
 
   // The folder control is no longer on screen, but the refusal still stands.
-  await page.goto('/#/libraries/1/configure/verify')
+  await page.goto('/#/libraries/1/configure/checks')
 
   const problem = page.getByRole('alert').getByRole('button', { name: 'The folder for optimised files can’t be used', exact: true })
   await expect(problem).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   await problem.click()
-  await expect(page).toHaveURL(/configure\/automate$/)
+  await expect(page).toHaveURL(/configure\/schedule$/)
   await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toBeVisible()
 })
 
@@ -1622,7 +1622,194 @@ test('a library saving to a usable folder is not flagged', async ({ page }) => {
 
 test('the overwrite switch says what On does as well as Off', async ({ page }) => {
   await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/optimised' })
-  await page.goto('/#/libraries/1/configure/automate')
+  await page.goto('/#/libraries/1/configure/schedule')
 
   await expect(page.locator('main')).toContainText('On: the file already there is replaced for good. It does not go to Quarantine and cannot be put back.')
+})
+
+const remuxLibrary = { ...library, mediaType: 'TV', ruleProfile: 'RemuxCleanup', targetContainer: 'source', hdrHandling: null, maxHeight: null }
+const remuxMode = (page: Page) => page.getByRole('radio', { name: /Just clean up containers/ })
+
+test('a clean-up library keeps the two skip rules the server still applies, and the overview says them', async ({ page }) => {
+  await mockLibraries(page, remuxLibrary)
+  await page.goto('/#/libraries/1/configure/video')
+
+  await expect(remuxMode(page)).toBeChecked()
+  const skips = page.locator('#library-remux-skips')
+  await expect(skips).toContainText('A clean-up without re-encoding still skips these.')
+  await expect(skips.locator('#lib-hdr option')).toHaveText(['Exclude (skip HDR)', 'Preserve HDR'])
+  await skips.locator('#lib-hdr').selectOption('Exclude')
+  await skips.locator('#lib-maxheight').selectOption('1080')
+  await pageTab(page, 'Overview').click()
+  await expect(page.locator('[data-summary-line="files"]')).toContainText('Skips HDR files and video taller than 1080p.')
+
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ ruleProfile: 'RemuxCleanup', hdrHandling: 'Exclude', maxHeight: 1080, targetVideoCodec: null })
+})
+
+test('choosing a clean-up clears a codec that would make it re-encode', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'TV', targetContainer: 'source' })
+  await page.goto('/#/libraries/1/configure/video')
+  await page.locator('#lib-codec').selectOption('av1')
+
+  await remuxMode(page).check()
+  await pageTab(page, 'Overview').click()
+
+  await expect(page.locator('[data-summary-line="video"]')).toContainText('Cleans up each file\'s container without re-encoding.')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ ruleProfile: 'RemuxCleanup', targetVideoCodec: null })
+})
+
+test('a saved clean-up library with a codec left on it is shown as re-encoding, and choosing clean-up again clears it', async ({ page }) => {
+  await mockLibraries(page, { ...remuxLibrary, targetVideoCodec: 'av1' })
+  await page.goto('/#/libraries/1/configure')
+  const video = page.locator('[data-summary-line="video"]')
+
+  await expect(video).toContainText('a saved video codec (AV1) makes it re-encode video')
+  await expect(video.locator('[data-summary-tag="warn"]').first()).toHaveText('Re-encodes video')
+  await pageTab(page, 'Video').click()
+  await remuxMode(page).click()
+  await pageTab(page, 'Overview').click()
+
+  await expect(video).not.toContainText('re-encode video')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ targetVideoCodec: null })
+})
+
+test('switching the picture check off and on again keeps custom floors and sampling', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'TV', vmafQualityGateEnabled: true, videoQualityStrategy: 'Fixed',
+    minVmafHarmonicMean: 91, minVmafMin: 77, minVmafCatastrophicMin: 44, clipVmafEnabled: false, vmafFrameSubsample: 3 })
+  await page.goto('/#/libraries/1/configure/video')
+  const mode = page.locator('#lib-quality-mode')
+  await expect(mode).toHaveValue('fixed-checked')
+
+  await mode.selectOption('fixed-unchecked')
+  await mode.selectOption('fixed-checked')
+
+  await expect(page.locator('#lib-vmaf-harmonic')).toHaveValue('91')
+  await expect(page.locator('#lib-vmaf-fifth')).toHaveValue('77')
+  await expect(page.locator('#lib-vmaf-sampling')).toHaveValue('full-3')
+  await mode.selectOption('fixed-unchecked')
+  await mode.selectOption('target')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ videoQualityStrategy: 'AdaptiveVmaf', vmafQualityGateEnabled: true,
+    minVmafHarmonicMean: 91, minVmafMin: 77, minVmafCatastrophicMin: 44, clipVmafEnabled: false, vmafFrameSubsample: 3 })
+})
+
+test('clearing the bitrate cap clears the floor that depended on it', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'TV', maxBitrateKbps: 8000, minBitrateKbps: 2000 })
+  await page.goto('/#/libraries/1/configure/video')
+  await expect(page.locator('#lib-minbitrate')).toHaveValue('2000')
+
+  await page.locator('#lib-maxbitrate').fill('')
+
+  await expect(page.locator('#lib-minbitrate')).toHaveValue('')
+  await expect(page.locator('#lib-minbitrate')).toBeDisabled()
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ maxBitrateKbps: null, minBitrateKbps: null })
+})
+
+test('typing a start time equal to the end time keeps both time inputs', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoEnqueueEnabled: true, autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00' })
+  await page.goto('/#/libraries/1/configure/schedule')
+  await expect(page.locator('#lib-window')).toHaveValue('between')
+
+  await page.locator('#lib-auto-start').fill('06:00')
+
+  await expect(page.locator('#lib-window')).toHaveValue('between')
+  await expect(page.locator('#lib-auto-start')).toHaveValue('06:00')
+  await expect(page.locator('#lib-auto-end')).toBeVisible()
+  await page.locator('#lib-auto-start').fill('02:00')
+  await expect(page.locator('#lib-auto-start')).toHaveValue('02:00')
+})
+
+test('a library saved with equal times opens as any time', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoEnqueueEnabled: true, autoEnqueueWindowStart: '03:00', autoEnqueueWindowEnd: '03:00' })
+  await page.goto('/#/libraries/1/configure/schedule')
+
+  await expect(page.locator('#lib-window')).toHaveValue('any')
+  await expect(page.locator('#lib-auto-start')).toHaveCount(0)
+})
+
+test('a check that lives on another page links to its section there, not to the top of the page', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 })
+  await mockLibraries(page, { ...library, mediaType: 'TV', vmafQualityGateEnabled: true, minVmafHarmonicMean: 93, minVmafMin: 80, minVmafCatastrophicMin: 50 })
+  await page.goto('/#/libraries/1/configure/checks')
+
+  await row(page, 'Picture quality').getByRole('button', { name: 'Video', exact: true }).click()
+
+  await expect(page).toHaveURL(/configure\/video$/)
+  await expect(page.locator('#library-quality')).toBeInViewport()
+  await expect.poll(() => page.locator('main').evaluate((main) => main.scrollTop)).toBeGreaterThan(100)
+})
+
+test('a mixed library that only cleans up video still offers the surround choice for its audio files', async ({ page }) => {
+  await mockLibraries(page, { ...remuxLibrary, mediaType: 'Other' })
+  await page.goto('/#/libraries/1/configure/audio')
+
+  await expect(page.locator('#library-music #lib-surround')).toBeVisible()
+  await page.locator('#lib-surround').selectOption('downmix')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ downmixToStereo: true })
+})
+
+test('when the server settings cannot be read, the overview warns that originals may be deleted', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/settings', (route) => route.fulfill({ status: 500, json: { error: 'unavailable' } }))
+  await page.goto('/#/libraries/1/configure')
+  const schedule = page.locator('[data-summary-line="schedule"]')
+
+  await expect(schedule).toContainText('Optimisarr couldn’t check how long originals are kept. They may be deleted after a number of days.')
+  await expect(schedule.locator('[data-summary-tag="warn"]')).toHaveText('May delete originals')
+})
+
+test('upscaling switched off for the whole server is not claimed in the overview', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'TV', superResolutionEnabled: true } as typeof library, false)
+  await page.goto('/#/libraries/1/configure')
+
+  await expect(page.locator('[data-summary-line="video"]')).not.toContainText('Upscales with AI')
+})
+
+test('music and photo libraries are tagged as renaming the files they convert', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure')
+
+  await expect(page.locator('[data-summary-line="audio"]')).toContainText('A converted file gets a new extension, so its name changes.')
+  await expect(page.locator('[data-summary-line="audio"] [data-summary-tag="warn"]')).toHaveText('Renames files')
+})
+
+test('opening every page of a customised library and saving sends back every setting unchanged', async ({ page }) => {
+  const customised = {
+    ...library, mediaType: 'TV', priority: 1, minFileSizeBytes: 209_715_200, maxHeight: 1080,
+    reencodeSameCodecAboveBytes: 2_147_483_648, skipEfficientSources: false, targetVideoCodec: 'av1', targetContainer: 'mkv',
+    hdrHandling: 'TonemapToSdr', optimiseDolbyVision: true, excludePaths: 'Extras\nSamples', qualityCrf: 22, encoderPreset: 'efficient',
+    videoAudioCodec: 'opus', videoAudioBitrateKbps: 128, downmixToStereo: true, keepAudioLanguages: 'eng, jpn', keepSubtitleLanguages: 'eng',
+    vmafQualityGateEnabled: true, videoQualityStrategy: 'Fixed', minVmafHarmonicMean: 91, minVmafMin: 77, minVmafCatastrophicMin: 44,
+    clipVmafEnabled: false, vmafFrameSubsample: 3, durationTolerancePercent: 2, requireSubtitlesRetained: true, minimumSizeSavingPercent: 10,
+    audioLoudnessGateEnabled: true, maxLoudnessDriftLufs: 2, audioClippingGateEnabled: true, maxTruePeakDbtp: -1,
+    autoEnqueueEnabled: true, autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00', autoReplace: true,
+  }
+  await mockLibraries(page, customised as typeof library)
+  await page.goto('/#/libraries/1/configure')
+  for (const name of ['Which files', 'Video', 'Audio & subtitles', 'Checks', 'Schedule & replace', 'Overview']) {
+    await pageTab(page, name).click()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  }
+
+  // One edit, to have something to save. Everything else must come back as it was loaded.
+  await pageTab(page, 'Which files').click()
+  await page.locator('#lib-name').fill('Films renamed')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  const body = (await saved).postDataJSON() as Record<string, unknown>
+
+  expect(body.name).toBe('Films renamed')
+  const { id: _id, name: _name, fileCount: _fileCount, lastAutoEnqueueAt: _last, ...expected } = customised
+  for (const [key, value] of Object.entries(expected)) expect(body[key], key).toEqual(value)
 })

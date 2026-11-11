@@ -355,8 +355,33 @@
     return null
   })
 
+  // The picture check as it was before it was switched off, so switching it back on in the same
+  // visit restores the person's own floors and sampling instead of a weaker default.
+  type RememberedVmaf = { harmonic: number | null; fifth: number | null; catastrophic: number | null; clip: boolean | null; subsample: number | null; custom: boolean }
+  let rememberedVmaf: RememberedVmaf | null = null
+
+  function restorePictureCheck() {
+    if (!rememberedVmaf) {
+      setVmafMode('lossless')
+      return
+    }
+    form.vmafQualityGateEnabled = true
+    form.minVmafHarmonicMean = rememberedVmaf.harmonic
+    form.minVmafMin = rememberedVmaf.fifth
+    form.minVmafCatastrophicMin = rememberedVmaf.catastrophic
+    form.clipVmafEnabled = rememberedVmaf.clip ?? true
+    form.vmafFrameSubsample = rememberedVmaf.subsample ?? 1
+    vmafCustomSelected = rememberedVmaf.custom
+  }
+
   function setVmafMode(mode: VmafMode) {
     if (mode === 'off' && form.videoQualityStrategy === 'AdaptiveVmaf') return
+    if (mode === 'off' && form.vmafQualityGateEnabled === true) {
+      rememberedVmaf = {
+        harmonic: form.minVmafHarmonicMean, fifth: form.minVmafMin, catastrophic: form.minVmafCatastrophicMin,
+        clip: form.clipVmafEnabled, subsample: form.vmafFrameSubsample, custom: vmafCustomSelected,
+      }
+    }
     vmafCustomSelected = mode === 'custom'
     if (mode === 'off') {
       form.vmafQualityGateEnabled = false
@@ -403,7 +428,7 @@
     // visually-lossless default when it was off, then leave the normal VMAF picker visible so the
     // operator can deliberately change it before saving.
     if (strategy === 'AdaptiveVmaf' && vmafMode === 'off') {
-      setVmafMode('lossless')
+      restorePictureCheck()
     }
   }
 
@@ -419,7 +444,7 @@
     }
     form.videoQualityStrategy = 'Fixed'
     if (mode === 'fixed-unchecked') setVmafMode('off')
-    else if (vmafMode === 'off') setVmafMode('lossless')
+    else if (vmafMode === 'off') restorePictureCheck()
   }
 
   // Sampling and frame interval are one question: how much of the file is checked. Three answers
@@ -436,15 +461,24 @@
   }
 
   // Equal times have always meant "any time". That is now a choice of its own, saved the same way.
-  const windowChoice = $derived.by(() => (form.autoEnqueueWindowStart === form.autoEnqueueWindowEnd ? 'any' : 'between'))
+  // Equal times are read as "any time" only when a library is loaded: while someone is typing a
+  // time, passing through an equal pair must not take the two inputs away.
+  let windowChoice = $state<'any' | 'between'>('any')
+  function readWindowChoice() {
+    windowChoice = form.autoEnqueueWindowStart === form.autoEnqueueWindowEnd ? 'any' : 'between'
+  }
   function setWindowChoice(choice: string) {
     if (choice === 'any') {
       form.autoEnqueueWindowStart = '00:00'
       form.autoEnqueueWindowEnd = '00:00'
-    } else if (windowChoice === 'any') {
+      windowChoice = 'any'
+      return
+    }
+    if (form.autoEnqueueWindowStart === form.autoEnqueueWindowEnd) {
       form.autoEnqueueWindowStart = '01:00'
       form.autoEnqueueWindowEnd = '06:00'
     }
+    windowChoice = 'between'
   }
 
 
@@ -571,7 +605,7 @@
   // and a hidden choice is kept unchanged for when it is turned back on.
   let superResolutionOn = $state(false)
   // Two settings that belong to every library, shown beside the choice they change. Null until loaded.
-  let quarantineRetentionDays = $state<number | null>(null)
+  let quarantineRetentionDays = $state<number | null | 'unavailable'>(null)
   let dryRunOn = $state(false)
   // The encoder every job here will use, when one fixed encoder does them all; see encoder-support.ts.
   let encoderMode = $state<string | null>(null)
@@ -778,6 +812,8 @@
           ? form.ruleProfile
           : 'ConservativeHevc'
     if (mode !== 'encode') {
+      // A saved codec re-encodes whatever the mode says, so a no-re-encode mode must not keep one.
+      form.targetVideoCodec = null
       setVideoQualityStrategy('Fixed')
       setVmafMode('off')
     }
@@ -893,7 +929,19 @@
     activeTab = 'rules'
     if (embedded) embeddedPage = next
     else router.go(next === 'overview' && editingId !== 0 ? editorBase : `${editorBase}/${next}`)
-    if (anchor) void tick().then(() => document.getElementById(anchor)?.scrollIntoView({ block: 'start' }))
+    if (!anchor) return
+    // Changing page scrolls to the top once its fields are in place; a link to one section has to
+    // win over that, and still work when the section is already on screen.
+    pendingAnchor = anchor
+    void tick().then(scrollToPendingAnchor)
+  }
+  let pendingAnchor: string | null = null
+  function scrollToPendingAnchor() {
+    if (!pendingAnchor) return
+    const target = document.getElementById(pendingAnchor)
+    if (!target) return
+    pendingAnchor = null
+    target.scrollIntoView({ block: 'start' })
   }
   function confirmLeavingEditor(): boolean {
     const next = window.location.hash.replace(/^#/, '')
@@ -907,7 +955,8 @@
     if (editingId === null) return
     void tick().then(() => {
       workflowHeading?.focus({ preventScroll: true })
-      if (!embedded) document.querySelector('main')?.scrollTo({ top: 0 })
+      if (pendingAnchor) scrollToPendingAnchor()
+      else if (!embedded) document.querySelector('main')?.scrollTo({ top: 0 })
     })
   })
 
@@ -1023,6 +1072,7 @@
     } catch {
       remoteWorkersOn = false
       superResolutionOn = false
+      quarantineRetentionDays = 'unavailable'
     }
   }
 
@@ -1130,6 +1180,8 @@
     activeTab = 'rules'
     editorCandidates = []
     editingId = 0
+    readWindowChoice()
+    rememberedVmaf = null
     markPristine()
   }
 
@@ -1266,6 +1318,8 @@
     videoAudioEncodingSelection = null
     activeTab = 'rules'
     editingId = library.id
+    readWindowChoice()
+    rememberedVmaf = null
     markPristine()
     editorCandidates = []
     editorExclusions = []
@@ -1497,6 +1551,7 @@
     preset: presetRaw,
     retentionDays: quarantineRetentionDays,
     dryRun: dryRunOn,
+    upscalingOn: superResolutionOn,
     // The counts come from the saved rules, so they are shown only while nothing is unsaved.
     counts: editingId && !isDirty ? summaries[editingId] ?? null : null,
   }))
@@ -1528,6 +1583,7 @@
   const videoSections = $derived([
     { id: 'library-optimisation', title: i18n.m.libraryEditor.what_title },
     ...(isTrackCleanupProfile ? [] : [{ id: 'library-format', title: i18n.m.libraryEditor.format_title }]),
+    ...(isRemuxProfile ? [{ id: 'library-remux-skips', title: i18n.m.libraryEditor.remux_skips_title }] : []),
     ...(isNoEncodeProfile ? [] : [
       { id: 'library-quality', title: i18n.m.libraries.quality },
       { id: 'library-picture', title: i18n.m.libraryEditor.picture_title },
@@ -1741,7 +1797,12 @@
             <label class="choice min-h-24 rounded-lg p-3 {processingMode === mode.value ? 'choice-selected' : ''}">
               <span class="flex items-start gap-2">
                 <input type="radio" name="processing-mode" class="mt-0.5 accent-accent-fill" value={mode.value}
-                  checked={processingMode === mode.value} onchange={() => setProcessingMode(mode.value as ProcessingMode)} />
+                  checked={processingMode === mode.value} onchange={() => setProcessingMode(mode.value as ProcessingMode)}
+                  onclick={() => {
+                    // Choosing the mode a library already has applies it again, which is how a codec
+                    // left on a clean-up library is cleared. A radio that is already on fires no change.
+                    if (processingMode === mode.value && mode.value !== 'encode') setProcessingMode(mode.value as ProcessingMode)
+                  }} />
                 <span class="min-w-0 break-words">
                   <span class="block text-sm font-medium text-ink">{mode.label}</span>
                   <span class="mt-1 block text-xs font-normal leading-relaxed text-ink-3">{mode.hint}</span>
@@ -1816,7 +1877,7 @@
             </SettingRow>
           {/if}
           <SettingRow label={i18n.m.libraries.container} sentence={i18n.m.libraryEditor.container_sentence} more={i18n.m.libraryEditor.container_more} controlId="lib-container"
-            tags={form.targetContainer === 'source' ? [{ text: i18n.m.librarySummary.tag_names_kept, tone: 'neutral' }] : [{ text: i18n.m.librarySummary.tag_renames }]}
+            tags={[{ text: form.targetContainer === 'source' ? i18n.m.librarySummary.tag_renames_some : i18n.m.librarySummary.tag_renames }]}
             origin={presetRaw?.container && form.targetContainer !== 'source' ? presetOrigin('targetContainer', presetRaw.container.toUpperCase(), () => (form.targetContainer = null)) : null}>
             <select id="lib-container" class="input" value={form.targetContainer ?? presetRaw?.container ?? ''}
               onchange={(event) => (form.targetContainer = event.currentTarget.value === presetRaw?.container ? null : event.currentTarget.value)}>
@@ -1827,6 +1888,24 @@
         </ConfigSection>
       {/if}
 
+      {#if isRemuxProfile}
+        <!-- A clean-up does not touch the picture, but the server still skips by height and by
+             HDR, so both stay in reach. -->
+        <ConfigSection id="library-remux-skips" title={i18n.m.libraryEditor.remux_skips_title} description={i18n.m.libraryEditor.remux_skips_intro}>
+          <SettingRow label={i18n.m.libraries.skip_above} sentence={i18n.m.libraryEditor.remux_tall_sentence} more={i18n.m.libraries.skip_above_tip} controlId="lib-maxheight">
+            <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+              {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </SettingRow>
+          <SettingRow label={i18n.m.libraryEditor.hdr_label} sentence={i18n.m.libraryEditor.remux_hdr_sentence} more={i18n.m.libraries.hdr_dv_tip} controlId="lib-hdr">
+            <select id="lib-hdr" class="input" value={form.hdrHandling ?? presetRaw?.hdrHandling ?? ''}
+              onchange={(event) => (form.hdrHandling = event.currentTarget.value === presetRaw?.hdrHandling ? null : event.currentTarget.value)}>
+              <!-- Nothing is re-encoded, so converting to SDR is not on offer; a saved value still shows. -->
+              {#each options.hdrHandlings.filter((hdr) => hdr !== 'TonemapToSdr' || form.hdrHandling === hdr) as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
+            </select>
+          </SettingRow>
+        </ConfigSection>
+      {/if}
       {#if !isNoEncodeProfile}
         <ConfigSection id="library-quality" title={i18n.m.libraries.quality} description={i18n.m.libraryEditor.quality_intro}>
           <SettingRow label={i18n.m.quality_first.strategy_title} sentence={i18n.m.libraryEditor.quality_how_sentence} more={i18n.m.libraries.quality_strategy_adaptive_cost} controlId="lib-quality-mode"
@@ -1979,7 +2058,8 @@
           <SettingRow label={i18n.m.libraries.max_bitrate} sentence={i18n.m.libraryEditor.max_bitrate_sentence} more={i18n.m.libraries.max_bitrate_tip} controlId="lib-maxbitrate"
             disabledReason={ignoredReason('maxBitrate')} reasonLink={ignoredReason('maxBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
             <input id="lib-maxbitrate" class="input" type="number" min="100" max="200000" placeholder={i18n.m.libraries.max_bitrate_none}
-              disabled={!!ignoredReason('maxBitrate')} bind:value={form.maxBitrateKbps} />
+              disabled={!!ignoredReason('maxBitrate')} bind:value={form.maxBitrateKbps}
+              oninput={(event) => { if (event.currentTarget.value === '') form.minBitrateKbps = null }} />
           </SettingRow>
           <SettingRow label={i18n.m.libraries.content_tune} sentence={i18n.m.libraryEditor.tune_sentence} more={i18n.m.libraries.content_tune_tip} controlId="lib-tune"
             disabledReason={ignoredReason('contentTune')} reasonLink={ignoredReason('contentTune') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
@@ -2188,7 +2268,7 @@
       <SettingRow label={i18n.m.libraries.reencode_lossy_audio} sentence={i18n.m.libraries.reencode_lossy_audio_hint}>
         <Toggle bare bind:checked={form.reencodeLossyAudio} label={i18n.m.libraries.reencode_lossy_audio} />
       </SettingRow>
-      {#if !showVideoOptions}
+      {#if !showVideoOptions || isNoEncodeProfile}
         {@render surroundRow(false)}
         {#if musicCodec === 'opus'}{@render opusLayoutRow()}{/if}
       {/if}

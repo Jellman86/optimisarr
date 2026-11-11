@@ -24,8 +24,13 @@ export type SummaryContext = {
   locale: string
   /** The server's values for this library's preset, from /api/library-options. */
   preset: RuleProfileSpec | null
-  /** Days an original stays in Quarantine; 0 keeps it until approved, null when not yet known. */
-  retentionDays: number | null
+  /**
+   * Days an original stays in Quarantine; 0 keeps it until approved, null while loading, and
+   * 'unavailable' when the server could not be asked, which is said rather than left out.
+   */
+  retentionDays: number | null | 'unavailable'
+  /** False when AI upscaling is switched off for the whole server, so no library upscales. */
+  upscalingOn?: boolean
   dryRun: boolean
   /** How many files the saved rules pick and skip, when known. */
   counts?: { eligible: number; skipped: number } | null
@@ -90,8 +95,8 @@ export function presetChanges(library: SaveLibrary, preset: RuleProfileSpec | nu
   differs('qualityCrf', preset.crf)
   differs('hdrHandling', preset.hdrHandling)
   differs('videoAudioCodec', preset.videoAudioCodec ?? 'copy')
-  if ((library.videoAudioCodec ?? preset.videoAudioCodec ?? 'copy') !== 'copy') differs('videoAudioBitrateKbps', preset.videoAudioBitrateKbps)
-  if (library.downmixToStereo !== preset.downmixToStereo) changed.push('downmixToStereo')
+  // Only settings the editor marks "Changed by you" and can reset are counted, so the number
+  // matches what a person can find. Audio bitrate and surround have no such row.
   return changed
 }
 
@@ -100,6 +105,8 @@ export function presetName(profile: string, m: Messages): string {
     case 'CompatibilityH264': return m.libraries.stop_compatibility
     case 'ExperimentalAv1': return m.libraries.stop_efficiency
     case 'ScottsSettings': return m.libraries.stop_scotts
+    case 'RemuxCleanup': return m.libraries.profile_remux_cleanup
+    case 'TrackCleanup': return m.libraries.profile_track_cleanup
     default: return m.libraries.stop_balanced
   }
 }
@@ -116,8 +123,14 @@ export function summariseLibrary(library: SaveLibrary, context: SummaryContext):
   return lines
 }
 
-function encodesVideo(library: SaveLibrary): boolean {
-  return isVideoLibrary(library.mediaType) && !noEncodeProfiles.includes(library.ruleProfile)
+/**
+ * Whether the server would re-encode this library's video. Track clean-up never does. A clean-up
+ * (remux) library does when a video codec is saved on it, whatever its preset says, so that is
+ * what is reported.
+ */
+export function encodesVideo(library: SaveLibrary): boolean {
+  if (!isVideoLibrary(library.mediaType) || library.ruleProfile === 'TrackCleanup') return false
+  return !noEncodeProfiles.includes(library.ruleProfile) || !!library.targetVideoCodec?.trim()
 }
 
 function effectiveHdr(library: SaveLibrary, preset: RuleProfileSpec | null): string {
@@ -144,7 +157,10 @@ function filesLine(library: SaveLibrary, { m, locale, preset, counts }: SummaryC
         : fill(s.skip_same_codec, { codec }))
     }
     if (library.skipEfficientSources) skips.push(s.skip_efficient)
-    if (effectiveHdr(library, preset) === 'Exclude') skips.push(s.skip_hdr)
+  }
+  // The HDR choice applies to a clean-up as well as a re-encode; only track clean-up ignores it.
+  if (video && library.ruleProfile !== 'TrackCleanup' && effectiveHdr(library, preset) === 'Exclude') skips.push(s.skip_hdr)
+  if (encodes) {
     if (!library.optimiseDolbyVision) skips.push(s.skip_dolby_vision)
     if (!library.deinterlaceVideo) skips.push(s.skip_interlaced)
   }
@@ -166,7 +182,7 @@ function filesLine(library: SaveLibrary, { m, locale, preset, counts }: SummaryC
   }
 }
 
-function videoLine(library: SaveLibrary, { m, preset }: SummaryContext): SummaryLine {
+function videoLine(library: SaveLibrary, { m, preset, upscalingOn }: SummaryContext): SummaryLine {
   const s = m.librarySummary
   const tags: SummaryTag[] = []
   const sentences: string[] = []
@@ -175,6 +191,10 @@ function videoLine(library: SaveLibrary, { m, preset }: SummaryContext): Summary
   if (library.ruleProfile === 'TrackCleanup') {
     sentences.push(s.video_track_cleanup)
     if (!library.keepAudioLanguages?.trim() && !library.keepSubtitleLanguages?.trim()) sentences.push(s.video_track_cleanup_noop)
+  } else if (library.ruleProfile === 'RemuxCleanup' && encodesVideo(library)) {
+    sentences.push(fill(s.video_remux_reencodes, { codec: codecName(library.targetVideoCodec) }))
+    tags.push({ tone: 'warn', text: s.tag_reencodes })
+    containerSentence(library, preset, s, sentences, tags)
   } else if (library.ruleProfile === 'RemuxCleanup') {
     sentences.push(s.video_remux)
     containerSentence(library, preset, s, sentences, tags)
@@ -198,7 +218,7 @@ function videoLine(library: SaveLibrary, { m, preset }: SummaryContext): Summary
     if (library.noiseReduction !== 'Off') {
       picture.push(fill(s.video_noise, { level: library.noiseReduction === 'Strong' ? m.libraries.noise_strong : m.libraries.noise_light }))
     }
-    if (library.superResolutionEnabled) picture.push(s.video_upscale)
+    if (library.superResolutionEnabled && upscalingOn !== false) picture.push(s.video_upscale)
     if (picture.length === 0) sentences.push(s.video_picture_kept)
     else {
       sentences.push(...picture)
@@ -225,7 +245,7 @@ function containerSentence(
 ) {
   if (library.targetContainer === 'source') {
     sentences.push(s.video_container_source)
-    tags.push({ tone: 'neutral', text: s.tag_names_kept })
+    tags.push({ tone: 'warn', text: s.tag_renames_some })
     return
   }
   const container = (library.targetContainer ?? preset?.container ?? '').toUpperCase()
@@ -258,7 +278,10 @@ function audioLine(library: SaveLibrary, { m, locale, preset }: SummaryContext):
       ? fill(s.music_target, { codec })
       : fill(s.music_convert, { codec, kbps: library.audioBitrateKbps ?? preset?.audioBitrateKbps ?? 128 }))
     sentences.push(library.reencodeLossyAudio ? s.music_lossy_too : s.music_lossy_left)
-    if (!video && library.downmixToStereo) sentences.push(s.audio_downmix)
+    if ((!video || !encodesVideo(library)) && library.downmixToStereo) sentences.push(s.audio_downmix)
+    // FLAC to M4A, Opus or MP3 is a new extension, so Lidarr and playlists see a different file.
+    sentences.push(s.renames_converted)
+    if (!tags.some((tag) => tag.text === s.tag_renames)) tags.push({ tone: 'warn', text: s.tag_renames })
   }
 
   return { topic: 'audio', title: video ? m.libraryWorkflow.audio : m.libraries.audio, text: sentences.join(' '), detail: null, tags }
@@ -276,6 +299,8 @@ function imagesLine(library: SaveLibrary, { m }: SummaryContext): SummaryLine {
   else if (library.imageDownscaleMode === 'Percent') sentences.push(fill(s.images_percent, { percent: library.imageDownscaleValue }))
   else sentences.push(s.images_not_resized)
   if (library.imageDownscaleMode !== 'None') tags.push({ tone: 'warn', text: s.tag_changes_picture })
+  sentences.push(s.renames_converted)
+  tags.push({ tone: 'warn', text: s.tag_renames })
   return { topic: 'images', title: m.libraries.images, text: sentences.join(' '), detail: null, tags }
 }
 
@@ -337,7 +362,11 @@ function scheduleLine(library: SaveLibrary, { m, retentionDays, dryRun }: Summar
     sentences.push(library.targetFolder?.trim() ? fill(s.after_elsewhere, { folder: library.targetFolder.trim() }) : s.after_elsewhere_unset)
   } else {
     sentences.push(choice === 'auto' ? s.after_auto : s.after_ask)
-    if (retentionDays !== null && retentionDays > 0) {
+    if (retentionDays === 'unavailable') {
+      // Not knowing must not read as "nothing is deleted".
+      sentences.push(s.originals_unknown)
+      tags.push({ tone: 'warn', text: s.tag_deletes_unknown })
+    } else if (retentionDays !== null && retentionDays > 0) {
       sentences.push(counted(retentionDays, s.originals_days_one, s.originals_days_other))
       tags.push({ tone: 'warn', text: counted(retentionDays, s.tag_deletes_one, s.tag_deletes_other) })
     } else if (retentionDays === 0) sentences.push(s.originals_kept)
