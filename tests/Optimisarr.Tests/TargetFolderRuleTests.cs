@@ -116,16 +116,18 @@ public sealed class TargetFolderRuleTests : IDisposable
     }
 
     [Fact]
-    public void ResolveLinks_climbs_out_of_a_link_from_where_the_link_points()
+    public void ResolveLinks_collapses_dot_dot_in_the_path_as_given_the_way_files_are_written()
     {
-        // up → media/tv/season, so up/../extra is media/tv/extra on disk, not <root>/extra.
-        var season = Folder("media", "tv", "season");
-        var up = Path.Combine(_root, "up");
-        Directory.CreateSymbolicLink(up, season);
+        // .NET collapses "link/../tv" to "media/tv" as text before it creates the folder or moves a
+        // file there, so that is the folder the rule must judge, wherever "link" points.
+        Directory.CreateSymbolicLink(Path.Combine(_root, "media", "link"), Folder("other", "deep"));
+        var typed = Path.Combine(_root, "media", "link") + Path.DirectorySeparatorChar + ".."
+            + Path.DirectorySeparatorChar + "tv";
 
-        var resolved = TargetFolderRule.ResolveLinks(up + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + "extra");
+        var resolved = TargetFolderRule.ResolveLinks(typed);
 
-        Assert.Equal(Path.Combine(TargetFolderRule.ResolveLinks(_libraries[0].Path), "extra"), resolved);
+        Assert.Equal(TargetFolderRule.ResolveLinks(_libraries[0].Path), resolved);
+        Assert.Equal(TargetFolderRefusal.InsideLibrary, TargetFolderRule.Check(resolved, _libraries, _work, _quarantine).Refusal);
     }
 
     [Fact]

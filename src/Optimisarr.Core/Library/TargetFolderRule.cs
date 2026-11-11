@@ -121,13 +121,15 @@ public static class TargetFolderRule
     /// folder outside it. Parts that do not exist yet are kept as written.
     /// </summary>
     /// <remarks>
-    /// Walks one part at a time the way the kernel does. A link's target is read from the folder
-    /// the link really sits in, and ".." climbs from where the walk really is, so neither is
-    /// collapsed as text against a path that still has a link in it.
+    /// ".." in the path as given is collapsed as text first, because that is what .NET does before
+    /// it creates a folder or moves a file there, and the rule must judge the folder that is really
+    /// written to. After that the walk goes one part at a time the way the kernel does: a link's
+    /// target is read from the folder the link really sits in, and ".." inside a link's target
+    /// climbs from there, not from the path that reached the link.
     /// </remarks>
     public static string ResolveLinks(string path)
     {
-        var full = Path.IsPathRooted(path) ? path : Path.Combine(Directory.GetCurrentDirectory(), path);
+        var full = Path.GetFullPath(path);
         var resolved = Path.GetPathRoot(full) ?? string.Empty;
         var remaining = new Queue<string>(Parts(full, resolved));
         var linksFollowed = 0;

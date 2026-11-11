@@ -17,9 +17,17 @@ internal sealed record SavedElsewhere(string? Destination, string? Error);
 /// </summary>
 internal sealed class SaveElsewhere(IServiceScopeFactory scopeFactory, IHostEnvironment environment)
 {
+    private const string NoFolder =
+        "No folder is set for optimised files. Choose one in the library's settings, under Schedule & replace. Your original has not been touched.";
+
     /// <summary>Why this library's save folder cannot be used, or null when it can.</summary>
     public async Task<string?> RefusalBeforeEncodingAsync(string targetFolder, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(targetFolder))
+        {
+            return $"Not encoded. {NoFolder}";
+        }
+
         var verdict = await JudgeAsync(targetFolder, cancellationToken);
         return verdict.IsAllowed
             ? null
@@ -33,6 +41,12 @@ internal sealed class SaveElsewhere(IServiceScopeFactory scopeFactory, IHostEnvi
     /// </summary>
     public async Task<SavedElsewhere> SaveAsync(string mediaWorkRoot, string outputPath, string targetFolder, bool overwrite)
     {
+        // A blank folder would resolve to the server's own working directory.
+        if (string.IsNullOrWhiteSpace(targetFolder))
+        {
+            return new SavedElsewhere(null, $"The optimised file was not saved. {NoFolder}");
+        }
+
         var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
         var verdict = await JudgeAsync(destination, CancellationToken.None);
         if (!verdict.IsAllowed)

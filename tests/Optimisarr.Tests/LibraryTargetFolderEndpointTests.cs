@@ -272,6 +272,23 @@ public sealed class LibraryTargetFolderEndpointTests(AdminTokenAuthEndpointTests
         Assert.Contains("Your original has not been touched.", refused);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_save_folder_is_refused_before_encoding_and_nothing_is_moved(string blank)
+    {
+        var (workRoot, output) = WorkOutput("films", "Film.mkv");
+
+        var refused = await Saver().RefusalBeforeEncodingAsync(blank, CancellationToken.None);
+        var saved = await Saver().SaveAsync(workRoot, output, blank, overwrite: true);
+
+        Assert.StartsWith("Not encoded.", refused);
+        Assert.Contains("No folder is set", refused);
+        Assert.Null(saved.Destination);
+        Assert.Contains("No folder is set", saved.Error);
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+    }
+
     private SaveElsewhere Saver() =>
         new(api.Services.GetRequiredService<IServiceScopeFactory>(), api.Services.GetRequiredService<IHostEnvironment>());
 
