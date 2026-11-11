@@ -96,11 +96,12 @@ public static class TargetFolderRule
 
     /// <summary>
     /// False for text no filesystem can hold as a path, such as one with a NUL in it, so a caller
-    /// can refuse it as bad input instead of failing while resolving it.
+    /// can refuse it as bad input instead of failing while resolving it. Also false for a relative
+    /// path such as ".", which would land under the server's own working directory.
     /// </summary>
     public static bool IsUsablePath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0'))
+        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0') || !Path.IsPathRooted(path))
         {
             return false;
         }

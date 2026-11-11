@@ -17,15 +17,20 @@ internal sealed record SavedElsewhere(string? Destination, string? Error);
 /// </summary>
 internal sealed class SaveElsewhere(IServiceScopeFactory scopeFactory, IHostEnvironment environment)
 {
-    private const string NoFolder =
-        "No folder is set for optimised files. Choose one in the library's settings, under Schedule & replace. Your original has not been touched.";
+    // A blank or relative folder would resolve under the server's own working directory.
+    private static string? UnusableFolder(string targetFolder) =>
+        string.IsNullOrWhiteSpace(targetFolder)
+            ? "No folder is set for optimised files. Choose one in the library's settings, under Schedule & replace. Your original has not been touched."
+            : TargetFolderRule.IsUsablePath(targetFolder)
+                ? null
+                : $"{targetFolder} is not a full path. Choose a folder such as /data/optimised in the library's settings, under Schedule & replace. Your original has not been touched.";
 
     /// <summary>Why this library's save folder cannot be used, or null when it can.</summary>
     public async Task<string?> RefusalBeforeEncodingAsync(string targetFolder, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(targetFolder))
+        if (UnusableFolder(targetFolder) is { } unusable)
         {
-            return $"Not encoded. {NoFolder}";
+            return $"Not encoded. {unusable}";
         }
 
         var verdict = await JudgeAsync(targetFolder, cancellationToken);
@@ -41,10 +46,9 @@ internal sealed class SaveElsewhere(IServiceScopeFactory scopeFactory, IHostEnvi
     /// </summary>
     public async Task<SavedElsewhere> SaveAsync(string mediaWorkRoot, string outputPath, string targetFolder, bool overwrite)
     {
-        // A blank folder would resolve to the server's own working directory.
-        if (string.IsNullOrWhiteSpace(targetFolder))
+        if (UnusableFolder(targetFolder) is { } unusable)
         {
-            return new SavedElsewhere(null, $"The optimised file was not saved. {NoFolder}");
+            return new SavedElsewhere(null, $"The optimised file was not saved. {unusable}");
         }
 
         var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
@@ -53,6 +57,14 @@ internal sealed class SaveElsewhere(IServiceScopeFactory scopeFactory, IHostEnvi
         {
             return new SavedElsewhere(null,
                 $"The optimised file was not saved. {verdict.Describe(destination)} Your original has not been touched.");
+        }
+
+        // Moving onto a link replaces the link entry, not what it points at, so the folder the rule
+        // judged through the link is not where the file would land.
+        if (new FileInfo(destination).LinkTarget is not null)
+        {
+            return new SavedElsewhere(null,
+                $"The optimised file was not saved. {destination} is a link, and Optimisarr does not replace links. Your original has not been touched.");
         }
 
         // Don't silently clobber an existing converted file unless the library opts into it.

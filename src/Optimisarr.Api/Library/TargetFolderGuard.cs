@@ -77,7 +77,10 @@ internal static class TargetFolderGuard
     private static TargetFolderVerdict Judge(string path, IEnumerable<LibraryFolder> libraries, IHostEnvironment environment) =>
         TargetFolderRule.Check(
             TargetFolderRule.ResolveLinks(path),
-            libraries.Select(library => library with { Path = TargetFolderRule.ResolveLinks(library.Path) }),
+            // A row with no usable path (only a hand-edited backup makes one) guards nothing.
+            libraries
+                .Where(library => TargetFolderRule.IsUsablePath(library.Path))
+                .Select(library => library with { Path = TargetFolderRule.ResolveLinks(library.Path) }),
             TargetFolderRule.ResolveLinks(WorkPaths.Resolve(environment)),
             TargetFolderRule.ResolveLinks(TrashPaths.Resolve(environment)));
 

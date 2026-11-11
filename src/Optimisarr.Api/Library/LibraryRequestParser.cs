@@ -586,7 +586,7 @@ internal static class LibraryRequestParser
 
         if (targetFolder is not null && !TargetFolderRule.IsUsablePath(targetFolder))
         {
-            error = "The target folder is not a path this server can use.";
+            error = "The target folder must be a full path this server can use, such as /data/optimised.";
             return false;
         }
 

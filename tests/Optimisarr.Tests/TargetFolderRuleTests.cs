@@ -148,6 +148,9 @@ public sealed class TargetFolderRuleTests : IDisposable
     [InlineData("/data/opti\0mised", false)]
     [InlineData("  ", false)]
     [InlineData(null, false)]
+    [InlineData(".", false)]
+    [InlineData("optimised", false)]
+    [InlineData("./optimised", false)]
     public void IsUsablePath_refuses_text_that_cannot_be_a_path(string? path, bool usable) =>
         Assert.Equal(usable, TargetFolderRule.IsUsablePath(path));
 
