@@ -260,7 +260,7 @@
               <td class="px-4 py-2">
                 {preview.encoded?.sizeBytes != null ? formatSize(preview.encoded.sizeBytes) : '—'}
                 {#if preview.savingPercent != null}
-                  <span class="badge ml-1 {preview.savingPercent > 0 ? 'tone-ok' : preview.savingPercent < 0 ? 'tone-warn' : ''}">
+                  <span data-testid="preview-size-change" class="badge ml-1 {preview.savingPercent > 0 ? 'tone-ok' : preview.savingPercent < 0 ? 'tone-warn' : 'tone-neutral'}">
                     {preview.clipped ? '≈' : ''}{preview.savingPercent > 0 ? '−' : preview.savingPercent < 0 ? '+' : ''}{Math.abs(preview.savingPercent)}%
                   </span>
                 {/if}

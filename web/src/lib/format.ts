@@ -56,10 +56,11 @@ export function sizeChangePercent(sourceBytes: number, outputBytes: number): num
   const status = sizeChangeStatus(sourceBytes, outputBytes)
   if (status === null) return null
   const raw = (outputBytes / sourceBytes - 1) * 100
+  // Close to a total saving, a whole number would round up to −100%, so keep the tenth there.
+  if (raw < -99.5) return Math.max(-99.9, Math.round(raw * 10) / 10)
   const percent = Math.abs(raw) >= 1 ? Math.round(raw) : Math.round(raw * 10) / 10
   // Math.round(-0.01) is -0, and a -0 would slip past every `< 0` check as a saving.
   if (percent === 0 && status !== 'unchanged') return status === 'saved' ? -0.1 : 0.1
-  if (percent <= -100) return -99.9
   return percent
 }
 

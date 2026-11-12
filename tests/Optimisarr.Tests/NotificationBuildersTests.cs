@@ -17,11 +17,63 @@ public sealed class NotificationMessagesTests
     }
 
     [Fact]
-    public void Replacement_message_handles_a_zero_size_original()
+    public void Replacement_message_reports_a_file_that_grew_as_growth_not_a_saving()
+    {
+        var message = NotificationMessages.ReplacementCompleted("/data/Heat.mkv", 1_000_000_000, 1_200_000_000);
+
+        Assert.DoesNotContain("Saved", message.Body);
+        Assert.Contains("Grew by 190.7 MB (20%)", message.Body);
+        Assert.DoesNotContain("-", message.Body.Split('\n')[1]);
+    }
+
+    [Fact]
+    public void Replacement_message_says_when_the_size_did_not_change()
+    {
+        var message = NotificationMessages.ReplacementCompleted("/data/Heat.mkv", 1_000_000_000, 1_000_000_000);
+
+        Assert.Contains("Size unchanged", message.Body);
+        Assert.DoesNotContain("Saved", message.Body);
+    }
+
+    [Fact]
+    public void Replacement_message_never_rounds_a_real_change_to_zero_percent()
+    {
+        var saving = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1_000_000_000, 999_000_000);
+        var growth = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1_000_000_000, 1_004_000_000);
+
+        Assert.Contains("(0.1%)", saving.Body);
+        Assert.Contains("(0.4%)", growth.Body);
+    }
+
+    [Fact]
+    public void Replacement_message_does_not_call_a_near_total_saving_the_whole_file()
+    {
+        var almost = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1_000_000_000, 4_000_000);
+        var tiny = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1_000_000_000, 1_000);
+
+        Assert.Contains("(99.6%)", almost.Body);
+        Assert.Contains("(99.5%)", NotificationMessages.ReplacementCompleted("/data/x.mkv", 1000, 5).Body);
+        Assert.Contains("(99.9%)", tiny.Body);
+    }
+
+    [Fact]
+    public void Replacement_message_gives_no_saving_when_the_new_size_is_unknown()
+    {
+        var message = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1000, 0);
+
+        Assert.DoesNotContain("Saved", message.Body);
+        Assert.DoesNotContain("%", message.Body);
+        Assert.Contains("1000 B → 0 B", message.Body);
+    }
+
+    [Fact]
+    public void Replacement_message_gives_no_percentage_when_the_original_size_is_unknown()
     {
         var message = NotificationMessages.ReplacementCompleted("/data/x.mkv", 0, 0);
 
-        Assert.Contains("0%", message.Body);
+        Assert.DoesNotContain("%", message.Body);
+        Assert.DoesNotContain("Saved", message.Body);
+        Assert.Contains("0 B → 0 B", message.Body);
     }
 
     [Fact]

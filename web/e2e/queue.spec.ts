@@ -1170,11 +1170,13 @@ test('a job whose output could not be sized shows no size change', async ({ page
   await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [unsized]))
 
   await page.goto('/#/queue')
+  await expect(page.locator('tr', { has: page.locator('#queue-job-81') })).not.toContainText('0 B')
   await page.locator('#queue-job-81').click()
   const dialog = page.locator('#queue-job-dialog')
   await expect(dialog.locator('h2')).toBeVisible()
   await expect(dialog.locator('.queue-detail-sizes')).toHaveCount(0)
   await expect(dialog).not.toContainText('−100%')
+  await expect(dialog).not.toContainText('0 B')
 })
 
 test('the queue detail and the recent results read the same size change', async ({ page }) => {
