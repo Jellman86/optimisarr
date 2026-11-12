@@ -52,7 +52,18 @@ public sealed class NotificationMessagesTests
         var tiny = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1_000_000_000, 1_000);
 
         Assert.Contains("(99.6%)", almost.Body);
+        Assert.Contains("(99.5%)", NotificationMessages.ReplacementCompleted("/data/x.mkv", 1000, 5).Body);
         Assert.Contains("(99.9%)", tiny.Body);
+    }
+
+    [Fact]
+    public void Replacement_message_gives_no_saving_when_the_new_size_is_unknown()
+    {
+        var message = NotificationMessages.ReplacementCompleted("/data/x.mkv", 1000, 0);
+
+        Assert.DoesNotContain("Saved", message.Body);
+        Assert.DoesNotContain("%", message.Body);
+        Assert.Contains("1000 B → 0 B", message.Body);
     }
 
     [Fact]

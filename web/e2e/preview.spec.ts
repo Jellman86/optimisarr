@@ -354,8 +354,9 @@ for (const [savingPercent, text, tone] of [[2.8, '−2.8%', 'tone-ok'], [0, '0%'
     await page.getByText('Example Film.mkv', { exact: true }).click()
     await page.getByRole('button', { name: 'Preview', exact: true }).click()
 
-    const badge = page.locator('span.badge', { hasText: text })
-    await expect(badge).toBeVisible()
+    // The fixture is a clipped preview, so the figure is marked as approximate.
+    const badge = page.getByTestId('preview-size-change')
+    await expect(badge).toHaveText(`≈${text}`)
     await expect(badge).toHaveClass(new RegExp(`\\b${tone}\\b`))
   })
 }

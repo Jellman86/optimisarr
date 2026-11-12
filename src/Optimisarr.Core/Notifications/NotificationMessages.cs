@@ -13,11 +13,12 @@ public static class NotificationMessages
         new("Optimisarr: replaced a file", $"{path}\n{SizeChange(originalBytes, newBytes)}");
 
     // A file that grew is reported as growth: "Saved -190 MB" reads as a saving to anyone skimming.
-    // Without an original size there is nothing to compare against, so only the sizes are given.
+    // A size of 0 means it could not be measured, so there is nothing to compare: only the sizes
+    // are given, never a saving.
     private static string SizeChange(long originalBytes, long newBytes)
     {
         var sizes = $"{Humanize(originalBytes)} → {Humanize(newBytes)}";
-        if (originalBytes <= 0) return $"Size: {sizes}.";
+        if (originalBytes <= 0 || newBytes <= 0) return $"Size: {sizes}.";
         if (newBytes == originalBytes) return $"Size unchanged: {sizes}.";
         var change = Math.Abs(newBytes - originalBytes);
         var percent = Percent(100.0 * change / originalBytes, saving: newBytes < originalBytes);
@@ -31,7 +32,7 @@ public static class NotificationMessages
     private static string Percent(double percent, bool saving)
     {
         var shown = percent >= 1 ? Math.Round(percent) : Math.Max(0.1, Math.Round(percent, 1));
-        if (saving && percent > 99.5) shown = Math.Min(99.9, Math.Round(percent, 1));
+        if (saving && percent >= 99.5) shown = Math.Min(99.9, Math.Round(percent, 1));
         return string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.#}%", shown);
     }
 

@@ -32,6 +32,7 @@ test('size change follows the size itself: negative when the output is smaller, 
   // Near the end a tenth is kept, so 99.6% is not rounded up to the whole file.
   assert.equal(sizeChangePercent(1000, 4), -99.6)
   assert.equal(sizeChangePercent(1000, 6), -99)
+  assert.equal(sizeChangePercent(1000, 5), -99)
   // An output of no bytes means it could not be sized, not that everything was saved.
   assert.equal(sizeChangePercent(1000, 0), null)
   // A real pair of sizes.
