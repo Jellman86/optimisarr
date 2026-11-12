@@ -48,7 +48,8 @@ public sealed class NativeHostLifecycleTests
         using var input = new ParentStream(Request());
         using var output = new MemoryStream();
         var result = await NativeHostProgram.RunAsync(input, output, default,
-            (_, report, _) => { report(new("status", Detail: "qualifying")); return Task.FromResult(new NativeHostEvent("capabilities", Capabilities: new())); });
+            (_, report, _) => { report(new("status", Detail: "qualifying")); return Task.FromResult(new NativeHostEvent("capabilities", Capabilities: new())); })
+            .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(0, result);
         await input.MonitorCancelled.WaitAsync(TimeSpan.FromSeconds(5));
         var lines = Encoding.UTF8.GetString(output.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -102,7 +103,8 @@ public sealed class NativeHostLifecycleTests
         using var input = new ParentStream(Request());
         using var output = new MemoryStream();
         var result = await NativeHostProgram.RunAsync(input, output, default,
-            (_, _, _) => Task.FromResult(new NativeHostEvent("recovered")));
+            (_, _, _) => Task.FromResult(new NativeHostEvent("recovered")))
+            .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(0, result);
         await input.MonitorCancelled.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -113,7 +115,7 @@ public sealed class NativeHostLifecycleTests
         public TaskCompletionSource ParentClosed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // The host stops waiting on the parent as soon as it is done, without waiting for the
         // pending read to unwind (macOS console pipes can ignore cancellation), so the read sees
-        // its cancellation a moment after RunAsync returns. Tests wait for it rather than race it.
+        // its cancellation possibly after RunAsync returns. Tests wait for it rather than race it.
         private readonly TaskCompletionSource _monitorCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task MonitorCancelled => _monitorCancelled.Task;
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
