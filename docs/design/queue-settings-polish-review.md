@@ -5,14 +5,16 @@
 The Queue grew two controls that fought for the same row: the status filters carried a
 **Manage queue** toggle whose expanded panel pushed the table down, and the multi-select
 batch bar inserted itself above the table header, so checking a row moved every row
-below it. The toolbar is now one row of one height. The filters sit in it with
-**Clear errored (X)** at their right end, shown only when a job has actually failed and
-quiet until it is pointed at. Picking a row replaces the filters where they stood with
-the batch bar on a dark slab, so the table never moves. The **Manage queue** toggle is
+below it. The filters and the batch bar now share one grid cell, sized to the taller of
+the two, so the table never moves. The filters sit in it with **Clear errored (X)**,
+shown when failed or cancelled jobs can be cleared and quiet until it is pointed at.
+Picking a row replaces the filters where they stood with the batch bar on a dark slab;
+until the selection is cleared, the filters, **Replace all** and **Clear errored** are
+out of reach. The **Manage queue** toggle is
 gone; **Clear queue** and **Clear completed** stand in the section heading, and the
 redundant count that used to sit beside it is gone because the **All · X** filter already
-says how many rows there are. A selection is dropped when the operator changes tab and
-when a batch has run, so no pick is carried into rows the operator cannot see.
+says how many rows there are. A selection is dropped when the operator changes tab, and
+after a batch the rows it handled leave the selection while refused rows stay picked.
 
 The comparative assessment below records the earlier implementation; the bulk-cleanup
 row is superseded by this correction. Backend behaviour and replacement safety remain
@@ -57,7 +59,7 @@ cards retain the earlier hover lift and deeper shadow.
 | Progress | Encoding could appear complete before the process exited | Encoding caps at 99%, with live speed, frame rate, ETA or finishing state when available. Unknown transfer progress stays indeterminate. The sidebar uses the same percentage calculation. |
 | Processing stages | Status and telemetry were spread across the view | Probe, encode, verify and replace describe the actual pipeline. Remote transfer, adaptive measuring and awaiting verification keep their specific explanations. |
 | Waiting and history | Working jobs shared the same filter/table | Filters and counts apply to the waiting/recent list. Working jobs stay visible when a history filter has no matches. Native buttons expose details by keyboard; closing restores focus. |
-| Job actions | Dense row and detail controls | Replace remains directly available for verified outputs. Details retain stop/remove, retry, higher-quality retry and exclude. Bulk cleanup lives under Manage queue. Verification gates and confirmations are unchanged. |
+| Job actions | Dense row and detail controls | Replace remains directly available for verified outputs. Details retain stop/remove, retry, higher-quality retry and exclude. Bulk cleanup sits in the section heading and filter row. Verification gates and confirmations are unchanged. |
 | Settings width | Overview capped at 64rem and child rooms at 48rem inside the app wrapper | Overview, heading and every child room fill the shared app content width used by Libraries. Field alignment and mobile reflow remain intact. |
 | Settings surfaces | Separate room gradients, reduced shadows and flat section headers | Shared card gradients and colours restore consistency with Libraries. Room links lift by 1px and deepen their shadow on hover; reduced motion keeps the existing shared behaviour. |
 | Artwork | A completed cached image could remain transparent | Loading state resets before the keyed image mounts, preventing a post-render reset from erasing a successful load. Fixed artwork dimensions and silent missing-image fallback remain. |

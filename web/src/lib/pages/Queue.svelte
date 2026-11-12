@@ -316,6 +316,9 @@
   let leadJob = $derived(processingJobs.find(job => job.id === leadId) ?? processingJobs[0] ?? null)
   let remainingJobs = $derived(jobs.filter(job => !isWorkingJob(job)))
   let failedCount = $derived(jobs.filter(job => job.status === 'Failed').length)
+  // What "Clear errored" really removes: the server clears failed and cancelled jobs, except
+  // those still holding a rollback, so the button is shown and counted from the same rows.
+  let erroredClearable = $derived(jobs.filter(job => (job.status === 'Failed' || job.status === 'Cancelled') && job.clearable).length)
   let counts = $derived({
     all: remainingJobs.length,
     active: remainingJobs.filter(job => isInProgress(job.status)).length,
@@ -380,9 +383,9 @@
         succeeded: result.succeeded.length,
         failures: result.failures,
       }
-      // The batch is over, so the picks go with it. The result banner says what happened to
-      // every row it touched, and the next batch starts from what is on screen now.
-      selection.clear()
+      // The rows that were handled leave the selection; the ones that were refused stay picked,
+      // so the operator can act on them again.
+      selection.remove(result.succeeded)
       await load()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.queue.error_retry
@@ -1058,7 +1061,7 @@
             </div>
             <div class="queue-toolbar-actions">
               {#if readyToReplaceCount > 0}{#if dryRun}<span id="replace-all-locked" class="text-xs text-ink-3" data-replace-all-locked>{i18n.m.jobResult.locked_reason}</span>{/if}<button class="btn btn-primary" onclick={replaceAll} disabled={dryRun || replacingAll || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.replace_all_title} aria-describedby={dryRun ? 'replace-all-locked' : undefined}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
-              {#if failedCount > 0}<button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: failedCount })}</button>{/if}
+              {#if erroredClearable > 0}<button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button>{/if}
             </div>
           </div>
           <div class="queue-toolbar-layer" class:queue-toolbar-hidden={selection.count === 0} inert={selection.count === 0} data-queue-batch>
@@ -1239,8 +1242,8 @@
   .queue-diagnostic-pending { flex: none; color: var(--ink-3); font-size: .75rem; }
   .queue-detail-specs:first-child { margin-top: 0; }
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
-  /* The toolbar is one row of one height. The filters sit in it, and the batch bar takes the
-     same grid cell when a row is picked, so the table below never moves. */
+  /* The filters and the batch bar share one grid cell, sized to the taller of the two, so
+     picking a row swaps one for the other and the table below never moves. */
   .queue-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
   .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms; }
   .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity 180ms ease, transform 180ms ease, visibility 0s; }
@@ -1253,7 +1256,7 @@
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
   @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: 0 .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 63%; }.queue-table th:nth-child(3) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
-  @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer { transition: none; } }
+  @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer, .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: none; } }
   @media(max-width: 639px) {
     .queue-detail-heading { gap: 1rem; }
     .queue-detail-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; }

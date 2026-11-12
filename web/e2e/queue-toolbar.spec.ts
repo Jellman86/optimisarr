@@ -130,8 +130,24 @@ test('the clear-errors action only appears when a job has failed', async ({ page
   await expect(page.getByRole('button', { name: /^Clear errored/ })).toHaveCount(0)
 })
 
-test('the selection is dropped when the tab changes and after a batch action', async ({ page }) => {
-  await mockQueue(page, [job(1, 'Failed'), job(2, 'Queued'), job(3, 'Queued')])
+test('the clear-errors count is what the clear removes: failed and cancelled jobs it can clear', async ({ page }) => {
+  // The server clears cancelled jobs too, but never one still holding a rollback.
+  const held = { ...job(4, 'Failed'), clearable: false }
+  await mockQueue(page, [job(1, 'Failed'), job(2, 'Cancelled'), job(3, 'Cancelled'), held])
+  await page.goto('/#/queue')
+
+  await expect(page.getByRole('button', { name: 'Clear errored (3)' })).toBeVisible()
+})
+
+test('a queue with only cancelled jobs can still clear them', async ({ page }) => {
+  await mockQueue(page, [job(1, 'Cancelled'), job(2, 'Queued')])
+  await page.goto('/#/queue')
+
+  await expect(page.getByRole('button', { name: 'Clear errored (1)' })).toBeVisible()
+})
+
+test('the selection is dropped when the tab changes, and a batch keeps only the rows it refused', async ({ page }) => {
+  await mockQueue(page, [job(1, 'Failed'), job(2, 'Queued'), job(3, 'Failed')])
   await page.goto('/#/queue')
 
   await page.getByRole('checkbox', { name: 'Select Film 1.mkv' }).check()
@@ -144,12 +160,15 @@ test('the selection is dropped when the tab changes and after a batch action', a
   await expect(page.locator('[data-queue-batch]')).toBeHidden()
   await expect(page.getByText('1 of 3 selected', { exact: true })).toHaveCount(0)
 
-  // A batch that has run is over: the picks go with it.
+  // The server handles job 1 and refuses job 3, so only job 3 stays picked to act on again.
   await page.getByRole('checkbox', { name: 'Select Film 1.mkv' }).check()
+  await page.getByRole('checkbox', { name: 'Select Film 3.mkv' }).check()
   await page.locator('[data-queue-batch]').getByRole('button', { name: 'Retry' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Retry' }).click()
   await expect(page.getByText('1 succeeded')).toBeVisible()
-  await expect(page.locator('[data-queue-batch]')).toBeHidden()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Select Film 3.mkv' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Select Film 1.mkv' })).not.toBeChecked()
 })
 
 for (const scheme of ['light', 'dark'] as const) {
