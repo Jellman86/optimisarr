@@ -27,8 +27,10 @@ test('size change follows the size itself: negative when the output is smaller, 
   // A file that grew.
   assert.equal(sizeChangePercent(1000, 1200), 20)
   assert.equal(sizeChangePercent(1000, 1500), 50)
-  // The whole file went — including to nothing at all.
-  assert.equal(sizeChangePercent(1000, 0), -100)
+  // A near-total saving is not the whole file: the output still exists.
+  assert.equal(sizeChangePercent(1_000_000_000, 1_000_000), -99.9)
+  // An output of no bytes means it could not be sized, not that everything was saved.
+  assert.equal(sizeChangePercent(1000, 0), null)
   // A real pair of sizes.
   assert.equal(sizeChangePercent(1_282_683_553, 368_922_428), -71)
 })
@@ -65,7 +67,7 @@ test('the direction is read from the bytes, and unknown is not no-change', () =>
 })
 
 test('the signed percent always agrees with the direction the bytes carry', () => {
-  const pairs = [[1000, 0], [1000, 1], [9999, 9998], [1000, 999], [1000, 999.5], [1000, 1000],
+  const pairs = [[1000, 1], [9999, 9998], [1000, 999], [1000, 999.5], [1000, 1000],
     [1000, 1000.5], [1000, 1001], [1000, 1004], [1000, 1200], [1000, 1500], [600, 1000]] as const
   for (const [source, output] of pairs) {
     const percent = sizeChangePercent(source, output)
@@ -100,7 +102,7 @@ test('the size change in bytes is signed like the percent, from the same directi
   assert.equal(formatSizeChangeBytes(1000, 600), '−400 B')
   assert.equal(formatSizeChangeBytes(600, 1000), '+400 B')
   assert.equal(formatSizeChangeBytes(1000, 1000), '0 B')
-  assert.equal(formatSizeChangeBytes(1000, 0), '−1000 B')
+  assert.equal(formatSizeChangeBytes(1000, 0), '—')
   assert.equal(formatSizeChangeBytes(0, 1000), '—')
   assert.equal(formatSizeChangeBytes(Number.NaN, 1000), '—')
   // One gigabyte to six hundred megabytes.
@@ -118,9 +120,7 @@ test('the comparison bar is measured against the larger file, so growth cannot h
   const bigger = sizeBarShares(1000, 1500)
   assert.ok(Math.abs((bigger?.source ?? 0) - 66.6667) < 0.001)
   assert.equal(bigger?.output, 100)
-  const empty = sizeBarShares(1000, 0)
-  assert.equal(empty?.source, 100)
-  assert.equal(empty?.output, 0)
+  assert.equal(sizeBarShares(1000, 0), null)
 })
 
 test('the comparison bar shares out nothing for sizes that cannot be judged', () => {

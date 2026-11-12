@@ -539,9 +539,9 @@
 
   // What a size change means, in words: a saving, a file that came out the same size, or a
   // file that grew. The direction is in the wording, so a larger output is never dressed up
-  // as a saving, and a change that cannot be judged is shown as no figure at all.
-  function sizeChangeSentence(change: number | null): string {
-    if (change === null) return '—'
+  // as a saving, and a change that cannot be judged gets no words beside its "—".
+  function sizeChangeSentence(change: number | null): string | null {
+    if (change === null) return null
     if (change < 0) return t(i18n.m.queue.percent_smaller, { percent: Math.abs(change) })
     if (change > 0) return t(i18n.m.queue.percent_larger, { percent: change })
     return i18n.m.queue.percent_unchanged
@@ -788,7 +788,7 @@
               {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
               {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
             </div>
-            {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && !isWorkingJob(selectedJob)}
+            {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 && !isWorkingJob(selectedJob)}
               {@const change = sizeChangePercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
               <p class="queue-detail-sizes">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{' '}<strong><SizeChange sourceSizeBytes={selectedJob.sourceSizeBytes} outputSizeBytes={selectedJob.outputSizeBytes} label={sizeChangeSentence(change)} /></strong></p>
             {/if}

@@ -34,11 +34,12 @@ export type SizeChangeStatus = 'saved' | 'unchanged' | 'grew'
 // The direction of a size change is a fact about the bytes, and the bytes are its only source:
 // a smaller output saved, a larger one grew, an equal one did not change. It is never read from
 // a rounded percentage, because a real change smaller than the rounding — 1000 → 999 is a 0.1%
-// saving — would be reported as no change at all. Sizes that cannot be compared — non-finite, a
-// missing or empty source, a negative output — leave null rather than a guess.
+// saving — would be reported as no change at all. Sizes that cannot be compared — non-finite, or
+// an empty or missing file on either side — leave null rather than a guess. An output of zero
+// bytes is never a real result: the server reports 0 when it could not size the output at all.
 export function sizeChangeStatus(sourceBytes: number, outputBytes: number): SizeChangeStatus | null {
   if (![sourceBytes, outputBytes].every(Number.isFinite)) return null
-  if (sourceBytes <= 0 || outputBytes < 0) return null
+  if (sourceBytes <= 0 || outputBytes <= 0) return null
   if (outputBytes < sourceBytes) return 'saved'
   if (outputBytes > sourceBytes) return 'grew'
   return 'unchanged'
@@ -49,7 +50,8 @@ export function sizeChangeStatus(sourceBytes: number, outputBytes: number): Size
 // numbers ("−71%"); smaller changes keep a tenth of a percent so they still read as the change
 // they are ("−0.1%", "+0.4%") and never as a quiet 0%. A real change finer than that tenth —
 // one byte in a few megabytes — is shown at the display's resolution, ±0.1%, rather than as
-// no change, so the figure always agrees with the direction the bytes carry.
+// no change, so the figure always agrees with the direction the bytes carry. For the same
+// reason a near-total saving stops at −99.9%: the output still exists, so it is not −100%.
 export function sizeChangePercent(sourceBytes: number, outputBytes: number): number | null {
   const status = sizeChangeStatus(sourceBytes, outputBytes)
   if (status === null) return null
@@ -57,6 +59,7 @@ export function sizeChangePercent(sourceBytes: number, outputBytes: number): num
   const percent = Math.abs(raw) >= 1 ? Math.round(raw) : Math.round(raw * 10) / 10
   // Math.round(-0.01) is -0, and a -0 would slip past every `< 0` check as a saving.
   if (percent === 0 && status !== 'unchanged') return status === 'saved' ? -0.1 : 0.1
+  if (percent <= -100) return -99.9
   return percent
 }
 
@@ -82,12 +85,6 @@ export function formatSizeChangeBytes(sourceBytes: number, outputBytes: number):
   return `${status === 'saved' ? '−' : '+'}${formatSize(Math.abs(outputBytes - sourceBytes))}`
 }
 
-export interface MediaTitle {
-  primary: string | null
-  episode: string | null
-  secondary: string | null
-}
-
 export interface SizeBarShares {
   /** The source file's share of the comparison bar, in percent. */
   source: number
@@ -99,10 +96,15 @@ export interface SizeBarShares {
 // file that grew shows the part that overflows the source rather than a full bar that reads as
 // a saving. Sizes that cannot be judged share out nothing at all.
 export function sizeBarShares(sourceBytes: number, outputBytes: number): SizeBarShares | null {
-  if (sizeChangePercent(sourceBytes, outputBytes) === null) return null
+  if (sizeChangeStatus(sourceBytes, outputBytes) === null) return null
   const scale = Math.max(sourceBytes, outputBytes)
-  if (scale <= 0) return null
   return { source: (sourceBytes / scale) * 100, output: (outputBytes / scale) * 100 }
+}
+
+export interface MediaTitle {
+  primary: string | null
+  episode: string | null
+  secondary: string | null
 }
 
 const RELEASE_TAGS = /\s+(?:WEBDL|WEB-DL|WEBRip|Bluray|BluRay|HDTV|SDTV|DVD|Remux)\b.*$/i

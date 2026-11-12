@@ -64,11 +64,11 @@
             <span class="block h-1.5 overflow-hidden rounded-full bg-[var(--raised)]" aria-hidden="true">
               {#if shares !== null && status === 'grew'}
                 <span class="flex h-full">
-                  <span class="block h-full bg-ink-4" style="width: {shares.source}%"></span>
-                  <span class="block h-full bg-warn" style="width: {shares.output - shares.source}%"></span>
+                  <span class="block h-full rounded-l-full bg-ink-4" style="width: {shares.source}%"></span>
+                  <span class="block h-full rounded-r-full bg-warn" style="width: {shares.output - shares.source}%"></span>
                 </span>
               {:else if shares !== null}
-                <span class="block h-full {status === 'saved' ? 'bg-ok' : 'bg-ink-4'}" style="width: {shares.output}%"></span>
+                <span class="block h-full rounded-full {status === 'saved' ? 'bg-ok' : 'bg-ink-4'}" style="width: {shares.output}%"></span>
               {/if}
             </span>
           </span>

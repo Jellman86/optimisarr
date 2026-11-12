@@ -1163,18 +1163,18 @@ test('the size change is signed by the file itself, and a file that grew is neve
   await expect(sizes.getByText('0.4% larger than source')).toBeVisible()
 })
 
-test('a job whose output is nothing at all still reports its size change', async ({ page }) => {
+test('a job whose output could not be sized shows no size change', async ({ page }) => {
   await mockQueue(page)
-  // A zero-byte output is a legitimate answer, not a missing one: the whole file went.
-  const emptied = { ...job(81, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 0, finishedAt: '2026-10-03T09:18:26Z' }
-  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [emptied]))
+  // The server reports an output of 0 bytes when it could not size the file, so it is not a saving.
+  const unsized = { ...job(81, 'Failed', false), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 0, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [unsized]))
 
   await page.goto('/#/queue')
   await page.locator('#queue-job-81').click()
-  const sizes = page.locator('#queue-job-dialog').locator('.queue-detail-sizes')
-  await expect(sizes).toContainText('954 MB → 0 B')
-  await expect(sizes).toContainText('−100%')
-  await expect(sizes).toContainText('100% smaller than source')
+  const dialog = page.locator('#queue-job-dialog')
+  await expect(dialog.locator('h2')).toBeVisible()
+  await expect(dialog.locator('.queue-detail-sizes')).toHaveCount(0)
+  await expect(dialog).not.toContainText('−100%')
 })
 
 test('the queue detail and the recent results read the same size change', async ({ page }) => {

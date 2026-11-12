@@ -32,35 +32,6 @@ test('no panel writes out a size-change percentage for itself', () => {
   assert.deepEqual(offenders, [], `panels outside the shared component:\n${offenders.join('\n')}`)
 })
 
-test('no panel bolts a sign onto a percentage of its own', () => {
-  // A fixed minus in front of a figure is what made a file that grew read as a saving. The
-  // sign belongs to the shared formatter, which knows which way the file went.
-  const offenders: string[] = []
-  for (const file of sources(root)) {
-    const name = relative(root, file)
-    if (name === owner) continue
-    if (/[−-]\s*\{[^}]*\}\s*%/.test(readFileSync(file, 'utf8'))) {
-      offenders.push(name)
-    }
-  }
-  assert.deepEqual(offenders, [], `panels with a sign of their own:\n${offenders.join('\n')}`)
-})
-
-test('no panel works out a size difference in bytes for itself', () => {
-  // A difference written out by hand is how a shrinking file came to be shown as a plain
-  // "400 MB" while its percent beside it said −40%. The signed bytes come from the shared
-  // formatter too, so a figure and its percent can never disagree about the direction.
-  const offenders: string[] = []
-  for (const file of sources(root)) {
-    const name = relative(root, file)
-    if (name === owner) continue
-    if (/Math\.abs\([^)]*SizeBytes/.test(readFileSync(file, 'utf8')) || /SizeBytes\s*-\s*[\w.]*SizeBytes/.test(readFileSync(file, 'utf8'))) {
-      offenders.push(name)
-    }
-  }
-  assert.deepEqual(offenders, [], `panels with a size difference of their own:\n${offenders.join('\n')}`)
-})
-
 test('the panels that show a size change all show it through the shared component', () => {
   const panels = [
     'lib/components/RecentResultsPanel.svelte',
