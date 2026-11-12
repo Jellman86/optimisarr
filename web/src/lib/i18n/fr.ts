@@ -775,7 +775,6 @@ queue: {
     host_usage: "Utilisation de l’hôte",
     remote_job: "Traitement sur {worker}",
     no_matches: "Aucune tâche ne correspond à ce filtre.",
-    manage_queue: "Gérer la file",
 
 subtitle: 'Travaux de transcodage. Les sorties sont vérifiées avant d’être prêtes — vos fichiers d’origine ne sont jamais modifiés.',
 active_suffix: ' · {count} actifs',

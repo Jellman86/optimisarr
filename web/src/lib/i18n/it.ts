@@ -774,7 +774,6 @@ filter_all: 'Tutti ({count})',
     host_usage: "Utilizzo host",
     remote_job: "Elaborazione su {worker}",
     no_matches: "Nessun processo corrisponde a questo filtro.",
-    manage_queue: "Gestisci coda",
 
     subtitle: 'Processi di transcodifica. Gli output vengono verificati prima di essere contrassegnati come pronti — gli originali non vengono mai modificati.',
     active_suffix: ' · {count} attivi',

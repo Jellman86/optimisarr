@@ -764,7 +764,6 @@ filter_all: "すべて ({count})",
     host_usage: "ホスト使用率",
     remote_job: "{worker} で処理中",
     no_matches: "このフィルターに一致するジョブはありません。",
-    manage_queue: "キューを管理",
 
     subtitle: "トランスコード処理タスク。出力は準備完了とマークされる前に検証されます。オリジナルには一切手を加えません。",
     active_suffix: "· {count} アクティブ",
