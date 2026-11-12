@@ -11,6 +11,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
 using Optimisarr.Api.OpenApi;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Setup;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
@@ -70,6 +71,7 @@ builder.Services.AddSingleton<ISourceWindowBytesProbe>(new SourceWindowBytesProb
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
 var cudaVmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF_CUDA");
 builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe, cudaVmafFfmpeg));
+builder.Services.AddSingleton<IRequiredToolsGate, RequiredToolsGate>();
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 // Explicit research opt-in: this adds server CPU scoring even for sidecar-verified candidates.
 // It never supplies gate evidence or substitutes for a missing worker measurement.

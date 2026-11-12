@@ -1,3 +1,4 @@
+using Optimisarr.Core.Library;
 using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
@@ -575,19 +576,18 @@ internal static class LibraryRequestParser
 
         var moveOnComplete = request.MoveOnComplete ?? false;
         var targetFolder = Trim(request.TargetFolder);
-        if (moveOnComplete)
+        // Which folders may be used depends on the other libraries, so the endpoint judges that
+        // (see TargetFolderGuard); here only that one was named.
+        if (moveOnComplete && targetFolder is null)
         {
-            if (targetFolder is null)
-            {
-                error = "A target folder is required when 'move output on complete' is enabled.";
-                return false;
-            }
+            error = "A target folder is required when 'move output on complete' is enabled.";
+            return false;
+        }
 
-            if (!Directory.Exists(targetFolder))
-            {
-                error = $"Target folder does not exist: {targetFolder}";
-                return false;
-            }
+        if (targetFolder is not null && !TargetFolderRule.IsUsablePath(targetFolder))
+        {
+            error = "The target folder must be a full path this server can use, such as /data/optimised.";
+            return false;
         }
 
         if (request.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
@@ -672,7 +672,9 @@ internal static class LibraryRequestParser
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
-            request.AutoReplace ?? false,
+            // Saving elsewhere never replaces an original, so "replace automatically" beside it
+            // could only mislead. The dispatcher already lets the folder win; store what happens.
+            !moveOnComplete && (request.AutoReplace ?? false),
             request.ImagePerceptualReportingEnabled ?? false,
             request.ImagePerceptualGateEnabled ?? false,
             request.MinimumImagePerceptualScore,

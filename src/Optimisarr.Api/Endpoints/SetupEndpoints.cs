@@ -107,9 +107,15 @@ internal static class SetupEndpoints
 
         app.MapPost("/api/setup/complete", async (
             SettingsStore settings,
+            IRequiredToolsGate requiredTools,
             CancellationToken cancellationToken) =>
         {
             var state = await settings.GetSetupStateAsync(cancellationToken);
+            if (!state.Completed && await MissingToolsAsync(requiredTools, cancellationToken) is { } refusal)
+            {
+                return refusal;
+            }
+
             try
             {
                 state = state.Complete();
@@ -130,6 +136,7 @@ internal static class SetupEndpoints
             SettingsStore settings,
             ToolDetectionService tools,
             HardwareCapabilityService hardware,
+            IRequiredToolsGate requiredTools,
             CancellationToken cancellationToken) =>
         {
             var state = await settings.GetSetupStateAsync(cancellationToken);
@@ -175,6 +182,11 @@ internal static class SetupEndpoints
                     "setup.library.unavailable",
                     $"The library path is not ready: {unavailable.Path}",
                     new { path = unavailable.Path });
+            }
+
+            if (await MissingToolsAsync(requiredTools, cancellationToken) is { } refusal)
+            {
+                return refusal;
             }
 
             SetupRecommendation? recommendation = null;
@@ -257,6 +269,21 @@ internal static class SetupEndpoints
             return Results.Ok(SetupStateDto.From(state));
         })
         .WithName("RestartSetup");
+    }
+
+    /// <summary>
+    /// The refusal for finishing setup while a required tool is missing, or null when all are
+    /// present. The wizard blocks this too; the server must not depend on the page to do it.
+    /// </summary>
+    private static async Task<IResult?> MissingToolsAsync(IRequiredToolsGate requiredTools, CancellationToken cancellationToken)
+    {
+        var missing = await requiredTools.MissingAsync(cancellationToken);
+        return missing.Count == 0
+            ? null
+            : ApiErrors.BadRequest(
+                "setup.tools.required",
+                $"Setup cannot finish while a required tool is missing: {string.Join(", ", missing)}.",
+                new { tools = string.Join(", ", missing) });
     }
 
     /// <summary>False when the recommendation leaves the library as it is.</summary>

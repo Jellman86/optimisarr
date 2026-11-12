@@ -1,6 +1,9 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Queue;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Verification;
@@ -34,7 +37,11 @@ public sealed record ConfigImportResult(
 /// deletes existing configuration. The exported file contains credentials and must
 /// be treated as sensitive backup material.
 /// </summary>
-public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsStore settings, TimeProvider clock)
+public sealed class ConfigPortabilityService(
+    OptimisarrDbContext db,
+    SettingsStore settings,
+    TimeProvider clock,
+    IHostEnvironment? environment = null)
 {
     private const string LegacyVmafEnabled = "verification.qualityGateEnabled";
     private const string LegacyVmafHarmonic = "verification.minimumVmafHarmonicMean";
@@ -91,6 +98,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
+        var refusedFolders = await RefusedSaveFoldersAsync(materialisedLibraries, cancellationToken);
+        if (refusedFolders.Count > 0)
+        {
+            return new ConfigImportResult(false, refusedFolders, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(
@@ -112,6 +125,53 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             targetsCreated, targetsUpdated,
             arrCreated, arrUpdated,
             settingsApplied);
+    }
+
+    /// <summary>
+    /// The save-folder rule the library editor applies, applied to a backup: a folder inside any
+    /// library this server would have after the import, its working space or Quarantine is
+    /// refused, so an import cannot bring in what Save would not accept.
+    /// </summary>
+    private async Task<List<string>> RefusedSaveFoldersAsync(
+        IReadOnlyList<LibrarySnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        var saving = snapshots.Where(snapshot => snapshot.MoveOnComplete && !string.IsNullOrWhiteSpace(snapshot.TargetFolder)).ToList();
+        if (saving.Count == 0)
+        {
+            return [];
+        }
+
+        var imported = snapshots.Select(snapshot => new LibraryFolder(snapshot.Name.Trim(), snapshot.Path.Trim())).ToList();
+        var kept = (await db.Libraries.AsNoTracking()
+                .Select(library => new LibraryFolder(library.Name, library.Path))
+                .ToListAsync(cancellationToken))
+            .Where(saved => imported.All(incoming => incoming.Path != saved.Path));
+        var libraries = imported.Concat(kept)
+            .Where(library => TargetFolderRule.IsUsablePath(library.Path))
+            .Select(library => library with { Path = TargetFolderRule.ResolveLinks(library.Path) })
+            .ToList();
+        var workRoot = environment is null ? string.Empty : TargetFolderRule.ResolveLinks(WorkPaths.Resolve(environment));
+        var quarantineRoot = environment is null ? string.Empty : TargetFolderRule.ResolveLinks(TrashPaths.Resolve(environment));
+
+        var errors = new List<string>();
+        foreach (var snapshot in saving)
+        {
+            var folder = snapshot.TargetFolder!.Trim();
+            if (!TargetFolderRule.IsUsablePath(folder))
+            {
+                errors.Add($"Library '{snapshot.Name}': the target folder is not a path this server can use.");
+                continue;
+            }
+
+            var verdict = TargetFolderRule.Check(TargetFolderRule.ResolveLinks(folder), libraries, workRoot, quarantineRoot);
+            if (!verdict.IsAllowed)
+            {
+                errors.Add($"Library '{snapshot.Name}': {verdict.Describe(folder)}");
+            }
+        }
+
+        return errors;
     }
 
     private async Task<(int Created, int Updated)> ImportLibrariesAsync(
@@ -273,7 +333,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
-            library.AutoReplace = snapshot.AutoReplace;
+            // Saving elsewhere and replacing must not both be on; saving elsewhere wins, as on Save.
+            library.AutoReplace = AutoReplacePolicy.ReplacesAutomatically(snapshot.AutoReplace, snapshot.MoveOnComplete);
         }
 
         return (created, updated);

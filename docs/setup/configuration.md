@@ -14,31 +14,48 @@ the system. Existing saved light/dark choices are retained.
 
 ## First-run setup
 
-A genuinely new database opens a five-step setup workspace before the normal dashboard. It verifies
-database access, the config/work/quarantine paths, required media tools, and detected hardware. The
-storage ledger shows effective read/write access, free and total capacity, filesystem and mount
-identity, the work-space reserve, and whether each existing library can move atomically to work and
-quarantine. A failed row explains the cause and offers local, Docker Compose, Unraid, or TrueNAS
-recovery steps. **Re-test system** reruns the actual probes and announces the refreshed result; it
-never claims to create a host mount or change host permissions. Setup then
-lets you add and fully configure as many libraries as needed before reviewing the starting safety
-posture. The same complete per-library rules editor is used inside and outside setup, and every
-configured path is rechecked before Continue. Progress is saved after each step, so refreshing or
-restarting resumes at the first incomplete step. Finishing setup looks through each enabled library
-for files and shows what it found, and you can retry a library that fails. Files are then checked in
-the background. Finishing setup does not itself enqueue, encode, replace, or delete a file, but a
-library with automatic enqueue already on can start work on the files found, within its schedule,
-and replace originals if it also has auto-replace and dry-run is off.
+A genuinely new database opens setup before the normal dashboard. It has five steps, each about one
+thing. Progress is saved after each step, so refreshing or restarting resumes where you left off.
+The answers on **Your files** are applied when setup finishes; after a reload that step shows the
+server's values again, so a draft left in a browser can never switch dry-run off.
+Nothing in setup encodes, replaces or deletes a file.
 
-The Safety step explains what happens to originals. A replaced original stays in Quarantine and
-keeps using space until you approve it or it reaches the time limit you set there. `0`, the default,
-keeps originals until you approve them. In dry-run mode, replacing is blocked until you turn dry-run
-off in **Settings → Files & safety**.
+1. **This machine.** Each thing Optimisarr needs is tested and reported in a sentence: the media
+   tools, the settings folder, the working space, Quarantine, and whether replacing a file will be a
+   fast rename or a slower checked copy. Filesystem and mount identity are under **Technical
+   details**, which opens by itself when something needs fixing. A failed line says what is wrong
+   and gives steps for a local install, Docker Compose, Unraid or TrueNAS. **Test again** reruns the
+   real checks; it never claims to create a host mount or change host permissions. A hardware
+   encoder that passed a test encode is pre-selected, with **CPU only** as the other choice. When
+   setup is run again on a server that already has a hardware encoder saved, keeping that encoder is
+   offered too and is the default, including when it did not pass the test this time, which the
+   line says. The
+   picture quality check gets a sentence about what it costs on this machine; setup never offers to
+   turn it off. Continue is off, and says why, while a required tool or folder is missing.
+2. **Your library.** A name, what is in it, a folder and, for film and TV, one of three presets. A
+   music or photo library is saved without a picture check, which only video can have. A
+   summary under the form says what the library will do, worked out from the values about to be
+   saved. Saving a library looks through its folder for files straight away. That only reads them.
+   Every other setting is in the library's own settings after setup.
+3. **Your other apps.** Optional. Sonarr and Radarr, and Plex, Jellyfin or Emby, each with what it
+   prevents. The forms are the ones in **Settings → Download managers** and **Settings → Media
+   servers**, and you can add them there later. A connection is counted as soon as it is saved.
+   Continue is off while something typed into a library or connection form has not been saved.
+4. **Your files.** What happens after a file passes its checks: replace the original after you press
+   Replace, or save the optimised file in another folder. Replacing automatically is not offered
+   here; turn it on per library once a file has passed and you are happy with it. You also choose
+   how long originals stay in Quarantine (until you approve each one, or a number of days and then
+   deleted) and whether to start with replacing locked (dry-run).
+5. **Try one file.** Suggestions from the files found so far, each with **Optimise this file…**.
+   Choosing one finishes setup and opens that file's plan; nothing is queued until you press
+   **Queue this file** there. **Finish and open the dashboard** finishes without choosing. The step
+   also lists what you set up, one line per step, each with **Change**.
 
-Setup recommends an encoder from what passed the test on your machine, and says why. It offers
-Balanced VMAF when VMAF can use an NVIDIA GPU. When VMAF would run on the CPU, it leaves each
-library's quality setting as it is. It offers VMAF off only when the VMAF tool is missing. Nothing
-is applied unless you select it.
+Finishing setup does not itself enqueue, encode, replace or delete a file. When you run setup again
+on a server whose library already optimises automatically, the last step says that the library can
+start work on the files found, within its schedule, instead of saying nothing else will start.
+
+The server refuses to finish setup while FFmpeg or ffprobe is missing, whatever the page shows.
 
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
 enqueue and automatic replacement disabled. New video re-encode libraries start on Adaptive
@@ -90,7 +107,7 @@ Use **Settings → Files & safety → Remote workers** to disable activity witho
 The existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` environment override disables
 the feature for the deployment; an unset variable leaves it available.
 
-Work placement is per library: **Libraries → Configure → Choose files → Advanced eligibility →
+Work placement is per library: **Libraries → Configure → Schedule & replace →
 Where this library's work may run**. Choose **Here or on a worker**, **Only on this server**,
 **Prefer a worker**, or **Only on workers**. **Verify entirely on the sidecar** defaults on for
 new installations; existing settings are preserved. You can change it in **Settings → Files & safety → Remote workers**.
@@ -104,21 +121,23 @@ use the [Linux container setup guide](linux-sidecar.md).
 Each library has its own root, media type, rule profile, and processing policy.
 The Inventory explains why every file is eligible or skipped.
 
-**Configure** opens a dedicated page for that library. A video re-encode library first chooses one
-of two mutually exclusive quality paths:
+**Configure** opens that library's overview: what it does, in sentences worked out from its settings.
+A video re-encode library chooses how quality is decided under **Video → Quality → How quality is
+chosen**, one control with three answers:
 
-- **Adaptive per-title VMAF** (the default for new video re-encode libraries) first encodes deterministic early, middle, and late
+- **Smallest file that meets the target** (adaptive per-title VMAF, the default for new video re-encode libraries) first encodes deterministic early, middle, and late
   video-only samples at no more than four encoder-specific values and selects the smallest measured
-  candidate that clears the library target. Missing or contradictory evidence falls back to Fixed;
+  candidate that clears the library target. Missing or contradictory evidence falls back to the fixed setting;
   the final file still runs every normal verification gate.
-- **Fixed library quality** uses the preset/custom quality directly, then runs the normal
-  full-output verification and one bounded VMAF-only recovery retry when its VMAF gate is enabled.
+- **Fixed setting, checked against the target** uses the preset or changed quality directly, then runs the normal
+  full-output verification and one bounded VMAF-only recovery retry.
+- **Fixed setting, no picture check** uses the same quality and turns the VMAF gate off.
 
-Adaptive mode adds up to twelve 40-second sample encodes before each full encode and requires VMAF
-to be enabled. Choose Fixed to avoid that preparation cost; video libraries can then disable VMAF
-or select a named quality tier. **Custom** exposes the
-harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
-sampling interval. VMAF has no global setting: every video library owns its policy. Upgrades copy
+The first adds up to twelve 40-second sample encodes before each full encode. Choose a fixed
+setting to avoid that preparation cost. **Quality target** is one named level with its three numbers
+shown beside it (whole file, weakest scenes, worst frame); **Custom** edits the three numbers in
+place. **How much of the file is checked** chooses three samples, the whole file, or the whole file
+at every third frame; any other saved combination is kept and shown as it is. VMAF has no global setting: every video library owns its policy. Upgrades copy
 the former global policy into each existing library so behaviour does not change unexpectedly.
 
 | Control | Behaviour |
@@ -135,7 +154,7 @@ There is no global processing window: *when* work runs is set per library (see
 below). Manually queued jobs in a library with auto-optimise enabled also obey its
 window; libraries without auto-optimise have no window.
 
-![Library Advanced encoding page with breadcrumbs, codec and container overrides, encoder effort, and bitrate controls](../images/optimisarr-library-advanced-encoding-dark.png)
+![Library Video page with what to do, the preset, format, quality, picture, encoder and AI upscaling sections](../images/optimisarr-library-encode-dark.png)
 
 ## Media toolchain overrides
 
@@ -169,15 +188,30 @@ measurements. It adds server CPU work even for sidecar-verified candidates, with
 of extra finalisation per sampled job. Existing VMAF gates still decide replacements. It is off by
 default; see the [decision and evidence guide](../development/vmaf-shadow-decision.md) before enabling.
 
-The configuration page has four linked stages for every media type:
-**Choose files → Encode → Verify → Schedule & replace**. Open any stage directly from the overview
-or return with its breadcrumb; navigation keeps the current draft and **Save** saves all stages
-together. Music exposes its output codec and bitrate in **Encode**. Specialist controls have
-dedicated **Advanced eligibility**, **Advanced encoding**, and **Advanced verification** pages.
-Completed-output routing stays in **Schedule & replace**, beside automatic replacement.
+A library has an **Overview** and one page per topic: **Which files**, **Video**, **Audio &
+subtitles**, **Images** (photo and mixed libraries), **Checks**, and **Schedule & replace**. A page
+that cannot apply is left out, so a film library has no Images page and a music library has no
+Video page. Every control for a topic is on its page; there are no Advanced pages. Moving between
+pages keeps the current draft, and **Save** saves all pages together. Bookmarks to the earlier
+stage and Advanced pages open the page that took them in.
 
-The stage bar remains available on configuration, Candidates and Excluded pages. The stage being
-edited is filled with the accent colour; selecting another stage retains the draft.
+The **Overview** says what the library does in plain sentences, one line per page, each with an
+**Edit** button. It is written from the settings, including unsaved changes. A line carries a tag
+when a setting changes the picture, renames files, removes tracks or deletes originals after a
+number of days.
+
+Each setting has a sentence that is always visible, and **More about this** opens a longer
+explanation in the page. A tag on the row means the setting, as set now, changes the picture or
+removes tracks. A control that cannot apply stays in view, disabled, with the reason and where to
+change it: for example a bitrate cap under Intel Quick Sync, the schedule while **Optimise
+automatically** is off, or AI upscaling while it is off in Settings.
+
+A preset is a starting point. Choosing one fills in its values; each value then says **From
+Balanced**, or **Changed by you** with what the preset uses and a **Reset**. The preset shows as
+**Balanced preset · 2 changes** rather than a separate "Custom" state. **What each preset sets**,
+under the preset buttons, lists the server's own values for every built-in preset side by side.
+
+![Library Checks page listing the checks that are always on, then the optional ones with their tolerances](../images/optimisarr-library-checks-dark.png)
 
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
@@ -185,7 +219,7 @@ match the resolved target (or the source for a remux), resolution must not chang
 policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
 requested codec or signal structure was retained. Open **Libraries**, edit a library, and use
-**Verify** to tune its applicable checks. Optimisarr shows only controls that can affect
+**Checks** to tune its applicable checks. The page lists the checks that are always on first. Optimisarr shows only controls that can affect
 the selected media type:
 
 | Gate | Applies to | Default |
@@ -267,9 +301,9 @@ threshold. Cancelled work and jobs interrupted by a worker restart do not count 
 
 ### Choose the encoding settings
 
-Open **Configure → Encode → Audio & subtitles**. Choose the **Target codec** for standalone
-audio, or an explicit **Re-encode to** choice under **Audio track** for video. The horizontal
-**Audio encoding quality** control changes the bitrate for the selected codec:
+Open **Configure → Audio & subtitles** (**Audio** in a music library). Choose the **Audio codec** for standalone
+audio, or a **Re-encode to** choice under **Audio in the new file** for video. The
+**Audio bitrate** control changes the bitrate for the selected codec:
 
 | Preset | AAC | Opus | MP3 |
 |---|---:|---:|---:|
@@ -285,8 +319,8 @@ chosen video container. Retained surround receives this budget per channel pair;
 to stereo keeps the selected budget.
 
 **Default** clears the bitrate override and follows the selected profile: standalone audio is
-normally 128 kbps, or 96 kbps under Scott's Settings; video uses that profile's soundtrack bitrate. **Custom** opens
-Advanced audio, where you can enter your own bitrate. Opening or saving a library does not
+normally 128 kbps, or 96 kbps under Scott's Settings; video uses that profile's soundtrack bitrate. **Custom** shows a
+number field under the control, where you can enter your own bitrate. Opening or saving a library does not
 change existing values. A preset you choose during the edit follows a subsequent codec change;
 a loaded or custom bitrate is preserved. The saved policy stores codec and bitrate, so there
 is no persistent link to a preset after saving.
@@ -299,10 +333,13 @@ For explicitly re-encoded video audio, configure the separate soundtrack report 
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
 
+![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
+
 ### Collect reports or require a result
 
-In a music library, open **Configure → Verify** and enable **Audio quality report** to collect
-experimental Zimtohrli observations. It starts off. Single-track mono/stereo files are supported;
+In a music library, open **Configure → Audio** and set **Audio quality** to **Report only** to collect
+experimental Zimtohrli observations. It starts **Off**. The same control has **Require a limit**
+and **Require a limit, and choose by measurement**. Single-track mono/stereo files are supported;
 standalone files with multiple tracks and surround are not assessed. Video uses the separate
 soundtrack controls below. Up to 90 seconds are
 compared per channel. This adds CPU work, temporary PCM files and reads of both complete files
@@ -314,23 +351,23 @@ calibrated listening score or pass threshold. An **Unavailable** report explains
 unsupported files or incomplete evidence. Strict worker jobs stay on the worker with no server
 fallback. In server verification mode, the server measures.
 
-With **Require audio quality** off, reports do not change replacement decisions. Existing decode, duration, stream, metadata and
+On **Report only**, reports do not change replacement decisions. Existing decode, duration, stream, metadata and
 size checks still apply, and verified replacement quarantines the original before moving the
 candidate into place. See the [development evidence and limits](../development/perceptual-audio-image-quality-plan.md#integrated-report-controls-in-development).
 
 ![Audio quality report showing separate channel distances, assessed duration, worker location and the report-only safety note](../images/optimisarr-audio-report-dark.png)
 
-To make audio quality a replacement requirement, enable **Require audio quality** in the same
-view, then open **Advanced verification** and choose **Maximum audio difference**. Both switches
-start off, and the limit starts blank. Verify shows the current limit; Advanced verification holds its control.
-The horizontal control has clickable numeric points, with lower values on the left. The points
+To make audio quality a replacement requirement, set **Audio quality** to **Require a limit**
+and choose **Maximum audio difference** in the row that appears below it. The limit starts
+blank and the library cannot be saved until one is chosen. **Checks** shows the current choice with a button back to it.
+The list offers numeric points from 0 upwards. The points
 are shortcuts, not calibrated quality levels. Choose **Custom** to enter any value from 0 to 1;
 lower values are stricter. There is no calibrated default or conversion
 from VMAF. Use your reports and listening examples to choose a limit for that library.
 
 The largest distance in every assessed channel and sample must be at or below your limit.
 A missing tool, unsupported input or incomplete worker measurement blocks replacement when the
-gate is enabled. Enabling the gate requests measurement even if **Audio quality report** is off.
+gate is enabled. Choosing **Require a limit** turns reporting on with it; a library saved earlier with the gate on and reporting off keeps that until the choice is changed.
 Strict sidecar verification keeps those measurements on the worker; the server compares their
 validated results with the selected limit. The gate applies to standalone audio in music and
 mixed libraries, with one mono or stereo track. Video soundtracks use their own gate; surround
@@ -358,7 +395,7 @@ deinterlacing and it plays combed, and verification cannot see that. Track clean
 because it copies the video. A source reporting an unknown field order is treated as progressive,
 because modern codecs commonly report that.
 
-**Deinterlace interlaced video** lets a library process these files. Frames flagged interlaced have
+**Video → Picture → Interlaced video → Deinterlace, then encode** lets a library process these files. Frames flagged interlaced have
 their fields combined with `bwdif` at the same frame rate before any crop or scale, progressive
 sections stay as they are, and the result is written as progressive.
 VMAF judges it against the original deinterlaced the same way, so it measures the encode rather than
@@ -407,23 +444,23 @@ Soundtrack samples leave a 100 ms margin at the file end to avoid encoder paddin
 ![Per-track soundtrack results showing a passed main track and blocked commentary](../images/optimisarr-soundtrack-report-dark.png)
 
 
-For a Film, TV or Other library, open **Configure → Verify**. **Soundtrack quality report**
-and **Require soundtrack quality** are separate opt-in controls; both start off. The standalone
-**Audio quality report** and **Require audio quality** controls do not enable them. Choose an
-explicit **Re-encode to** audio choice under **Encode → Audio & subtitles** to make soundtrack
+For a Film, TV or Other library, open **Configure → Audio & subtitles**. **Soundtrack quality**
+is one control that starts **Off**, with **Report only**, **Require a limit**, and **Require a
+limit, and choose by measurement**. The standalone **Audio quality** control does not change it. Choose a
+**Re-encode to** choice under **Audio in the new file** to make soundtrack
 assessment applicable. Copied audio, remuxes and disposable previews skip this assessment and
 its gate; existing stream-retention and timing checks still apply.
 
-Enable **Soundtrack quality report** to see experimental per-track observations in Queue job
+Choose **Report only** to see experimental per-track observations in Queue job
 details and Quarantine. Each track shows its output position, language/title when present,
 largest distance per channel, coverage and whether measurement ran on the server or worker.
 An **Unavailable** result explains unsupported tracks, missing tools or incomplete evidence.
 Reporting alone does not block replacement.
 
-To require a result, enable **Require soundtrack quality**, then choose
-**Maximum soundtrack difference** in **Advanced verification**. Its numeric points and **Custom** input work like the
+To require a result, choose **Require a limit**, then choose
+**Maximum soundtrack difference** in the row below. Its numeric points and **Custom** input work like the
 standalone audio limit: enter a finite value from 0 to 1, with lower values stricter and no
-calibrated default. The gate requests measurement even when reporting is off. Every channel
+calibrated default. Every channel
 and sample of every retained track must meet the inclusive limit; a missing or unsupported
 measurement blocks replacement. Encoding presets do not select or change this limit.
 
@@ -466,9 +503,10 @@ measures on the server. See [evidence and resource limits](../development/percep
 
 #### Choose soundtrack bitrates by measurement (experimental)
 
-With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
-the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
-**Re-encode to** choice of AAC, Opus or MP3. While it is on, the soundtrack gate stays on. With
+**Require a limit, and choose by measurement** lets
+the server pick a bitrate per retained soundtrack before the full encode. It needs the soundtrack
+to be converted to AAC, Opus or MP3, whether chosen directly or by the preset; while audio is left
+untouched the option is unavailable and the row says why. The soundtrack gate is part of this choice. With
 **Downmix surround to stereo** also on, surround and mono tracks are searched as the stereo they
 become: each sample is cut from the source through the same downmix as the encode.
 
@@ -525,9 +563,9 @@ placement waits for a compatible worker. Per-soundtrack bitrate selection runs o
 either a local or worker encode. See the [parity completion
 matrix](../development/adaptive-audio-image-parity.md).
 
-In a photo or mixed library, open **Verify**, then **Advanced verification**. Enable
-**Image quality report** for optional SSIMULACRA2 evidence. Reporting alone does not block
-replacement. Enable the separate perceptual image gate and enter a minimum score from 0 to
+In a photo or mixed library, open **Images**. Set **Image quality** to **Report only**
+for optional SSIMULACRA2 evidence. Reporting alone does not block
+replacement. Choose **Require a limit** and a **Minimum SSIMULACRA2 score** from 0 to
 100 to require it before replacement. There is no default or calibrated universal threshold;
 the score of 80 in the screenshots illustrates a saved operator policy.
 
@@ -577,8 +615,8 @@ researched quality target; specialist controls are available from the applicable
 | Remux / cleanup | No re-encode — repackage into a clean container only. |
 
 A file already in the target codec is normally skipped. Enable **"Re-encode large
-files already in the target codec"** (**Choose files → Advanced eligibility**) to also re-encode oversized
-same-codec files above a size you set (default 20 GB) — useful for shrinking a huge
+files already in the target codec"** (**Which files**) to also re-encode oversized
+same-codec files above a size you set (default 20 GB, and fractions such as 0.5 work) — useful for shrinking a huge
 HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
 output that does not get smaller, so the original is never lost.
 
@@ -602,13 +640,13 @@ channels onto the standard 5.1 order with the `channelmap=channel_layout=5.1` au
 encoded track matches the layout its container advertises.
 
 Only the channel order changes. No audio is mixed, remapped, or dropped, and the output keeps the
-source's six channels. **Normalise Opus surround layout** (**Encode → Audio & subtitles**) turns the
+source's six channels. **Normalise Opus surround layout** (**Audio & subtitles**, shown while the audio codec is Opus) turns the
 conversion off for a library that wants the source's own surround placement. Optimisarr leaves the
 audio alone when the encoder is not Opus, when the source is downmixed to stereo, when the source
 reports no channel layout, or when its tracks disagree about that layout. Each job records the audio
 filter it applied, shown next to its FFmpeg command in the queue detail.
 
-**Keep audio languages** (**Encode → Audio & subtitles**) removes unwanted audio tracks while a
+**Keep audio languages** (**Audio & subtitles**) removes unwanted audio tracks while a
 video is optimised or remuxed. Enter comma-separated ISO 639 codes (e.g. `eng, jpn`);
 the field validates the syntax before Save, then lower-cases and de-duplicates the
 codes. Complete ISO 639-1/-2 aliases match (`de`, `deu`, and `ger` are equivalent).
@@ -622,7 +660,7 @@ preset, a file already in the right container but carrying removable foreign-lan
 tracks becomes eligible for a fast stream-copy cleanup; re-encode presets strip tracks
 as part of the jobs they already run.
 
-**Keep subtitle languages** (**Encode → Audio & subtitles**) works the same way for subtitle
+**Keep subtitle languages** (**Audio & subtitles**) works the same way for subtitle
 tracks, with one deliberate difference: subtitles are optional streams, so there is
 no keep-at-least-one guard. A track with no language tag is never removed, but if a
 file's subtitles are all in non-kept languages they are all removed and the file ends
@@ -663,10 +701,21 @@ gates and links each library to its configuration.
 
 ![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
-**Auto-accept passed jobs** is off by default for every library type. Find it in
-**Libraries → Configure → Schedule & replace**. Enabling it opens **Do you really,
-really mean it?**: acknowledge the risk, confirm, then **Save** the library. Existing
-saved choices stay unchanged.
+**Libraries → Configure → Schedule & replace** asks what happens **After a file
+passes its checks**. It is one choice of three:
+
+- **Replace the original after I press Replace** is the default for every library
+  type. The new file waits at **Ready to replace** until you have looked at it.
+- **Replace the original automatically** replaces as soon as a file passes.
+  Choosing it opens **Do you really, really mean it?**: acknowledge the risk,
+  confirm, then **Save** the library.
+- **Save optimised files in another folder** leaves your library exactly as it is.
+  You end up with two files and save no space.
+
+Existing saved choices stay unchanged. A library saved with both automatic
+replacement and a target folder already saved to the folder and never replaced;
+it now shows **Save optimised files in another folder**, says so, and stores
+automatic replacement off the next time it is saved.
 
 Every job that passes all enabled checks replaces its library file automatically,
 including jobs already ready to replace, using the checks from their completed
@@ -679,10 +728,29 @@ Incorrect settings can damage media, reduce quality, or remove tracks and metada
 A passing result covers only the checks you enabled. Review a small manual batch
 and keep a separate backup before enabling this option. Switching it off and saving
 leaves verified jobs ready for manual replacement; a replacement already moving files
-finishes safely. **Move output to a target folder instead of replacing** leaves originals in place
-and takes precedence over auto-accept.
+finishes safely.
 
-![Auto-accept confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
+**Save optimised files in another folder** keeps the original's sub-folders under the
+folder you choose. Plex, Jellyfin, Emby, Sonarr and Radarr are not told about the
+copies. The folder must exist, be writable, and be outside every library, the working
+space and Quarantine: a folder inside a library would be scanned and its files
+optimised again, and the other two are cleaned up automatically. The editor says why a
+folder is refused before you save. The same rule is checked again before a job
+encodes and again when it finishes, because a library can be added later. A job
+refused before encoding fails with the reason and writes nothing, and the library's
+card says the save folder can't be used. A file refused when it finishes stays in
+the working space. In both cases the original is not touched. A configuration
+import is held to the same rule and imports nothing if a folder breaks it.
+
+Folders are compared as text, after symbolic links are followed. Two mounts of the
+same host folder under different container paths are not recognised as the same
+place, so do not mount a library a second time and save into it.
+
+**Overwrite a file that is already there** is off by default, so a name clash fails
+the job instead of replacing an earlier copy. With it on, the file already there is
+replaced for good: it does not go to Quarantine and cannot be put back.
+
+![Replace automatically confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
 
 **Dry-run mode** is a global replacement safety switch. It leaves scanning,
 queueing, transcoding, verification, previews, and rollback available, but blocks

@@ -44,8 +44,9 @@ public static class WorkerEncoderCatalogue
         string targetCodec,
         EncoderMode queueMode,
         IEnumerable<string> advertised,
-        int? sourceBitDepth = null) =>
-        EncoderSelector.Select(targetCodec, ModeForWorker(queueMode), Describe(advertised), sourceBitDepth);
+        int? sourceBitDepth = null,
+        bool avoidIntelQsv = false) =>
+        EncoderSelector.Select(targetCodec, ModeForWorker(queueMode), Describe(advertised), sourceBitDepth, avoidIntelQsv);
 
     // The mode strings are the ones the local hardware probe reports, so the selector's preference
     // order applies unchanged to a remote worker.

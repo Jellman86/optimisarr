@@ -14,6 +14,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -97,6 +98,52 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("EnqueueMediaFile")
         .Produces<FileEnqueueDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        // What queueing this file would do, by its library's settings as they are now. Read-only:
+        // the same verdict and resolver the queue uses, with nothing queued and no FFmpeg run.
+        app.MapGet("/api/media/{id:int}/plan", async (
+            int id,
+            OptimisarrDbContext db,
+            CandidateService candidates,
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
+        {
+            var file = await db.MediaFiles.AsNoTracking().Include(f => f.Library)
+                .SingleOrDefaultAsync(f => f.Id == id, cancellationToken);
+            if (file is null)
+            {
+                return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
+            }
+
+            if (file.Status != MediaFileStatus.Probed)
+            {
+                return ApiErrors.Conflict("media.enqueue.needsProbe", "Probe this file before queueing it.");
+            }
+
+            var candidate = (await candidates.EvaluateAsync(file.LibraryId, cancellationToken))
+                .FirstOrDefault(c => c.MediaFileId == id);
+            var saved = LibraryRuleResolution.Resolve(file.Library);
+            // The same two facts the dispatcher works out before it plans a job: whether this file
+            // would be upscaled, which copies its audio, and whether its audio fits in MP4.
+            var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var upscales = saved.TargetVideoCodec is not null && SuperResolutionRouting.Applies(
+                superResolution.Enabled, file.Library?.SuperResolutionEnabled == true, file.MediaKind, replaceBound: true);
+            var rules = QueueDispatcher.SuperResolutionRules(saved, upscales);
+            var mp4IncompatibleAudio = file.MediaKind == MediaKind.Video
+                && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, file.Path))
+                && AudioContainerCompatibility.ContainsMp4Incompatible(file.AudioCodecs);
+            var plan = OptimisationPlanner.Plan(
+                CandidateService.PropertiesOf(file),
+                rules,
+                file.Library?.QualityCrf ?? rules.DefaultCrf,
+                mp4IncompatibleAudio,
+                upscales);
+            return Results.Ok(MediaPlanDto.From(file, candidate, plan));
+        })
+        .WithName("GetMediaPlan")
+        .Produces<MediaPlanDto>()
         .Produces<ApiError>(StatusCodes.Status404NotFound)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
 
@@ -653,3 +700,80 @@ internal static class MediaAndQueueEndpoints
 }
 
 internal sealed record FileEnqueueDto(int JobId, bool AlreadyQueued);
+
+/// <summary>
+/// What optimising one file would do, with the verdict the queue would give it. Enumerations are
+/// sent by name, as everywhere else in the API.
+/// </summary>
+internal sealed record MediaPlanDto(
+    int MediaFileId,
+    int? LibraryId,
+    bool Eligible,
+    string Reason,
+    string Kind,
+    string Action,
+    MediaPlanSourceDto Source,
+    MediaPlanPictureDto? Picture,
+    PlannedSound? Sound,
+    IReadOnlyList<PlannedTrack>? AudioTracks,
+    IReadOnlyList<PlannedTrack>? SubtitleTracks,
+    PlannedFile File,
+    MediaPlanImageDto? Image)
+{
+    public static MediaPlanDto From(MediaFile file, Candidate? candidate, OptimisationPlan plan) => new(
+        file.Id,
+        file.LibraryId,
+        candidate?.Eligible ?? false,
+        candidate?.Reason ?? "This file can't be optimised.",
+        plan.Kind.ToString(),
+        plan.Action,
+        new MediaPlanSourceDto(
+            file.RelativePath, file.SizeBytes, file.Container, file.VideoCodec, file.Width, file.Height,
+            file.DurationSeconds, file.IsHdr, file.IsDolbyVision, VideoFieldOrder.IsInterlaced(file.FieldOrder),
+            file.AudioCodecs, file.MaxAudioChannels, file.AudioTrackCount, file.SubtitleTrackCount),
+        plan.Picture is { } picture
+            ? new MediaPlanPictureDto(
+                picture.Codec, picture.Crf, picture.Width, picture.Height, picture.ShrinkToHeight, picture.FrameRateCap,
+                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales)
+            : null,
+        plan.Sound,
+        plan.AudioTracks,
+        plan.SubtitleTracks,
+        plan.File,
+        plan.Image is { } image
+            ? new MediaPlanImageDto(image.Format, image.Quality, image.ResizeMode.ToString(), image.ResizeValue, image.RecompressesLossy)
+            : null);
+}
+
+/// <summary>The file as it is now: the "before" side of the plan, from what the last probe recorded.</summary>
+internal sealed record MediaPlanSourceDto(
+    string RelativePath,
+    long SizeBytes,
+    string? Container,
+    string? VideoCodec,
+    int? Width,
+    int? Height,
+    double? DurationSeconds,
+    bool IsHdr,
+    bool IsDolbyVision,
+    bool Interlaced,
+    string? AudioCodecs,
+    int MaxAudioChannels,
+    int? AudioTrackCount,
+    int? SubtitleTrackCount);
+
+internal sealed record MediaPlanPictureDto(
+    string Codec,
+    int? Crf,
+    int? Width,
+    int? Height,
+    int? ShrinkToHeight,
+    int? FrameRateCap,
+    bool TonemapToSdr,
+    bool Deinterlace,
+    bool CropBlackBars,
+    string NoiseReduction,
+    bool Upscales);
+
+/// <summary>Enums are sent as their names, as the rest of the API sends them.</summary>
+internal sealed record MediaPlanImageDto(string Format, int Quality, string ResizeMode, int ResizeValue, bool RecompressesLossy);

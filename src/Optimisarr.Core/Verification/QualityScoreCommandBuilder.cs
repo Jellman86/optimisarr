@@ -98,7 +98,11 @@ public sealed record QualityMeasurementContext(
     VmafEncodedVideo? EncodedVideo = null,
     string? ReferenceVideoCodec = null,
     // A worker fills these fixed CAMBI tokens from its actual candidate probe before scoring.
-    bool EncodedVideoFromWorker = false);
+    bool EncodedVideoFromWorker = false,
+    // How many pictures the reference really holds, when they were counted. A variable-frame-rate
+    // file can report 29.97 fps while holding 25.5 a second, so a window placed at the reported
+    // rate can start after its last frame and score nothing. Frame windows are placed by this count.
+    int? ReferenceFrameCount = null);
 
 public sealed record VmafEncodedVideo(int Width, int Height, int BitDepth);
 
@@ -291,7 +295,8 @@ public static class QualityScoreCommandBuilder
         var distortedTimeline = completeFramePairing
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
-            ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value,
+                context.ReferenceFrameCount, context.ReferenceDurationSeconds)
             : TimelinePreparation(
                 context.DistortedStartSeconds,
                 distortedInputStart,
@@ -302,7 +307,8 @@ public static class QualityScoreCommandBuilder
         var referenceTimeline = completeFramePairing
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
-            ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value,
+                context.ReferenceFrameCount, context.ReferenceDurationSeconds)
             : TimelinePreparation(
                 context.ReferenceStartSeconds,
                 referenceInputStart,
@@ -546,10 +552,20 @@ public static class QualityScoreCommandBuilder
         return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
     }
 
-    private static string SequentialFrameTimeline(int startSeconds, int durationSeconds, double frameRate)
+    private static string SequentialFrameTimeline(
+        int startSeconds, int durationSeconds, double frameRate, int? frameCount, double? referenceDurationSeconds)
     {
-        var first = (long)Math.Round(startSeconds * frameRate);
-        var end = first + (long)Math.Round(durationSeconds * frameRate);
+        // Seconds become frame numbers at the rate the file really holds pictures when it was
+        // counted, and the window is kept inside the file, ending at its last frame if need be.
+        var counted = frameCount is > 0 && referenceDurationSeconds is > 0 && double.IsFinite(referenceDurationSeconds.Value);
+        var indexRate = counted ? frameCount!.Value / referenceDurationSeconds!.Value : frameRate;
+        var first = (long)Math.Round(startSeconds * indexRate);
+        var length = (long)Math.Round(durationSeconds * indexRate);
+        if (counted && first + length > frameCount!.Value)
+        {
+            first = Math.Max(0, frameCount.Value - length);
+        }
+        var end = counted ? Math.Min(first + length, frameCount!.Value) : first + length;
         var step = (long)Math.Round(1_000_000 / frameRate);
         return $"trim=start_frame={first}:end_frame={end},settb=AVTB,setpts=N*{step}";
     }

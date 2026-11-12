@@ -243,14 +243,14 @@ public sealed partial class QueueDispatcher(
                     db.Libraries,
                     job => job.LibraryId,
                     library => library.Id,
-                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, job.SuperResolutionApplied })
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, library.MoveOnComplete, job.SuperResolutionApplied })
                 .ToListAsync(cancellationToken);
 
             jobIds = ready
                 .Where(candidate => AutoReplacePolicy.ShouldReconcile(
                     candidate.Status,
                     candidate.VerificationPassed,
-                    candidate.AutoReplace,
+                    AutoReplacePolicy.ReplacesAutomatically(candidate.AutoReplace, candidate.MoveOnComplete),
                     queueSettings.DryRunMode,
                     pauseManager.IsPaused,
                     candidate.SuperResolutionApplied))
@@ -751,7 +751,7 @@ public sealed partial class QueueDispatcher(
                     // The worker's byte limit and verification contract were fixed together at
                     // claim time. Applying a later library edit here could reject an output the
                     // worker was told to produce, or accept one the worker was told to stop.
-                    AutoReplace = library?.AutoReplace ?? false,
+                    AutoReplace = AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
                     MoveOverwrite = library?.MoveOverwrite ?? false
@@ -1049,6 +1049,11 @@ public sealed partial class QueueDispatcher(
                     return;
                 }
 
+                if (await RefusedForSaveFolderAsync(jobId, cancellationToken))
+                {
+                    return;
+                }
+
                 if (work.Value.Spec.Kind == MediaKind.Video
                     && await HeldBySourceTimelineAsync(jobId, work.Value.Original.Path, cancellationToken))
                 {
@@ -1224,6 +1229,18 @@ public sealed partial class QueueDispatcher(
                     minCandidateBytes: minCandidateBytes);
             }
 
+            // QSV stops at the same frame every time on a source whose picture times jump, so the
+            // job goes back to the queue to be planned afresh with another encoder. The flag it
+            // sets keeps QSV from being chosen again, so this cannot loop.
+            if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: Intel QSV stopped on this source's timestamps; queuing it again without QSV. ffmpeg: {Error}",
+                    jobId, run.Error);
+                await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
+                return;
+            }
+
             if (run.ExitCode == 0)
             {
                 // Stamp the portable marker on an image *before* verification, so the file that is
@@ -1318,6 +1335,10 @@ public sealed partial class QueueDispatcher(
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, executionAttempt, spec.OutputPath, retriedWork, cancellationToken);
+                    }
+                    else if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+                    {
+                        await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
                     }
                     else
                     {
@@ -2209,11 +2230,13 @@ public sealed partial class QueueDispatcher(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     remoteWorker.VideoEncoders,
-                    sourceBitDepth)
+                    sourceBitDepth,
+                    job.AvoidIntelQsv)
                 : await ResolveVideoEncoderAsync(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     sourceBitDepth,
+                    job.AvoidIntelQsv,
                     cancellationToken);
             if (videoEncoder is { Succeeded: false })
             {
@@ -2396,7 +2419,7 @@ public sealed partial class QueueDispatcher(
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
             library?.WorkPlacement ?? WorkPlacement.Anywhere,
             adaptiveVideoQuality,
-            library?.AutoReplace ?? false,
+            AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
             queueSettings.CpuThreadLimit,
             hardwareDecode,
             hardwareToneMap,
@@ -2870,6 +2893,38 @@ public sealed partial class QueueDispatcher(
             logger.LogInformation("Marked {Count} existing size-review jobs as predicted size failures; originals were unchanged", held.Count);
             await NotifyAsync();
         }
+    }
+
+    /// <summary>
+    /// Fails a job before any encoding when its library saves optimised files into a folder the
+    /// rule refuses, which would otherwise only be found out after the whole encode, here or on a
+    /// worker. True when the job was failed: nothing has been written and the original is
+    /// untouched. Failed rather than skipped, so automatic queueing does not pick the file up again
+    /// every cycle while the folder stays wrong.
+    /// </summary>
+    public async Task<bool> RefusedForSaveFolderAsync(int jobId, CancellationToken cancellationToken)
+    {
+        string? saveFolder;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            saveFolder = await db.Libraries.AsNoTracking()
+                .Where(library => library.MoveOnComplete
+                    && db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
+                .Select(library => library.TargetFolder)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (saveFolder is null
+            || await SaveElsewhere().RefusalBeforeEncodingAsync(saveFolder, cancellationToken) is not { } refusal)
+        {
+            return false;
+        }
+
+        await CompleteAsync(jobId, JobStatus.Failed, error: refusal);
+        await NotifyJobFailedAsync(jobId, refusal);
+        logger.LogWarning("Job {JobId}: not encoded — {Reason}", jobId, refusal);
+        return true;
     }
 
     /// <summary>
@@ -3824,6 +3879,20 @@ public sealed partial class QueueDispatcher(
                 VideoOnly: isCalibration && kind == MediaKind.Video)
             : null;
 
+    private static bool StoppedOnQsvTimestamps(string? encoder, FfmpegRun run) =>
+        run.ExitCode != 0 && !run.SizeGateFailed && IntelQsvTimestampFallback.Applies(encoder, run.Log ?? run.Error);
+
+    private async Task QueueWithoutIntelQsvAsync(
+        int jobId, int executionAttempt, string outputPath, string? processLog, string? error)
+    {
+        if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
+            JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, processLog, DateTimeOffset.UtcNow),
+            CancellationToken.None,
+            rejectedProcessLog: processLog, rejectedError: FfmpegErrorInterpreter.Explain(error) ?? error)) return;
+        await NotifyAsync();
+        Wake();
+    }
+
     internal async Task QueueHigherQualityRetryAsync(int jobId, int executionAttempt, string outputPath)
     {
         if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
@@ -3873,20 +3942,16 @@ public sealed partial class QueueDispatcher(
             // Resolve against this file's own work root so the per-media-file id segment is not
             // mirrored into the target folder — the destination keeps the library's structure.
             var mediaWorkRoot = WorkOutputRoot.ForMediaFile(_workRoot, work.MediaFileId);
-            var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
-
-            // Don't silently clobber an existing converted file unless the library opts into it.
-            // Failing here keeps the just-produced output in the work dir for inspection.
-            if (!work.MoveOverwrite && File.Exists(destination))
+            var saved = await SaveElsewhere().SaveAsync(mediaWorkRoot, outputPath, targetFolder, work.MoveOverwrite);
+            if (saved.Error is { } error)
             {
-                var error = $"A converted file already exists at the destination and overwrite is off: {destination}";
+                // Failing here keeps the just-produced output in the work dir for inspection.
                 await CompleteAsync(jobId, JobStatus.Failed, progress: 1.0, error: error);
                 await NotifyJobFailedAsync(jobId, error);
                 return;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            MoveFile(outputPath, destination);
+            var destination = saved.Destination!;
             // The output left the work dir; clean up its now-empty per-media scratch tree.
             WorkPaths.PruneEmptyAncestors(_workRoot, outputPath, IsWorkDirectoryReserved);
 
@@ -3951,20 +4016,7 @@ public sealed partial class QueueDispatcher(
         }
     }
 
-    // Move our own work output; never the original. Falls back to copy+delete across
-    // filesystems, where an atomic rename isn't possible.
-    private static void MoveFile(string source, string destination)
-    {
-        try
-        {
-            File.Move(source, destination, overwrite: true);
-        }
-        catch (IOException)
-        {
-            File.Copy(source, destination, overwrite: true);
-            File.Delete(source);
-        }
-    }
+    private SaveElsewhere SaveElsewhere() => new(scopeFactory, environment);
 
     // RunFfmpegAsync has reaped its process before cancellation reaches this handler.
     internal Task HandleCancelledAsync(int jobId, int executionAttempt) =>
@@ -4299,6 +4351,7 @@ public sealed partial class QueueDispatcher(
         string? targetCodec,
         EncoderMode encoderMode,
         int? sourceBitDepth,
+        bool avoidIntelQsv,
         CancellationToken cancellationToken)
     {
         if (targetCodec is null)
@@ -4307,7 +4360,7 @@ public sealed partial class QueueDispatcher(
         }
 
         var detected = await hardware.DetectAsync(cancellationToken);
-        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth);
+        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth, avoidIntelQsv);
     }
 
     // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc,

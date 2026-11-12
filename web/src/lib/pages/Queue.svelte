@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InfoTip from '../components/InfoTip.svelte'
   import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { modal } from '../modal'
@@ -19,6 +20,8 @@
   import Banner from '../components/Banner.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import JobResult from '../components/JobResult.svelte'
+  import { pictureQualityWasMeasured, plainCheckName } from '../plain-checks'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import SoundtrackSearchReport from '../components/SoundtrackSearchReport.svelte'
@@ -101,6 +104,21 @@
   let requestId = 0
   let disposed = false
   let progressRevision = 0
+  // Whether replacing is locked for every library, and how long a replaced original is kept.
+  // Unknown until the settings arrive; the server refuses a replacement under dry-run either way.
+  let dryRun = $state(false)
+  let retentionDays = $state<number | null>(null)
+
+  async function loadReplacementSettings() {
+    try {
+      const settings = await api.settings()
+      if (disposed) return
+      dryRun = settings.dryRunMode
+      retentionDays = settings.replacementQuarantineRetentionDays
+    } catch {
+      /* The result card then says only what holds whatever the settings are. */
+    }
+  }
   const progressVersions = new Map<number, number>()
 
   // Updates arrive over SignalR (jobsChanged + jobProgress). A slow poll is kept
@@ -108,6 +126,7 @@
   // which is not pushed.
   $effect(() => {
     void load()
+    void loadReplacementSettings()
     const connection = createJobsConnection({
       onChanged: () => void load(),
       onProgress: applyProgress,
@@ -617,6 +636,13 @@
     return failed.length === 1 && failed[0].name === 'Perceptual quality (VMAF)'
   }
 
+  // A higher-quality retry is worth offering only when a measured score fell short and the
+  // quality search has not already tried its highest setting: otherwise it repeats a known miss.
+  function canRetryHigher(job: Job): boolean {
+    if (!isVmafOnlyFailure(job) || searchReport(job)?.result?.decision?.fellBack === true) return false
+    return (fullReport(job)?.checks ?? []).some((check) => check.outcome === 'Failed' && pictureQualityWasMeasured(check))
+  }
+
   function vmafSamplingLabel(value: string): string {
     if (value === 'Full file') return i18n.m.queue.vmaf_sampling_full
     if (value === 'Three 40-second samples (early, middle and late)') return i18n.m.queue.vmaf_sampling_three
@@ -780,6 +806,12 @@
               <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
             </div>
           {/if}
+          {#if selectedJob.retryReason === 'AvoidIntelQsv' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
+            <div class="callout tone-warn mb-4 p-4" role="status">
+              <p class="font-semibold">{i18n.m.queue.retry_qsv_title}</p>
+              <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_qsv_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server })}</p>
+            </div>
+          {/if}
           {#if selectedJob.status !== 'Queued' && selectedJob.status !== 'AwaitingSizeReview'}
             <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
               <h3>{i18n.m.queue.execution_path}</h3>
@@ -803,10 +835,14 @@
               <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
               {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
               {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
-              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.join(' · ') })}</p>{/if}
+              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.map((name) => plainCheckName(name, i18n.m.checkNames)).join(' · ') })}</p>{/if}
             </div>
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
           {/if}
+          <JobResult job={selectedJob} checks={parseReport(selectedJob)} {dryRun} {retentionDays}
+            canRetryHigher={canRetryHigher(selectedJob)}
+            replacing={replacingId === selectedJob.id} replaceBlocked={replacingAll || replacingId !== null}
+            onreplace={() => selectedJob && replace(selectedJob)} onunlocked={() => (dryRun = false)} />
           {#if selectedJob.status === 'AwaitingSizeReview'}
             <div class="callout tone-warn mb-4 p-4" role="status">
               <p class="font-semibold">{i18n.m.queue.size_review_title}</p>
@@ -834,6 +870,7 @@
               {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
               {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
                 <span class="text-ink-4">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
+                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.queue.detail_quality })} text={i18n.m.queue.quality_effective_tip} />
               {/if}
             {:else}—{/if}
           </dd>
@@ -849,18 +886,6 @@
           <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
           {vmafSamplingLabel(report.context.vmafSampling)}
         </p>
-      {/if}
-
-      {#if selectedJob.status === 'Failed' && isVmafOnlyFailure(selectedJob)}
-        <div class="callout tone-warn mt-4 p-4" role="status" aria-live="polite">
-          <div class="flex items-start gap-2">
-            <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0 text-warn" />
-            <div>
-              <p class="font-semibold">{i18n.m.queue.vmaf_recovery_title}</p>
-              <p class="mt-1 text-xs leading-relaxed text-warn-strong">{i18n.m.queue.vmaf_recovery_desc}</p>
-            </div>
-          </div>
-        </div>
       {/if}
 
       <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
@@ -905,17 +930,24 @@
                 </div>
                 <p>{selectedJob.workerName ?? i18n.m.dashboard.this_server} · {selectedJob.videoEncoder ?? '—'}</p>
                 {#if selectedJob.retryReason === 'SoftwareDecode'}<p class="attempt-reason">{i18n.m.queue.retry_software_title}</p>{/if}
+                {#if selectedJob.retryReason === 'AvoidIntelQsv'}<p class="attempt-reason">{i18n.m.queue.retry_qsv_title}</p>{/if}
               </div>
             </li>
             {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
               <li class="attempt-item">
                 <div class="attempt-card">
                   <div class="attempt-card-top">
-                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
+                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {attempt.outcome === 'Failed' ? i18n.m.queue.attempt_failed : i18n.m.queue.attempt_rejected}</strong>
                     <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
                   </div>
                   <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
-                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason}</p>{/if}
+                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason === 'WorkerHandback' ? i18n.m.queue.attempt_worker_handback : attempt.reason}</p>{/if}
+                  {#if (attempt.reason === 'WorkerHandback' || attempt.reason === 'IntelQsvTimestamps') && attempt.processLog}
+                    <details class="attempt-checks">
+                      <summary>{i18n.m.queue.attempt_ffmpeg_said}</summary>
+                      <pre class="attempt-log">{attempt.processLog}</pre>
+                    </details>
+                  {/if}
                   {#if attemptChecks(attempt).length > 0}
                     <details class="attempt-checks">
                       <summary>{i18n.m.queue.attempt_checks}</summary>
@@ -969,11 +1001,6 @@
         <footer class="queue-detail-actions">
                 <!-- Actions -->
       <div class="flex flex-wrap gap-2">
-        {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed && !selectedJob.finalizing}
-          <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => selectedJob && replace(selectedJob)} disabled={replacingAll || replacingId !== null}>
-            {replacingId === selectedJob.id ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
-          </button>
-        {/if}
         {#if selectedJob.status === 'AwaitingSizeReview'}
           <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
             {approvingSizeId === selectedJob.id ? i18n.m.common.loading_short : i18n.m.queue.action_encode_anyway}
@@ -981,7 +1008,7 @@
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
           <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id} title={i18n.m.queue.exclude_title}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
-          {#if isVmafOnlyFailure(selectedJob)}
+          {#if canRetryHigher(selectedJob)}
             <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
               {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry_higher_quality}
             </button>
@@ -1030,7 +1057,7 @@
               {/each}
             </div>
             <div class="queue-toolbar-actions">
-              {#if readyToReplaceCount > 0}<button class="btn btn-primary" onclick={replaceAll} disabled={replacingAll || replacingId !== null} title={i18n.m.queue.replace_all_title}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
+              {#if readyToReplaceCount > 0}{#if dryRun}<span id="replace-all-locked" class="text-xs text-ink-3" data-replace-all-locked>{i18n.m.jobResult.locked_reason}</span>{/if}<button class="btn btn-primary" onclick={replaceAll} disabled={dryRun || replacingAll || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.replace_all_title} aria-describedby={dryRun ? 'replace-all-locked' : undefined}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
               {#if failedCount > 0}<button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: failedCount })}</button>{/if}
             </div>
           </div>
@@ -1084,7 +1111,7 @@
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
-              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
+              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
           {/each}</tbody>
         </table></div>
@@ -1203,6 +1230,7 @@
   .attempt-card .attempt-reason { color: var(--ink-2); }
   .attempt-checks { margin-top: .875rem; border-top: 1px solid var(--divide-soft); padding-top: .75rem; }
   .attempt-checks summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: .25rem 0; }
+  .attempt-log { margin-top: .5rem; max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .6875rem; line-height: 1.5; color: var(--ink-2); }
   .queue-diagnostic-action { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; border: 1px solid var(--edge); border-radius: .75rem; padding: 1rem; background: var(--raised); box-shadow: var(--lift-1); transition: box-shadow 180ms ease; }
   .queue-diagnostic-action:hover, .queue-diagnostic-action:focus-within { box-shadow: var(--lift-3); }
   .queue-diagnostic-action > div { min-width: 0; }

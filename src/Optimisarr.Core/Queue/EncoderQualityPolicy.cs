@@ -11,7 +11,7 @@ public sealed record EncoderQuality(int Requested, int Effective, string Mode, i
 /// </summary>
 public static class EncoderQualityPolicy
 {
-    private const int HardwareHeadroom = 4;
+    public const int HardwareHeadroom = 4;
     private const int RetryStep = 3;
 
     public static EncoderQuality Resolve(string? encoder, int requested, int retryCount)

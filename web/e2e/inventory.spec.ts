@@ -122,39 +122,48 @@ test('a successful probe refreshes the open file and its preview eligibility', a
   await expect(dialog.getByRole('button', { name: 'Re-probe', exact: true })).toBeEnabled()
 })
 
-test('an eligible file can be queued on its own, and the result is reported', async ({ page }) => {
+test('an eligible file answers the question and opens its plan instead of queueing', async ({ page }) => {
   await mockInventory(page)
-  let posts = 0
-  await page.route('**/api/media/7/enqueue', route => {
-    posts += 1
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jobId: 41, alreadyQueued: posts > 1 }) })
-  })
+  const enqueues: string[] = []
+  page.on('request', request => { if (request.url().includes('/enqueue')) enqueues.push(request.url()) })
   await page.goto('/#/inventory')
   await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
   const dialog = page.getByRole('dialog')
 
-  await dialog.getByRole('button', { name: 'Queue', exact: true }).click()
-  await expect(dialog.getByRole('status')).toContainText('Added to the queue')
+  const verdict = dialog.getByRole('region', { name: 'Can it be optimised?' })
+  await expect(verdict).toContainText('Yes')
+  await expect(verdict).toContainText('Video codec differs')
+  await dialog.getByRole('link', { name: 'Optimise this file…', exact: true }).click()
 
-  await dialog.getByRole('button', { name: 'Queue', exact: true }).click()
-  await expect(dialog.getByRole('status')).toContainText('already in the queue')
+  await expect(page).toHaveURL(/#\/inventory\/optimise\/7$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Optimise this file' })).toBeVisible()
+  expect(enqueues).toEqual([])
 })
 
-test('a refused file shows the server reason and a skipped file offers no queue action', async ({ page }) => {
+test('a file the rules skip keeps the button, off, with the reason and where to change it', async ({ page }) => {
   await mockInventory(page)
-  await page.route('**/api/media/7/enqueue', route => route.fulfill({
-    status: 409, contentType: 'application/json',
-    body: JSON.stringify({ code: 'media.enqueue.needsProbe', error: 'This file has changed since it was scanned. Scan and probe it again.' }),
-  }))
   await page.goto('/#/inventory')
-  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByRole('button', { name: 'Queue', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toContainText('changed since it was scanned')
-  await page.keyboard.press('Escape')
-
   await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Queue', exact: true })).toHaveCount(0)
+  const dialog = page.getByRole('dialog')
+
+  const verdict = dialog.getByRole('region', { name: 'Can it be optimised?' })
+  await expect(verdict).toContainText('No')
+  await expect(verdict).toContainText('Already uses the target codec.')
+  await expect(verdict.getByRole('link', { name: 'Films → Which files' })).toHaveAttribute('href', '#/libraries/1/configure/files')
+  const optimise = dialog.getByRole('button', { name: 'Optimise this file…', exact: true })
+  await expect(optimise).toBeDisabled()
+  await expect(optimise).toHaveAccessibleDescription('Already uses the target codec.')
+  await expect(dialog.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0)
+})
+
+test('a file that has not been probed says to probe it before it can be optimised', async ({ page }) => {
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /01 - A very long/ }).click()
+  const optimise = page.getByRole('dialog').getByRole('button', { name: 'Optimise this file…', exact: true })
+
+  await expect(optimise).toBeDisabled()
+  await expect(optimise).toHaveAccessibleDescription('Probe this file to evaluate it against the library rules.')
 })
 
 test('the detail actions wrap instead of overflowing on a phone', async ({ page }) => {
@@ -165,47 +174,8 @@ test('the detail actions wrap instead of overflowing on a phone', async ({ page 
   const dialog = page.getByRole('dialog')
   const footer = dialog.locator('.detail-actions')
 
-  for (const name of ['Re-probe', 'Preview', 'Queue']) await expect(footer.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
+  for (const name of ['Re-probe', 'Preview']) await expect(footer.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
+  await expect(footer.getByRole('link', { name: 'Optimise this file…', exact: true })).toBeInViewport({ ratio: 1 })
   expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
-})
-
-test('a slow queue answer does not appear on the file opened since', async ({ page }) => {
-  await mockInventory(page)
-  let answerOrbit = () => {}
-  const orbitAsked = new Promise<void>(asked => {
-    void page.route('**/api/media/7/enqueue', async route => {
-      asked()
-      await new Promise<void>(release => { answerOrbit = release })
-      await route.fulfill({ json: { jobId: 41, alreadyQueued: false } })
-    })
-  })
-  await page.goto('/#/inventory')
-  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Queue', exact: true }).click()
-  await orbitAsked
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
-  await page.getByRole('button', { name: /Arrival/ }).click()
-  const answered = page.waitForResponse('**/api/media/7/enqueue')
-
-  answerOrbit()
-  await answered
-
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveCount(0)
-})
-
-test('the queue confirmation takes its own row on a phone', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 700 })
-  await mockInventory(page)
-  await page.route('**/api/media/7/enqueue', route => route.fulfill({ json: { jobId: 41, alreadyQueued: false } }))
-  await page.goto('/#/inventory')
-  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
-  const dialog = page.getByRole('dialog')
-  const footer = dialog.locator('.detail-actions')
-
-  await footer.getByRole('button', { name: 'Queue', exact: true }).click()
-
-  await expect(footer.getByRole('status')).toContainText('Added to the queue')
-  await expect(footer.getByRole('button', { name: 'Queue', exact: true })).toBeInViewport({ ratio: 1 })
-  expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
 })

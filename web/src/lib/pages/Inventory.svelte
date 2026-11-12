@@ -38,8 +38,6 @@
   // those, and a change of filter, library, or page drops the selection, so a pick made under one
   // filter is never carried into another.
   const selection = createSelection()
-  let queueingId = $state<number | null>(null)
-  let queuedMessage = $state<string | null>(null)
   let bulkBusy = $state(false)
   let bulkAction = $state<'exclude' | 'reprobe' | null>(null)
   let bulkOutcomeKind = $state<'exclude' | 'reprobe'>('exclude')
@@ -77,23 +75,6 @@
       if (request === requestId && !disposed) error = err instanceof Error ? err.message : i18n.m.inventory.error_load
     } finally {
       if (request === requestId && !disposed) loading = false
-    }
-  }
-
-  async function queueFile(file: MediaFile) {
-    if (queueingId === file.id) return
-    queueingId = file.id
-    probeError = null
-    queuedMessage = null
-    // The dialog can move to another file while this is pending, and the answer is not about that one.
-    const stillShown = () => !disposed && selected?.file.id === file.id
-    try {
-      const { alreadyQueued } = await api.enqueueFile(file.id)
-      if (stillShown()) queuedMessage = alreadyQueued ? i18n.m.inventory.queue_already : i18n.m.inventory.queue_added
-    } catch (err) {
-      if (stillShown()) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_queue
-    } finally {
-      if (!disposed && queueingId === file.id) queueingId = null
     }
   }
 
@@ -244,9 +225,8 @@
     selection.clear()
   }
   function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null; selection.clear() }
-  function selectRow(row: InventoryRow) { selected = row; probeError = null; probeMessage = null; queuedMessage = null }
+  function selectRow(row: InventoryRow) { selected = row; probeError = null; probeMessage = null }
   async function closeDetails() {
-    queuedMessage = null
     const id = selected?.file.id
     selected = null
     await tick()
@@ -342,7 +322,7 @@
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} queueing={queueingId === selected.file.id} {queuedMessage} error={probeError} onqueue={() => { if (selected) void queueFile(selected.file) }} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} />
   {/key}
 {/if}
 {#if previewing}
