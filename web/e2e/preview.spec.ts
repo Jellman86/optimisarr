@@ -346,3 +346,16 @@ test('a preview of an interlaced source says a real job would leave it untouched
 
   await expect(page.getByTestId('preview-interlaced')).toContainText('a real job would leave it untouched')
 })
+
+for (const [savingPercent, text, tone] of [[2.8, '−2.8%', 'tone-ok'], [0, '0%', 'tone-neutral'], [-5, '+5%', 'tone-warn']] as const) {
+  test(`a preview size change of ${savingPercent}% reads ${text} in ${tone}`, async ({ page }) => {
+    await mockPreview(page, { ...completedPreview, savingPercent })
+    await page.goto('/#/inventory')
+    await page.getByText('Example Film.mkv', { exact: true }).click()
+    await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+    const badge = page.locator('span.badge', { hasText: text })
+    await expect(badge).toBeVisible()
+    await expect(badge).toHaveClass(new RegExp(`\\b${tone}\\b`))
+  })
+}
