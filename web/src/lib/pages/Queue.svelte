@@ -9,7 +9,7 @@
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
   import { api, type BatchFailure, type BulkReplacementResult, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type SoundtrackSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize, savedPercent } from '../format'
+  import { formatSize, sizeChangePercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { jobFailureStory } from '../i18n/jobErrors'
@@ -17,6 +17,7 @@
   import { activity } from '../stores/activity.svelte'
   import { counts as shellStatus } from '../stores/counts.svelte'
   import Icon from '../components/Icon.svelte'
+  import SizeChange from '../components/SizeChange.svelte'
   import Banner from '../components/Banner.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
@@ -548,6 +549,16 @@
       : phase === 'media' ? i18n.m.queue.phase_media : null
   }
 
+  // What a size change means, in words: a saving, a file that came out the same size, or a
+  // file that grew. The direction is in the wording, so a larger output is never dressed up
+  // as a saving, and a change that cannot be judged gets no words beside its "—".
+  function sizeChangeSentence(change: number | null): string | null {
+    if (change === null) return null
+    if (change < 0) return t(i18n.m.queue.percent_smaller, { percent: Math.abs(change) })
+    if (change > 0) return t(i18n.m.queue.percent_larger, { percent: change })
+    return i18n.m.queue.percent_unchanged
+  }
+
   function badgeClass(status: string): string {
     switch (status) {
       case 'Transcoding':
@@ -788,9 +799,9 @@
               {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
               {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
             </div>
-            {#if selectedJob.sourceSizeBytes && selectedJob.outputSizeBytes && !isWorkingJob(selectedJob)}
-              {@const saved = savedPercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
-              <p class="queue-detail-sizes">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{#if saved > 0}{' '}<strong>{t(i18n.m.queue.percent_smaller, { percent: saved })}</strong>{/if}</p>
+            {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 && !isWorkingJob(selectedJob)}
+              {@const change = sizeChangePercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
+              <p class="queue-detail-sizes">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{' '}<strong><SizeChange sourceSizeBytes={selectedJob.sourceSizeBytes} outputSizeBytes={selectedJob.outputSizeBytes} label={sizeChangeSentence(change)} /></strong></p>
             {/if}
           </div>
           <button class="btn btn-ghost" onclick={closeDetails} aria-label={i18n.m.queue.close_details}><Icon name="x" /></button>
@@ -1213,7 +1224,7 @@
   .queue-detail-heading h2 { font-size: clamp(1.125rem, 3vw, 1.5rem); line-height: 1.3; font-weight: 650; letter-spacing: -.025em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .queue-detail-heading .btn { position: absolute; right: .75rem; top: .75rem; min-height: 2.75rem; min-width: 2.75rem; }
   .queue-detail-sizes { margin-top: .5rem; color: var(--ink-2); font-size: .875rem; font-variant-numeric: tabular-nums; }
-  .queue-detail-sizes strong { color: var(--accent); font-weight: 600; }
+  .queue-detail-sizes strong { font-weight: 600; }
   .queue-detail-status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; margin-top: .75rem; font-size: .75rem; color: var(--ink-3); overflow-wrap: anywhere; }
   .queue-detail-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 1.5rem 2rem; }
   .attempt-timeline { margin-top: 1.5rem; border-top: 1px solid var(--divide-soft); padding-top: 1.25rem; }

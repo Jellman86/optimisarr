@@ -85,6 +85,37 @@ function json(route: Route, body: unknown) {
   })
 }
 
+// The Queue and the Dashboard read the same files from two different endpoints, so a size
+// change that is shown one way on one page and another way on the other is a bug a reader
+// would see. This mock serves both pages from one set of fixtures.
+async function mockQueueAndDashboard(page: Page, jobs: unknown[], results: unknown[]) {
+  await queueHub(page)
+  await page.route('**/api/**', async (route: Route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/health') return json(route, { status: 'healthy' })
+    if (path === '/api/system/tools') return json(route, { tools: [{ name: 'ffmpeg', required: true, available: true, version: '7.1' }] })
+    if (path === '/api/stats') return json(route, {
+      bytesSaved: 1_803_156_582_298, originalBytes: 2_489_056_686_785, optimisedBytes: 685_900_104_487,
+      filesOptimised: 1_885, averageSavingPercent: 72.44, inQuarantine: 0, quarantineReclaimableBytes: 0,
+      queued: 0, running: 0, readyToReplace: 0, failed: 0, libraries: 1, enabledLibraries: 1, discoveredFiles: 1,
+    })
+    if (path === '/api/queue/status') return json(route, {
+      canStart: true, blockedReason: null, manuallyPaused: false, manualPauseMode: 'inactive',
+      runningEncodesSuspended: false, suspendedEncodeCount: 0, encodeFailedCount: 0,
+      runningJobs: 0, hardwareAccelerated: false, freeDiskBytes: 100_000_000_000, workRoot: '/work', waitingReason: null,
+    })
+    if (path === '/api/jobs') return json(route, jobs)
+    if (path === '/api/jobs/failures') return json(route, [])
+    if (path === '/api/results') return json(route, results)
+    if (path === '/api/results/daily') return json(route, [])
+    if (path === '/api/workers') return json(route, [])
+    if (path === '/api/settings') return json(route, { remoteWorkersAvailable: false, remoteWorkersEnabled: false })
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+}
+
 test('replace all confirms on page, replaces every ready job in one request, and opens quarantine once', async ({ page }) => {
   const bulkRequests = await mockQueue(page)
   page.on('dialog', () => { throw new Error('Replacement must not rely on browser dialogs') })
@@ -1063,18 +1094,104 @@ test('a finished job says how big it was before and after', async ({ page }) => 
   await mockQueue(page)
   const finished = { ...job(51, 'Completed', true), sourceSizeBytes: 4_673_211_458, outputSizeBytes: 1_817_794_396, finishedAt: '2026-10-03T09:18:26Z' }
   const bigger = { ...job(52, 'Failed', false), sourceSizeBytes: 405_091_089, outputSizeBytes: 545_986_048, failureCategory: 'SizeSaving' }
-  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [finished, bigger]))
+  const same = { ...job(53, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_000_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [finished, bigger, same]))
 
   await page.goto('/#/queue')
   await page.locator('#queue-job-51').click()
   const details = page.locator('#queue-job-dialog')
-  await expect(details).toContainText('4.4 GB → 1.7 GB 61% smaller')
+  const sizes = details.locator('.queue-detail-sizes')
+  await expect(sizes).toContainText('4.4 GB → 1.7 GB')
+  await expect(sizes).toContainText('−61%')
+  await expect(sizes).toContainText('61% smaller than source')
   await details.getByRole('button', { name: 'Close details' }).click()
 
-  // A larger output gives both sizes and claims no saving.
+  // A larger output says so in words, rather than claiming a saving it did not make.
   await page.locator('#queue-job-52').click()
-  await expect(details).toContainText('386 MB → 521 MB')
-  await expect(details).not.toContainText('smaller')
+  await expect(sizes).toContainText('386 MB → 521 MB')
+  await expect(sizes).toContainText('+35%')
+  await expect(sizes).toContainText('35% larger than source')
+  await expect(sizes).not.toContainText('smaller')
+
+  // A file that came out the same size says so, rather than claiming a saving of nothing.
+  await details.getByRole('button', { name: 'Close details' }).click()
+  await page.locator('#queue-job-53').click()
+  await expect(sizes).toContainText('954 MB → 954 MB')
+  await expect(sizes).toContainText('0%')
+  await expect(sizes).toContainText('File size unchanged')
+  await expect(sizes).not.toContainText('smaller')
+})
+
+test('the size change is signed by the file itself, and a file that grew is never dressed up as a saving', async ({ page }) => {
+  await mockQueue(page)
+  const smaller = { ...job(61, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 600_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  const same = { ...job(62, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_000_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  const bigger = { ...job(63, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  // Changes finer than one percent, where an old rounding could turn a real change into "0%".
+  const finerShrink = { ...job(64, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 999_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  const finerGrow = { ...job(65, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_004_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [smaller, same, bigger, finerShrink, finerGrow]))
+
+  await page.goto('/#/queue')
+  const details = page.locator('#queue-job-dialog')
+  const sizes = details.locator('.queue-detail-sizes')
+
+  // A smaller file carries a negative figure, in the tone that means a saving.
+  await page.locator('#queue-job-61').click()
+  await expect(sizes.getByText('−40%')).toHaveClass(/text-ok/)
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A file of the same size carries no sign at all, in neutral ink.
+  await page.locator('#queue-job-62').click()
+  await expect(sizes.getByText('0%', { exact: true })).toHaveClass(/text-ink-2/)
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A bigger file carries a positive figure, in the warning tone rather than the saving one.
+  await page.locator('#queue-job-63').click()
+  await expect(sizes.getByText('+20%')).toHaveClass(/text-warn/)
+  await expect(sizes.getByText('+20%')).not.toHaveClass(/text-ok/)
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A change under one percent keeps a decimal, and says which way it went.
+  await page.locator('#queue-job-64').click()
+  await expect(sizes.getByText('−0.1%')).toHaveClass(/text-ok/)
+  await expect(sizes.getByText('0.1% smaller than source')).toBeVisible()
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  await page.locator('#queue-job-65').click()
+  await expect(sizes.getByText('+0.4%')).toHaveClass(/text-warn/)
+  await expect(sizes.getByText('0.4% larger than source')).toBeVisible()
+})
+
+test('a job whose output could not be sized shows no size change', async ({ page }) => {
+  await mockQueue(page)
+  // The server reports an output of 0 bytes when it could not size the file, so it is not a saving.
+  const unsized = { ...job(81, 'Failed', false), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 0, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [unsized]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-81').click()
+  const dialog = page.locator('#queue-job-dialog')
+  await expect(dialog.locator('h2')).toBeVisible()
+  await expect(dialog.locator('.queue-detail-sizes')).toHaveCount(0)
+  await expect(dialog).not.toContainText('−100%')
+})
+
+test('the queue detail and the recent results read the same size change', async ({ page }) => {
+  const sizes = { sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000 }
+  const finished = { ...job(71, 'Completed', true), ...sizes, finishedAt: '2026-10-03T09:18:26Z' }
+  await mockQueueAndDashboard(page, [finished], [{
+    jobId: 71, mediaFileId: 71, libraryId: 1, libraryName: 'TV', relativePath: 'Film 71.mkv',
+    ...sizes, vmafHarmonicMean: null, videoEncoder: 'libx265', workerName: null, finishedAt: '2026-10-03T09:18:26Z',
+  }])
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-71').click()
+  await expect(page.locator('#queue-job-dialog').locator('.queue-detail-sizes')).toContainText('+20%')
+
+  await page.goto('/#/')
+  const results = page.getByRole('region', { name: 'Recent results' })
+  await expect(results.getByText('+20%')).toBeVisible()
 })
 
 

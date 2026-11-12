@@ -55,6 +55,35 @@ test('a direct review link loads comparison and verification after refresh', asy
   await expect(page.locator('video')).toHaveCount(2)
 })
 
+test('a quarantined file that grew says so, in bytes and in percent alike', async ({ page }) => {
+  // The bytes and the percent share one direction: growth reads positive in both, a saving
+  // negative in both, instead of a bare "191 MB" beside a "+20%" that contradicts it.
+  const grew = { ...replacement, id: 2, originalPath: '/media/Grown Film.mkv', finalPath: '/media/Grown Film.mp4', originalSizeBytes: 1_000_000_000, newSizeBytes: 1_200_000_000 }
+  const shrank = { ...replacement, id: 3, originalSizeBytes: 3_600_000_000, newSizeBytes: 269_000_000 }
+  await mockQuarantine(page, [grew, shrank])
+
+  await page.goto('/#/quarantine/2')
+  const review = page.locator('[data-quarantine-review]')
+  await expect(review.getByText('+191 MB')).toBeVisible()
+  await expect(review.getByText('+20%')).toBeVisible()
+  await expect(review.getByText('−191 MB')).toHaveCount(0)
+
+  await page.goto('/#/quarantine/3')
+  await expect(review.getByText('−3.1 GB')).toBeVisible()
+  await expect(review.getByText('−93%')).toBeVisible()
+})
+
+test('the quarantine list and the review read the same size change', async ({ page }) => {
+  const shrank = { ...replacement, id: 3, originalSizeBytes: 3_600_000_000, newSizeBytes: 269_000_000 }
+  await mockQuarantine(page, [shrank])
+
+  await page.goto('/#/quarantine')
+  await expect(page.getByRole('cell', { name: /−93%/ })).toContainText('3.4 GB → 257 MB')
+
+  await page.goto('/#/quarantine/3')
+  await expect(page.locator('[data-quarantine-review]').getByText('−93%')).toBeVisible()
+})
+
 for (const action of ['approve', 'rollback']) {
   test(`${action} retains its confirmation and returns to the list on success`, async ({ page }) => {
     const items = [{ ...replacement }]
