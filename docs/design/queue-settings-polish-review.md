@@ -16,9 +16,8 @@ redundant count that used to sit beside it is gone because the **All · X** filt
 says how many rows there are. A selection is dropped when the operator changes tab, and
 after a batch the rows it handled leave the selection while refused rows stay picked.
 
-The comparative assessment below records the earlier implementation; the bulk-cleanup
-row is superseded by this correction. Backend behaviour and replacement safety remain
-unchanged.
+The comparative assessment below records the earlier implementation. Backend behaviour
+and replacement safety remain unchanged.
 
 ## Queue dialog correction — 17 September 2026
 

@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-// The Queue toolbar is one row of one height. The filters sit in it, and the batch bar takes
-// the same cell when a row is picked, so checking a row never moves the table below it.
+// The filters and the batch bar share one grid cell, sized to the taller of the two, so
+// checking a row swaps one for the other and never moves the table below it.
 
 function job(id: number, status: string, verificationPassed: boolean | null = null) {
   return {
@@ -63,7 +63,11 @@ async function mockQueue(page: Page, jobs: ReturnType<typeof job>[]) {
     }
     if (path === '/api/jobs/batch/retry') {
       requests.push(route.request().url())
-      return json(route, { requested: 1, succeeded: [1], failures: [] })
+      return json(route, {
+        requested: 2,
+        succeeded: [1],
+        failures: [{ id: 3, code: 'job.retry.invalidState', message: 'Only a failed job can be retried.' }],
+      })
     }
     if (path === '/api/replacements') return json(route, [])
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
@@ -80,7 +84,7 @@ test('picking a row replaces the filters in place and leaves the table where it 
   const batch = page.locator('[data-queue-batch]')
   const row = page.locator('#queue-list tbody tr').first()
 
-  // The toolbar is one row of one height, whichever state it is in.
+  // With little showing, the toolbar is a single row, and it keeps its height in either state.
   const toolbarBefore = (await toolbar.boundingBox())!
   expect(toolbarBefore.height).toBeGreaterThanOrEqual(47)
   expect(toolbarBefore.height).toBeLessThanOrEqual(49)
@@ -123,7 +127,7 @@ test('the queue no longer hides its management behind a toggle', async ({ page }
   await expect.poll(() => requests.some(url => url.includes('/api/jobs/clear?scope=errored'))).toBe(true)
 })
 
-test('the clear-errors action only appears when a job has failed', async ({ page }) => {
+test('the clear-errors action is absent when nothing failed or was cancelled', async ({ page }) => {
   await mockQueue(page, [job(1, 'Queued'), job(2, 'Completed')])
   await page.goto('/#/queue')
 
