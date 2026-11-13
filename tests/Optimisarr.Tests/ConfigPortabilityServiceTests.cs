@@ -885,6 +885,68 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         await db.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task Import_stores_replace_automatically_off_for_a_library_that_saves_in_another_folder()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var both = snapshot with { Libraries = [snapshot.Libraries[0] with { MoveOnComplete = true, TargetFolder = "/data/optimised", AutoReplace = true }] };
+
+        var result = await ImportAsync(both);
+
+        Assert.True(result.Applied);
+        await using var restored = CreateDb();
+        var library = await restored.Libraries.SingleAsync();
+        Assert.True(library.MoveOnComplete);
+        Assert.Equal("/data/optimised", library.TargetFolder);
+        Assert.False(library.AutoReplace);
+    }
+
+    [Fact]
+    public async Task Import_refuses_a_save_folder_inside_a_library_and_writes_nothing()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            db.Libraries.Add(new Library { Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var films = snapshot.Libraries.Single(library => library.Name == "Films");
+        // Only Films is in the file: the TV library it points into is one this server already has.
+        var inside = snapshot with { Libraries = [films with { Name = "Renamed", MoveOnComplete = true, TargetFolder = "/data/tv/optimised" }] };
+
+        var result = await ImportAsync(inside);
+
+        Assert.False(result.Applied);
+        Assert.Contains("inside the TV library", Assert.Single(result.Errors));
+        await using var unchanged = CreateDb();
+        var saved = await unchanged.Libraries.SingleAsync(library => library.Path == "/data/films");
+        Assert.Equal("Films", saved.Name);
+        Assert.False(saved.MoveOnComplete);
+    }
+
+    [Fact]
+    public async Task Import_refuses_a_save_folder_that_cannot_be_a_path()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var broken = snapshot with { Libraries = [snapshot.Libraries[0] with { MoveOnComplete = true, TargetFolder = "/data/opti\0mised" }] };
+
+        var result = await ImportAsync(broken);
+
+        Assert.False(result.Applied);
+        Assert.Contains("not a path this server can use", Assert.Single(result.Errors));
+    }
+
     private async Task<ConfigSnapshot> ExportAsync()
     {
         await using var db = CreateDb();

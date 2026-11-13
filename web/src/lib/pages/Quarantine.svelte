@@ -1,11 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { api, type QuarantinedDuplicates, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize } from '../format'
+  import { formatSize, formatSizeChangeBytes } from '../format'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
   import Icon from '../components/Icon.svelte'
+  import SizeChange from '../components/SizeChange.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
@@ -193,11 +194,6 @@
     }
   }
 
-  function savingPercent(r: { originalSizeBytes: number; newSizeBytes: number }): number {
-    if (r.originalSizeBytes <= 0) return 0
-    return Math.round((1 - r.newSizeBytes / r.originalSizeBytes) * 100)
-  }
-
   function searchReport(detail: ReplacementDetail | null | undefined) {
     try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).perceptualSearch ?? null : null }
     catch { return null }
@@ -259,7 +255,7 @@
       <div class="review-metrics grid grid-cols-3 gap-2 sm:gap-4">
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.original_quarantined : i18n.m.shared.original}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.originalSizeBytes)}</p></div>
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.replacement_in_place : i18n.m.shared.encoded}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.newSizeBytes)}</p></div>
-        <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_saving}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl text-accent">{formatSize(r.originalSizeBytes - r.newSizeBytes)} <span class="text-sm text-ink-3">({savingPercent(r)}%)</span></p></div>
+        <div class="card p-3 sm:p-5"><p class="min-h-10 break-words text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_size_change}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSizeChangeBytes(r.originalSizeBytes, r.newSizeBytes)} <span class="text-sm">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span></p></div>
       </div>
       {#if r.status === 'Replaced'}
         <section class="card p-5 sm:p-6" aria-labelledby="quarantine-decision">
@@ -388,7 +384,7 @@
           <tr>
             <th class="px-4 py-3">{i18n.m.quarantine.col_status}</th>
             <th class="px-4 py-3">{i18n.m.quarantine.col_replaced_file}</th>
-            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.quarantine.col_saving}</th>
+            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.quarantine.col_size_change}</th>
             <th class="hidden px-4 py-3 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
           </tr>
         </thead>
@@ -425,7 +421,7 @@
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
                 {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}
-                <span class="text-ok"> (−{savingPercent(r)}%)</span>
+                (<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)
               </td>
               <td class="hidden px-4 py-2 text-xs text-ink-3 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
             </tr>

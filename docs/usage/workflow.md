@@ -43,33 +43,35 @@ Do this:
 
 1. Go to **Libraries**.
 2. Add a library or click **Configure** on an existing one.
-3. In **Choose files**, use a path as the container sees it, usually below `/data`, and pick the
-   media type, eligibility rules, and priority.
-4. In **Encode**, choose the processing mode and preset or format. Open **Video settings**,
-   **Audio & subtitles**, or image settings when you need those controls.
-5. For video re-encodes, review **Video quality path**: new libraries start with Adaptive per-title
-   VMAF and the Visually lossless target. Fixed quality can use a named VMAF tier or turn VMAF off.
-6. In **Verify**, review the required safety checks. **Advanced verification** contains precise
-   tolerances and custom perceptual-quality floors and sampling.
-7. In **Schedule & replace**, choose automation, its time window, and the output destination.
-8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
-   applies changes from all stages together. Advanced pages are optional refinements.
+3. In **Which files**, use a path as the container sees it, usually below `/data`, and pick the
+   media type and the rules for which files are picked up.
+4. In **Video**, choose what to do and a preset. Format, quality, picture, encoder and AI
+   upscaling are all on that page. **Audio & subtitles** and **Images** hold the rest.
+5. For video re-encodes, review **Quality**: new libraries start with **Smallest file that meets
+   the target** and the Visually lossless target. A fixed setting can be checked against the
+   target or have no picture check.
+6. In **Checks**, read the checks that are always on, then switch on the optional ones you want.
+   Their tolerances are on the same page.
+7. In **Schedule & replace**, choose automation, its hours, queue priority, and what happens to
+   your files after they pass.
+8. Use the page list, the overview's **Edit** buttons or the breadcrumb to move around. The draft
+   is retained, and **Save** applies changes from all pages together.
 
-The stage bar remains available on configuration, Candidates and Excluded pages. The stage being
-edited is filled with the accent colour; selecting another stage retains the draft.
+The page list stays above every settings page; the page being read is filled with the accent colour.
 
-For explicitly re-encoded video audio, **Verify** also offers **Soundtrack quality report**
-and **Require soundtrack quality**, both off by default and separate from standalone audio.
-When enabling the gate, choose **Maximum soundtrack difference** in **Advanced verification**.
+For video audio that is converted, **Audio & subtitles** also offers **Soundtrack quality**,
+off by default and separate from standalone audio.
+When requiring a limit, choose **Maximum soundtrack difference** in the row below it.
 Reports alone do not block replacement; a configured gate needs every retained supported track
 and sample to pass. Copied audio and previews skip this assessment. Review the
 [supported tracks, sample coverage and cost](../setup/configuration.md#assess-re-encoded-video-soundtracks)
 before using it on a library.
 
-The library overview groups controls by processing stage. Each stage opens its own page, and
-breadcrumbs return to the overview without discarding your draft.
+The library overview says what the library does, one line per page, with a tag on any line that
+changes the picture, renames files, removes tracks or deletes originals later. **Edit** opens the
+page with every control for that line.
 
-![Library overview showing Choose files, Encode, Verify, and Schedule & replace stages](../images/optimisarr-library-configure-dark.png)
+![Library overview with one sentence per page, warning tags, and Edit buttons](../images/optimisarr-library-configure-dark.png)
 
 Preset guide:
 
@@ -81,7 +83,7 @@ Preset guide:
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
 
-Under **Encode → Video settings → Advanced encoding**, **Encoder effort** is portable across encoder modes:
+Under **Video → Encoder**, **Encoder effort** is portable across encoder modes:
 
 | Choice | Behaviour |
 |---|---|
@@ -154,8 +156,32 @@ Do this:
 
 ![Inventory detail view after selecting a row](../images/optimisarr-inventory-detail-dark.png)
 
-You should understand why a file is or is not eligible before you queue it. If
-the decision is surprising, change the library rules first and scan again.
+The details answer **Can it be optimised?** with Yes or No and the reason. If the answer is No, the
+link under the reason opens the library page that decides which files are taken.
+
+### See what would happen to one file
+
+**Optimise this file…** opens a plan for that file. Opening it changes nothing and queues nothing.
+
+![Plan for one file, showing what it is now and what it would be after, part by part](../images/optimisarr-optimise-file-dark.png)
+
+The plan is worked out from the file and its library's settings as they are now:
+
+- **Video**, **Audio**, **Subtitles** and **File** each show what the file is now and what it would be
+  after. A setting that changes the picture, removes a track or renames the file is tagged where it is
+  described.
+- What only the job can measure is said as a rule, not as a fact: a frame-rate cap applies if the
+  file runs above it, black bars are cut off if any are found, and the exact new size is given only
+  when there are no bars still to measure. A job that would be upscaled with AI says so, and says its
+  sound is copied. An image says its format, any resize, and when an already compressed image is
+  compressed again.
+- **Size** says "Not known until it's encoded". There is no honest number before an encode. **Preview**
+  encodes a short part so you can see a result first.
+- **What happens to the original** follows the library's choice under **Schedule & replace**.
+
+The settings are the library's and apply to all of its files; the plan cannot be changed for one file.
+**Queue this file** adds that one file to the queue. A file the rules skip cannot be queued, and the
+page says why.
 
 ## 5. Preview one representative file
 
@@ -262,9 +288,44 @@ Use the row actions carefully:
 - **Retry** after changing the cause of a failure.
 - **Exclude** when you do not want that file offered again.
 - **Remove** clears a queue entry when it is safe to clear.
-- **Replace** appears only after verification passes and dry-run is off.
+- **Replace** appears only after verification passes and dry-run is off. While dry-run is on, the row
+  offers **View job** instead, and **Replace all** is off.
 - **Replace all** uses one confirmation for every verified, ready output. Each original still moves to
   Quarantine independently; if any item cannot be replaced, Queue remains open so you can review it.
+
+### Read a job's result
+
+Open a job that has finished its checks to see the result.
+
+![Result of a job that passed every check, with what replacing does and the dry-run unlock](../images/optimisarr-job-result-dark.png)
+
+A job that **passed every check** says what replacing does before you press the button: the original
+moves to Quarantine, how long you can put it back, and that you get the space back only when the
+original is deleted. On a fresh install replacing is locked (dry-run), so **Replace original** is off
+and says why. **Unlock replacing** beside it turns dry-run off for every library, not only this file.
+
+Dry-run holds back more than the Replace button, and the text beside the button says so. With it
+off, libraries set to replace automatically replace without asking, originals and duplicate copies in
+Quarantine are deleted for good once they pass the time limit, and libraries set to clean up
+duplicate copies every day start doing so. On a fresh install none of that has anything to act on,
+and one press unlocks. When something would happen straight away, the button first shows what, with
+counts from the server (files waiting to be replaced, quarantined files past the time limit, libraries
+with daily duplicate clean-up), and needs a second press. If the server cannot say, the second press
+is still asked for. You can lock it again in **Settings → Files & safety**.
+
+A job that **missed a check** says what you can do instead:
+
+- **Retry at higher quality**, when a measured picture-quality score was the only check missed and
+  the quality search had not already tried its highest setting. The library's settings do not change.
+- **Change the quality target for the whole library**, when a picture-quality score fell short. This
+  changes the check itself, for every file in the library. It is not offered when picture quality
+  could not be measured at all: there is no score to compare, so the advice is to retry.
+- **Exclude** the file, so it is not offered or queued again.
+
+There is no "replace anyway". A file that missed a check never replaces an original.
+
+Each check is named in plain words, such as "Plays from start to end without errors" or "Same
+length". Hover a name to see the name logs and diagnostics use, such as `Decode health`.
 
 ## 7. Review exclusions
 
@@ -313,7 +374,7 @@ Once a manual batch looks good, enable automation per library.
 Use **Optimise automatically** when you want eligible files queued and started
 inside a local-time window. Use `00:00` to `00:00` for all day.
 
-Use **Auto-accept passed jobs** in **Schedule & replace** only after reviewing a
+Use **Replace the original automatically** in **Schedule & replace** only after reviewing a
 small manual batch for that library and preset. It is off by default for every
 library type. Read the warning, acknowledge the risk, confirm, then **Save**.
 Already-ready jobs are included. Originals stay in Quarantine until approval or

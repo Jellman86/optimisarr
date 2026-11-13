@@ -38,7 +38,7 @@ on the same filesystem, so Optimisarr must use its slower verified copy-plus-del
 The template sets `OPTIMISARR_WORK_DIR=/data/.optimisarr/work` and
 `OPTIMISARR_TRASH_DIR=/data/.optimisarr/trash`. You can move work to fast scratch storage, but doing
 so intentionally gives up atomic work-to-library moves; keep the verified cross-filesystem fallback
-enabled in **Settings → Files & safety** and use the setup Re-test action to confirm the effective relationship.
+enabled in **Settings → Files & safety** and use setup's **Test again** action to confirm the effective relationship.
 
 No original is ever deleted or overwritten until a verified replacement exists — a failed or
 re-eligible job leaves the source untouched.
@@ -106,7 +106,7 @@ After installing or updating, check the following:
 
 - The Docker page reports **healthy**, the **WebUI** opens the mapped host port, and the UI shows
   the expected released version.
-- **Settings → System** reports writable config, work and quarantine paths. Setup's Re-test
+- **Settings → System** reports writable config, work and quarantine paths. Setup's **Test again**
   confirms the effective filesystem/mount relationship; one mapping does not guarantee that
   underlying Unraid shares, pools or devices share a filesystem.
 - **Settings → System → Tools** proves the intended encoder, full decoding and VMAF capability. On a

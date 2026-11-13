@@ -1,4 +1,5 @@
 using Optimisarr.Core.Diagnostics;
+using Optimisarr.Core.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -507,16 +508,29 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
     public Task ReleaseAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
         ReleaseCoreAsync(pairing, leaseId, "release", cancellationToken);
 
+    /// <summary>
+    /// Gives a job back and says what went wrong, so the server can show it and recognise a
+    /// failure it knows how to avoid. An older server reads no body and treats it as a plain release.
+    /// </summary>
+    public Task ReleaseAfterFailureAsync(
+        StoredPairing pairing, Guid leaseId, string failure, CancellationToken cancellationToken = default) =>
+        ReleaseCoreAsync(pairing, leaseId, "release", cancellationToken, failure);
+
     public Task ReleaseForCapacityAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
         ReleaseCoreAsync(pairing, leaseId, "capacity-unavailable", cancellationToken);
 
     public Task ReleaseForInterruptionAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
         ReleaseCoreAsync(pairing, leaseId, "interrupted", cancellationToken);
 
-    private async Task ReleaseCoreAsync(StoredPairing pairing, Guid leaseId, string action, CancellationToken cancellationToken)
+    private async Task ReleaseCoreAsync(
+        StoredPairing pairing, Guid leaseId, string action, CancellationToken cancellationToken, string? failure = null)
     {
         using var request = new HttpRequestMessage(
             HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/{action}"));
+        if (failure is not null)
+        {
+            request.Content = JsonContent.Create(new { failure = WorkerHandbackFailure.Normalise(failure) });
+        }
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
         using var response = await http.SendAsync(request, cancellationToken);
         // A shutdown request must distinguish an acknowledged hand-back from a lease that may

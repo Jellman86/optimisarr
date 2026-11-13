@@ -60,7 +60,7 @@ back to MKV rather than discarding Blu-ray/DVD image subtitles. The revealed dia
 format that was actually produced.
 
 Each tested quality is held constant across all three scenes. Preset comparisons use each preset's concrete configured quality. A library configured
-for **Adaptive per-title VMAF** still uses adaptive selection for normal optimisation jobs, but the
+to **Smallest file that meets the target** still uses that search for normal optimisation jobs, but the
 personal check does not start another early/middle/late quality search inside every comparison
 scene. That would change the preset being judged and multiply a short check into dozens of unrelated
 sample encodes. Optimisarr instead measures VMAF on each completed 12-second scene and reveals that

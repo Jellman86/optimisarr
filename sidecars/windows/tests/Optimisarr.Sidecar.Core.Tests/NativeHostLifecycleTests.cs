@@ -48,9 +48,10 @@ public sealed class NativeHostLifecycleTests
         using var input = new ParentStream(Request());
         using var output = new MemoryStream();
         var result = await NativeHostProgram.RunAsync(input, output, default,
-            (_, report, _) => { report(new("status", Detail: "qualifying")); return Task.FromResult(new NativeHostEvent("capabilities", Capabilities: new())); });
+            (_, report, _) => { report(new("status", Detail: "qualifying")); return Task.FromResult(new NativeHostEvent("capabilities", Capabilities: new())); })
+            .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(0, result);
-        Assert.True(input.MonitorCancelled);
+        await input.MonitorCancelled.WaitAsync(TimeSpan.FromSeconds(5));
         var lines = Encoding.UTF8.GetString(output.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         using var last = JsonDocument.Parse(lines[^1]);
         Assert.Equal("capabilities", last.RootElement.GetProperty("type").GetString());
@@ -102,16 +103,21 @@ public sealed class NativeHostLifecycleTests
         using var input = new ParentStream(Request());
         using var output = new MemoryStream();
         var result = await NativeHostProgram.RunAsync(input, output, default,
-            (_, _, _) => Task.FromResult(new NativeHostEvent("recovered")));
+            (_, _, _) => Task.FromResult(new NativeHostEvent("recovered")))
+            .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(0, result);
-        Assert.True(input.MonitorCancelled);
+        await input.MonitorCancelled.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private sealed class ParentStream(byte[] frame, bool ignoreCancellation = false) : Stream
     {
         private int _position;
         public TaskCompletionSource ParentClosed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public bool MonitorCancelled { get; private set; }
+        // The host stops waiting on the parent as soon as it is done, without waiting for the
+        // pending read to unwind (macOS console pipes can ignore cancellation), so the read sees
+        // its cancellation possibly after RunAsync returns. Tests wait for it rather than race it.
+        private readonly TaskCompletionSource _monitorCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task MonitorCancelled => _monitorCancelled.Task;
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
         {
             if (_position < frame.Length)
@@ -120,7 +126,7 @@ public sealed class NativeHostLifecycleTests
                 frame.AsMemory(_position, count).CopyTo(buffer); _position += count; return count;
             }
             try { await ParentClosed.Task.WaitAsync(ignoreCancellation ? CancellationToken.None : token); return 0; }
-            catch (OperationCanceledException) { MonitorCancelled = true; throw; }
+            catch (OperationCanceledException) { _monitorCancelled.TrySetResult(); throw; }
         }
         public override bool CanRead => true;
         public override bool CanSeek => false;
