@@ -706,6 +706,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("AttemptHistoryJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AvoidIntelQsv")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("BypassSizePreflight")
                         .HasColumnType("INTEGER");
 
@@ -939,6 +942,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HandbackFailure")
+                        .HasMaxLength(8000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HardwareDecoder")

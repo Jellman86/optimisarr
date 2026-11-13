@@ -13,14 +13,20 @@ original → /trash quarantine → verified output → library path
 Before the first replacement, Quarantine is empty. Replaced originals appear
 there for review and rollback.
 
-**Libraries → Configure → Schedule & replace → Auto-accept passed jobs** removes
+**Libraries → Configure → Schedule & replace** asks one question, **After a file
+passes its checks**, with three answers. **Replace the original after I press
+Replace** is the default. **Replace the original automatically** removes
 the manual replacement step for every library type, including already-ready jobs.
-It is off by default. Enabling it requires a risk acknowledgement and confirmation,
+**Save optimised files in another folder** never replaces anything: the original
+stays in the library and the new file is saved under a folder outside every
+library, the working space and Quarantine.
+
+Replacing automatically is never the default. Enabling it requires a risk acknowledgement and confirmation,
 then **Save**. Misconfigured settings can damage files or lose quality, tracks and
 metadata; passing only covers the checks you enabled. Test a small manual batch
 and keep an independent backup first.
 
-Auto-accept preserves originals in Quarantine. It does not approve or purge them.
+Replacing automatically preserves originals in Quarantine. It does not approve or purge them.
 Approval and retention cleanup still remove rollback ability. Switching the option
 off and saving stops new automatic replacements, including jobs still encoding or
 preparing to replace. An action already moving files finishes its protected moves.

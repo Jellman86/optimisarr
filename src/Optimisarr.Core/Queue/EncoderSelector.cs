@@ -14,7 +14,8 @@ public static class EncoderSelector
         string targetCodec,
         EncoderMode mode,
         IReadOnlyList<EncoderCapability> capabilities,
-        int? sourceBitDepth = null)
+        int? sourceBitDepth = null,
+        bool avoidIntelQsv = false)
     {
         var codec = NormaliseCodec(targetCodec);
         if (codec is null)
@@ -48,6 +49,19 @@ public static class EncoderSelector
             EncoderMode.Vaapi => ["VAAPI"],
             _ => ["CPU"]
         };
+        if (avoidIntelQsv)
+        {
+            // See IntelQsvTimestampFallback: this job's source already made QSV stop. A queue
+            // forced onto QSV has nowhere else to go, so it says so instead of failing the same way.
+            if (mode == EncoderMode.IntelQsv)
+            {
+                return EncoderSelection.Failure(
+                    "Intel QSV stopped on this file because its picture times jump, and the encoder mode only allows Intel QSV. "
+                    + "Set the encoder mode to Auto or VAAPI to encode it with another encoder.");
+            }
+
+            preferredModes = preferredModes.Where(preferred => preferred != "Intel QSV").ToArray();
+        }
 
         foreach (var preferredMode in preferredModes)
         {

@@ -156,7 +156,9 @@ internal static class SystemEndpoints
             encoderPresets = EncoderPresetPolicy.Selections,
             // Recognised values from earlier releases and direct API use. The UI keeps an existing
             // one visible until the operator deliberately replaces it with a portable choice.
-            legacyEncoderPresets = EncoderPresetPolicy.LegacySelections
+            legacyEncoderPresets = EncoderPresetPolicy.LegacySelections,
+            // Lets the editor say what a hardware encoder does with the number, without keeping its own copy.
+            hardwareQualityHeadroom = EncoderQualityPolicy.HardwareHeadroom
         }))
         .WithName("GetLibraryOptions");
     }

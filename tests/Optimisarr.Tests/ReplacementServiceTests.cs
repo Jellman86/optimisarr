@@ -257,6 +257,25 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(1, (await db.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
     }
 
+    [Fact]
+    public async Task A_library_with_both_switches_on_does_not_replace_a_job_that_is_already_ready()
+    {
+        var (original, output) = WriteFiles("Both.avi", "Both.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        await db.Libraries.ExecuteUpdateAsync(setters => setters
+            .SetProperty(library => library.MoveOnComplete, true)
+            .SetProperty(library => library.TargetFolder, Path.Combine(_dataDir, "elsewhere")));
+
+        var result = await NewService(db).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
     private async Task AttachLibraryAsync(int jobId, MediaType type, bool autoReplace)
     {
         await using var db = new OptimisarrDbContext(_options);

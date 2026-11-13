@@ -228,8 +228,8 @@ does not contain secrets and is not exported between installations.
 | `GET` | `/api/setup` | Read the versioned completed/current step and completion state. |
 | `GET` | `/api/setup/readiness` | Non-destructively check database, config/work/quarantine paths and media tools, then return visible encoder, VMAF and schedule recommendations from proved capabilities. |
 | `PUT` | `/api/setup/progress` | Persist one completed step in order; repeated writes are idempotent. |
-| `POST` | `/api/setup/complete` | Complete setup from the final review step. Does not start work. |
-| `POST` | `/api/setup/apply` | Validate and atomically apply the reviewed settings and opted-in recommendations, then complete setup. A duplicate submission returns the existing receipt without changing the applied plan. |
+| `POST` | `/api/setup/complete` | Complete setup from the final step. Does not start work. 400 `setup.tools.required` while a required tool (FFmpeg or ffprobe) is missing. |
+| `POST` | `/api/setup/apply` | Validate and atomically apply the reviewed settings and opted-in recommendations, then complete setup. 400 `setup.tools.required`, with nothing applied, while a required tool is missing. A duplicate submission returns the existing receipt without changing the applied plan. |
 | `POST` | `/api/setup/restart` | Return to step one while preserving libraries and settings. |
 
 Health response:
@@ -249,10 +249,11 @@ Health response:
 |---|---|---|
 | `GET` | `/api/settings` | Read global queue, hardware, and replacement settings. |
 | `PUT` | `/api/settings` | Save global settings. Body is the full settings object; a `superResolution` section is validated against the engine's shipped model matrix and rejected with a specific error code when unsupported. |
+| `GET` | `/api/settings/dry-run-unlock` | What turning dry-run off would start without anyone pressing anything further: quarantined originals and duplicate copies past the time limit (counts and bytes), libraries with daily duplicate clean-up on, and verified jobs waiting in libraries that replace automatically. `needsConfirmation` is true when any is non-zero. Read-only. |
 | `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
-| `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
+| `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. A library's `targetFolder` is held to the same rule as on Save (outside every library the server would then have, the working space and Quarantine), and nothing is imported if one breaks it. A library with `moveOnComplete` is stored with `autoReplace` off. |
 
 New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
 formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults.
@@ -339,14 +340,16 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `GET` | `/api/library-options` | Available media types, rule profiles with video/standalone-audio defaults, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
-| `POST` | `/api/libraries` | Create a library. |
-| `PUT` | `/api/libraries/{id}` | Update a library. |
+| `POST` | `/api/libraries` | Create a library. With `moveOnComplete`, `targetFolder` must exist, be writable, and be outside every library, the working space and Quarantine; otherwise `400` with a `library.targetFolder.*` code. `autoReplace` is stored `false` while `moveOnComplete` is `true`. |
+| `PUT` | `/api/libraries/{id}` | Update a library. The same `targetFolder` rule applies. |
+| `POST` | `/api/libraries/target-folder-check` | Say whether a folder may collect a library's optimised files. Body: `path`, and optionally `libraryId`, `libraryName` and `libraryPath` to judge an unsaved library by the folder it is about to have. Returns `allowed`, `reason` (`none`, `insideLibrary`, `workFolder`, `quarantine`, `missing`, `unwritable`), `libraryName`, an English `message` and `availableBytes`. Creates and removes one empty probe file to test writing. |
 | `DELETE` | `/api/libraries/{id}` | Delete a library record. |
 | `POST` | `/api/libraries/{id}/scan` | Scan one library. |
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |
 | `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. Optional `status`, `search` (path substring), and `page`/`pageSize`; the pre-paging total is returned in `X-Total-Count`. |
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
 | `POST` | `/api/media/{id}/enqueue` | Queue one eligible file, whatever the library's automatic enqueue setting. Returns the job, marking one already active. 409 with the reason when the rules refuse it, or it needs a fresh probe. |
+| `GET` | `/api/media/{id}/plan` | What queueing this file would do, by its library's settings as they are now. Read-only. Returns `eligible` and `reason` (the verdict the queue would give), `kind`, `action` (`Encode`, `Remux`, `TrackCleanup`, `Audio`, `Image`), `picture` (codec, quality, tone-map, deinterlace, noise reduction and `upscales`; `width` and `height` are the exact new size and are `null` while black bars are still to be measured, when only `shrinkToHeight` is known; `frameRateCap` and `cropBlackBars` are rules the job applies only if the file needs them; `null` unless the video is re-encoded), `image` (format, quality, resize and `recompressesLossy`; `null` unless the file is an image), `sound` (`codec` is `null` when audio is copied, which AI upscaling always does), `audioTracks` and `subtitleTracks` (each track's language and whether it is kept; `null` when languages were never captured), and `file` (container, file name and whether it is renamed, already allowing for audio MP4 cannot carry; `mayBecomeMatroska` is left for picture subtitles, which only the job reads). `409` when the file is not probed. |
 | `POST` | `/api/media/batch/probe` | Start a batch that probes several media files in the background; the batch is watched through `GET /api/media/batch/probe/{id}`. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |

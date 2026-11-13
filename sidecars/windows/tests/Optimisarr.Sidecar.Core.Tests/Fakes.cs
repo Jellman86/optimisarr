@@ -33,12 +33,18 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
     public int DeliveryRefusals;
     /// <summary>How many renewals were asked for.</summary>
     public int RenewCalls;
+    /// <summary>The body of the last hand-back, if it had one.</summary>
+    public string? ReleaseBody;
 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri!.AbsolutePath;
         Calls.Add($"{request.Method} {path}");
+        if (path.EndsWith("/release", StringComparison.Ordinal) && request.Content is not null)
+        {
+            ReleaseBody = request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+        }
 
         if (path.EndsWith("/renew", StringComparison.Ordinal))
         {

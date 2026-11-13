@@ -1109,7 +1109,17 @@ public struct JobRunner: WorkExecutor {
             \(paired ? "frames by number" : "by timestamp")
             """
         SidecarLog.job.info("Job \(assignment.jobId): \(described, privacy: .public)")
-        return paired ? framePaired : quality.commands
+        guard paired, let frames = sourceFrames else { return quality.commands }
+        // The server placed these windows at the rate the source reports, before anyone counted it.
+        // A variable-frame-rate source holds fewer pictures than that, and a window past its last
+        // frame scores nothing, so such a window is measured by timestamp instead.
+        let fits = framePaired.map { FramePairing.fitsWithin($0, frames: frames) }
+        let outside = fits.filter { !$0 }.count
+        if outside > 0 {
+            SidecarLog.job.info(
+                "Job \(assignment.jobId): \(outside) frame window(s) reach past the source's \(frames) frames; measuring them by timestamp")
+        }
+        return framePaired.indices.map { fits[$0] ? framePaired[$0] : quality.commands[$0] }
     }
 
     /// Roughly where in the title a sample window sits, for the preview to seek to.
@@ -1249,7 +1259,8 @@ public struct JobRunner: WorkExecutor {
         guard encode.0 == 0 else {
             let detail = encode.1.trimmingCharacters(in: .whitespacesAndNewlines)
             return await release(assignment, pairing: pairing,
-                reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"))
+                reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"),
+                failure: "FFmpeg exited with code \(encode.0).\n\(detail)")
         }
 
         // The final mux can add bytes between the size monitor's last poll and FFmpeg's exit.
@@ -1328,11 +1339,13 @@ public struct JobRunner: WorkExecutor {
 
     /// Hands the job back. Best effort: if the release itself fails the lease lapses on its own
     /// and the server reclaims the job then, so nothing is stranded either way.
-    private func release(_ assignment: Assignment, pairing: StoredPairing, reason: String) async -> JobOutcome {
+    private func release(
+        _ assignment: Assignment, pairing: StoredPairing, reason: String, failure: String? = nil
+    ) async -> JobOutcome {
         do {
             try await client.release(
                 serverAddress: pairing.serverAddress, credential: pairing.credential,
-                leaseId: assignment.leaseId)
+                leaseId: assignment.leaseId, failure: failure)
             return .released(jobId: assignment.jobId, reason: reason)
         } catch {
             return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) Hand-back was not acknowledged: \(error.localizedDescription)")

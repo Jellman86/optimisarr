@@ -84,9 +84,41 @@ internal static class LibraryEndpoints
         })
         .WithName("CheckLibraryAccess");
 
+        // Says whether a folder may collect a library's optimised files, and why not when it may
+        // not, so the editor can explain a refusal before Save rather than after it.
+        app.MapPost("/api/libraries/target-folder-check", async (
+            TargetFolderCheckRequest request,
+            OptimisarrDbContext db,
+            IHostEnvironment environment,
+            CancellationToken cancellationToken) =>
+        {
+            var path = request.Path?.Trim();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return ApiErrors.BadRequest("library.validation", "A folder is required.");
+            }
+
+            var libraryPath = request.LibraryPath?.Trim();
+            if (!TargetFolderRule.IsUsablePath(path)
+                || (!string.IsNullOrWhiteSpace(libraryPath) && !TargetFolderRule.IsUsablePath(libraryPath)))
+            {
+                return ApiErrors.BadRequest("library.validation", "That is not a path this server can use.");
+            }
+
+            // An unsaved library's own folder counts too, so the editor can refuse a folder inside
+            // the library it is about to create or move.
+            var beingSaved = string.IsNullOrWhiteSpace(libraryPath)
+                ? null
+                : new LibraryFolder(request.LibraryName?.Trim() ?? string.Empty, libraryPath);
+            return Results.Ok(await TargetFolderGuard.CheckAsync(
+                path, db, environment, cancellationToken, beingSaved, beingSaved is null ? null : request.LibraryId));
+        })
+        .WithName("CheckLibraryTargetFolder");
+
         app.MapPost("/api/libraries", async (
             SaveLibraryRequest request,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -97,6 +129,11 @@ internal static class LibraryEndpoints
             if (await db.Libraries.AnyAsync(library => library.Path == parsed.Path, cancellationToken))
             {
                 return ApiErrors.Conflict("library.pathConflict", $"A library already exists for path: {parsed.Path}", new { path = parsed.Path });
+            }
+
+            if (await RefusedTargetFolderAsync(parsed, null, db, environment, cancellationToken) is { } refused)
+            {
+                return refused;
             }
 
             var library = new Optimisarr.Data.Library
@@ -200,6 +237,7 @@ internal static class LibraryEndpoints
             int id,
             SaveLibraryRequest request,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
@@ -233,6 +271,11 @@ internal static class LibraryEndpoints
             if (await db.Libraries.AnyAsync(l => l.Path == parsed.Path && l.Id != id, cancellationToken))
             {
                 return ApiErrors.Conflict("library.pathConflict", $"A library already exists for path: {parsed.Path}", new { path = parsed.Path });
+            }
+
+            if (await RefusedTargetFolderAsync(parsed, id, db, environment, cancellationToken) is { } refused)
+            {
+                return refused;
             }
 
             library.Name = parsed.Name;
@@ -386,8 +429,50 @@ internal static class LibraryEndpoints
         .WithName("ScanAllLibraries");
     }
 
+    /// <summary>
+    /// Null when the library does not save elsewhere, or its folder may be used. The library being
+    /// saved is judged by the folder in the request, so moving a library onto its own target folder
+    /// is refused in the same request.
+    /// </summary>
+    private static async Task<IResult?> RefusedTargetFolderAsync(
+        ParsedLibrary parsed,
+        int? id,
+        OptimisarrDbContext db,
+        IHostEnvironment environment,
+        CancellationToken cancellationToken)
+    {
+        if (!parsed.MoveOnComplete || parsed.TargetFolder is null)
+        {
+            return null;
+        }
+
+        var check = await TargetFolderGuard.CheckAsync(
+            parsed.TargetFolder,
+            db,
+            environment,
+            cancellationToken,
+            new LibraryFolder(parsed.Name, parsed.Path),
+            id);
+        return check.Allowed
+            ? null
+            : ApiErrors.BadRequest(
+                $"library.targetFolder.{check.Reason}",
+                check.Message,
+                new { path = check.Path, library = check.LibraryName ?? string.Empty });
+    }
+
     private static bool? AtomicRelationship(FileSystemEvidence first, FileSystemEvidence second) =>
         string.IsNullOrWhiteSpace(first.MountId) || string.IsNullOrWhiteSpace(second.MountId)
             ? null
             : FileSystemEvidenceProbe.SharesAtomicBoundary(first, second);
 }
+
+/// <summary>
+/// The folder to judge. The library fields are optional and describe the library being edited,
+/// so its unsaved name and folder are used in place of what is stored.
+/// </summary>
+internal sealed record TargetFolderCheckRequest(
+    string? Path,
+    int? LibraryId = null,
+    string? LibraryName = null,
+    string? LibraryPath = null);

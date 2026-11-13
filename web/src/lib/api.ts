@@ -242,6 +242,16 @@ export type LibraryAccess = {
   atomicWithQuarantine: boolean | null
 }
 
+/** The server's answer about a folder for "save optimised files in another folder". */
+export type TargetFolderCheck = {
+  path: string
+  allowed: boolean
+  reason: 'none' | 'insideLibrary' | 'workFolder' | 'quarantine' | 'missing' | 'unwritable'
+  libraryName: string | null
+  message: string
+  availableBytes: number | null
+}
+
 export type Library = LibraryRules & {
   id: number
   name: string
@@ -263,99 +273,7 @@ export type SaveLibrary = LibraryRules & {
   enabled: boolean
 }
 
-export function newLibraryDefaults(): SaveLibrary {
-  return {
-    superResolutionEnabled: false,
-    superResolutionQualityCheck: 'BrokenFramesOnly',
-    superResolutionEngine: null,
-    superResolutionModel: null,
-    superResolutionScale: null,
-    name: '',
-    path: '',
-    mediaType: 'Film',
-    ruleProfile: 'ConservativeHevc',
-    enabled: true,
-    priority: 0,
-    minFileSizeBytes: null,
-    maxHeight: null,
-    videoDownscaleHeight: null,
-    maxFrameRate: null,
-    cropBlackBars: false,
-    reencodeSameCodecAboveBytes: null,
-    skipEfficientSources: true,
-    targetVideoCodec: null,
-    // A new library keeps each file's container, so its name and path stay the same and Sonarr and
-    // Radarr keep tracking it. Existing libraries keep what they have.
-    targetContainer: 'source',
-    hdrHandling: null,
-    optimiseDolbyVision: false,
-    deinterlaceVideo: false,
-    noiseReduction: 'Off',
-    excludePaths: null,
-    excludeHardLinkedFiles: false,
-    skipSourceCodecs: null,
-    contentTune: 'None',
-    maxBitrateKbps: null,
-    minBitrateKbps: null,
-    strongerAdaptiveQuantisation: false,
-    qualityCrf: null,
-    encoderPreset: null,
-    audioTargetCodec: null,
-    audioBitrateKbps: null,
-    videoAudioCodec: null,
-    videoAudioBitrateKbps: null,
-    downmixToStereo: false,
-    normalizeOpusChannelLayout: true,
-    keepAudioLanguages: null,
-    keepSubtitleLanguages: null,
-    reencodeLossyAudio: false,
-    targetImageFormat: null,
-    imageQuality: null,
-    reencodeLossyImages: false,
-    imageDownscaleMode: 'None',
-    imageDownscaleValue: 0,
-    moveOnComplete: false,
-    targetFolder: null,
-    moveOverwrite: false,
-    minVmafHarmonicMean: 93,
-    minVmafMin: 80,
-    vmafQualityGateEnabled: true,
-    minVmafCatastrophicMin: 50,
-    clipVmafEnabled: true,
-    vmafFrameSubsample: 1,
-    durationTolerancePercent: 1,
-    requireAudioRetained: true,
-    requireSubtitlesRetained: false,
-    requireSizeReduction: true,
-    minimumSizeSavingPercent: null,
-    maximumSizeSavingPercent: null,
-    audioLoudnessGateEnabled: false,
-    maxLoudnessDriftLufs: 1,
-    adaptiveAudioQuality: false,
-    adaptiveImageQuality: false,
-    adaptiveSoundtrackQuality: false,
-    imagePerceptualReportingEnabled: false,
-    imagePerceptualGateEnabled: false,
-    minimumImagePerceptualScore: null,
-    soundtrackQualityReportingEnabled: false,
-    soundtrackQualityGateEnabled: false,
-    maximumSoundtrackQualityDistance: null,
-    audioQualityReportingEnabled: false,
-    audioQualityGateEnabled: false,
-    maximumAudioQualityDistance: null,
-    audioClippingGateEnabled: false,
-    maxTruePeakDbtp: 0,
-    imageQualityGateEnabled: true,
-    minimumImageSsim: 0.95,
-    imageMetadataGateEnabled: true,
-    videoQualityStrategy: 'AdaptiveVmaf',
-    workPlacement: 'Anywhere',
-    autoEnqueueEnabled: false,
-    autoEnqueueWindowStart: '00:00',
-    autoEnqueueWindowEnd: '00:00',
-    autoReplace: false,
-  }
-}
+export { newLibraryDefaults } from './library-defaults'
 
 export type RuleProfileSpec = {
   profile: string
@@ -380,6 +298,7 @@ export type LibraryOptions = {
   encoderPresets: string[]
   legacyEncoderPresets: string[]
   imageFormats: string[]
+  hardwareQualityHeadroom: number
 }
 
 /** The Real-CUGAN super-resolution engine section. The engine itself is fixed — these
@@ -1229,6 +1148,70 @@ export type CandidateSummary = {
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
 
+/** What queueing one file would do, by its library's settings as they are now. */
+export type MediaPlan = {
+  mediaFileId: number
+  libraryId: number | null
+  eligible: boolean
+  reason: string
+  kind: string
+  action: 'Encode' | 'Remux' | 'TrackCleanup' | 'Audio' | 'Image'
+  source: {
+    relativePath: string
+    sizeBytes: number
+    container: string | null
+    videoCodec: string | null
+    width: number | null
+    height: number | null
+    durationSeconds: number | null
+    isHdr: boolean
+    isDolbyVision: boolean
+    interlaced: boolean
+    audioCodecs: string | null
+    maxAudioChannels: number
+    audioTrackCount: number | null
+    subtitleTrackCount: number | null
+  }
+  /** Null unless the video is re-encoded. A null size or cap means it is left as it is. */
+  picture: {
+    codec: string
+    crf: number | null
+    width: number | null
+    height: number | null
+    /** The height limit the new size is worked out from; the exact size is null while black bars are still to be measured. */
+    shrinkToHeight: number | null
+    /** A rule, not a finding: it only changes a file that runs above it. */
+    frameRateCap: number | null
+    tonemapToSdr: boolean
+    deinterlace: boolean
+    cropBlackBars: boolean
+    noiseReduction: NoiseReduction
+    /** The job would run through AI upscaling, which copies its sound. */
+    upscales: boolean
+  } | null
+  /** Null unless the file is an image. */
+  image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
+  /** A null codec means every kept track is copied untouched. */
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean } | null
+  /** Null when the file was probed before track languages were recorded. */
+  audioTracks: MediaPlanTrack[] | null
+  subtitleTracks: MediaPlanTrack[] | null
+  file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+}
+export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
+
+/** What turning dry-run off would start without anyone pressing anything further. */
+export type DryRunUnlockEffects = {
+  retentionDays: number
+  originalsToDelete: number
+  originalBytes: number
+  duplicatesToDelete: number
+  duplicateBytes: number
+  librariesCleaningDuplicatesDaily: number
+  jobsToReplace: number
+  needsConfirmation: boolean
+}
+
 export type InventoryRow = {
   file: MediaFile
   eligible: boolean | null
@@ -1361,6 +1344,11 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'library.validation': return i18n.m.common.api_library_invalid
     case 'library.pathConflict': return t(i18n.m.common.api_library_conflict, args)
     case 'library.pathMissing': return t(i18n.m.common.api_library_path_missing, args)
+    case 'library.targetFolder.insideLibrary': return t(i18n.m.filesChoice.folder_inside_library, args)
+    case 'library.targetFolder.workFolder': return i18n.m.filesChoice.folder_work
+    case 'library.targetFolder.quarantine': return i18n.m.filesChoice.folder_quarantine
+    case 'library.targetFolder.missing': return i18n.m.filesChoice.folder_missing
+    case 'library.targetFolder.unwritable': return i18n.m.filesChoice.folder_unwritable
     case 'media.notFound': return t(i18n.m.common.api_media_not_found, args)
     case 'media.previewUnavailable': return t(i18n.m.common.api_preview_unavailable, args)
     case 'media.status.invalid': return t(i18n.m.common.api_media_status_invalid, args)
@@ -1410,6 +1398,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
     case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.tools.required': return t(i18n.m.wizard.tools_refused, args)
     case 'setup.library.required': return i18n.m.setup.library_required_error
     case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
@@ -1502,6 +1491,8 @@ export const api = {
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),
   libraryAccess: (id: number) => request<LibraryAccess>(`/api/libraries/${id}/access`),
+  checkTargetFolder: (body: { path: string; libraryId?: number | null; libraryName?: string; libraryPath?: string }) =>
+    request<TargetFolderCheck>('/api/libraries/target-folder-check', { method: 'POST', body: JSON.stringify(body) }),
   createLibrary: (body: SaveLibrary) =>
     request<Library>('/api/libraries', { method: 'POST', body: JSON.stringify(body) }),
   updateLibrary: (id: number, body: SaveLibrary) =>
@@ -1570,6 +1561,7 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   superResolutionStatus: (engine: SuperResolutionEngine) => request<SuperResolutionStatus>(`/api/system/super-resolution/${engine}`),
   probeSuperResolution: (engine: SuperResolutionEngine) => request<SuperResolutionProbe>(`/api/system/super-resolution/${engine}/probe`, { method: 'POST' }),
+  dryRunUnlockEffects: () => request<DryRunUnlockEffects>('/api/settings/dry-run-unlock'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),
@@ -1687,6 +1679,7 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  mediaPlan: (id: number) => request<MediaPlan>(`/api/media/${id}/plan`),
   enqueueFile: (id: number) =>
     request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
