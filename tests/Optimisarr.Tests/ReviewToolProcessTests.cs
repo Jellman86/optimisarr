@@ -32,24 +32,18 @@ public sealed class ReviewToolProcessTests
     [InlineData(true)]
     public async Task Probe_rejects_excess_output_and_enforces_its_own_deadline(bool excessOutput)
     {
-        var root = Path.Combine(Path.GetTempPath(), "optimisarr-bounded-probe-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        try
-        {
-            var windows = OperatingSystem.IsWindows();
-            var script = Path.Combine(root, windows ? "probe.ps1" : "probe.py");
-            var content = windows
-                ? excessOutput ? "[Console]::Out.Write([string]::new('x', 3000000))" : "Start-Sleep -Seconds 60"
-                : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
-            await File.WriteAllTextAsync(script, content);
-            var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-File", script } : new[] { script };
-            var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
-                arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
-            Assert.Equal(-1, result.ExitCode);
-            Assert.Empty(result.Output);
-            Assert.Contains(excessOutput ? "bounded capture" : "timed out", result.Error);
-        }
-        finally { Directory.Delete(root, true); }
+        var windows = OperatingSystem.IsWindows();
+        var content = windows
+            ? excessOutput ? "[Console]::Out.Write([string]::new('x', 3000000))" : "Start-Sleep -Seconds 60"
+            : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
+        // A timed-out interpreter can briefly leave its script locked on Windows. This test
+        // needs only a process payload, so pass it directly rather than creating a file to delete.
+        var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-Command", content } : new[] { "-c", content };
+        var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
+            arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Output);
+        Assert.Contains(excessOutput ? "bounded capture" : "timed out", result.Error);
     }
 
     [Theory]
