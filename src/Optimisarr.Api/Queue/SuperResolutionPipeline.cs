@@ -26,7 +26,8 @@ internal sealed record SuperResolutionRunHooks(
     Func<long?> FreeBytes,
     Func<bool> IsPaused,
     Func<int, IDisposable?> TrackProcess,
-    Func<double, Task> ReportProgress);
+    Func<double, Task> ReportProgress,
+    Func<int, IDisposable?>? TrackEncoder = null);
 
 /// <summary>
 /// The super-resolution pipeline as a bounded stream. The decoder writes PNG pictures to a pipe
@@ -55,7 +56,7 @@ internal static class SuperResolutionPipeline
         try
         {
             var decoder = Start(processes, request.FfmpegPath, request.DecoderArguments, hooks, readStdout: true, writeStdin: false);
-            var encoder = Start(processes, request.FfmpegPath, request.EncoderArguments, hooks, readStdout: false, writeStdin: true);
+            var encoder = Start(processes, request.FfmpegPath, request.EncoderArguments, hooks, readStdout: false, writeStdin: true, isEncoder: true);
             var written = 0;
             for (var batch = 0; ; batch++)
             {
@@ -188,9 +189,10 @@ internal static class SuperResolutionPipeline
     }
 
     private static OwnedProcess Start(List<OwnedProcess> processes, string path, IReadOnlyList<string> arguments,
-        SuperResolutionRunHooks hooks, bool readStdout, bool writeStdin)
+        SuperResolutionRunHooks hooks, bool readStdout, bool writeStdin, bool isEncoder = false)
     {
-        var process = OwnedProcess.Start(path, arguments, readStdout, writeStdin, hooks.TrackProcess);
+        var track = isEncoder ? hooks.TrackEncoder ?? hooks.TrackProcess : hooks.TrackProcess;
+        var process = OwnedProcess.Start(path, arguments, readStdout, writeStdin, track);
         processes.Add(process);
         return process;
     }

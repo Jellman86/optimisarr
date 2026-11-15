@@ -125,7 +125,7 @@ says, so a worker can never deliver an ordinary source-sized encode in place of 
    the engine upscales it, the upscaled frames are encoded, and the batch is deleted. Scratch
    therefore stays within one batch (at most 4 GiB, and always above the queue's free-space
    reserve) however long the video is.
-3. Encodes the upscaled frames with the library's software encoder and quality, and copies the
+3. Encodes the upscaled frames with the selected software or NVIDIA NVENC encoder and quality, and copies the
    source's audio, subtitles, chapters and metadata. For Matroska it also keeps attachments such
    as subtitle fonts; a candidate missing any of them is not accepted. Audio is copied even if
    the library normally converts it to AAC or Opus. Container selection follows that copied
@@ -155,7 +155,17 @@ are refused before anything runs, and are left to the normal pipeline:
 - interlaced video, because the engine would enlarge the combing between fields as if it were detail,
   unless the library deinterlaces it first (see [Interlaced video](configuration.md#interlaced-video));
 - HDR and variable-frame-rate video;
-- libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.
+- libraries whose rules crop, downscale or cap the frame rate;
+- Intel QSV, VA-API and VideoToolbox encoders. Choose **CPU only** or **NVIDIA NVENC** in the queue's
+  encoder settings for super-resolution. Automatic selection also works when it selects a supported encoder.
+
+NVENC accepts the engine's converted frames directly, including 10-bit HEVC and AV1 on GPUs that
+support those codecs. It uses the same constant-quality, preset and advanced encoder settings as
+an ordinary encode. Upscaling still runs on the server's Vulkan device; selecting software
+encoding changes the final encoding stage, not the upscaling device. Remote workers cannot run
+this pipeline.
+
+[NVENC hardware acceptance and its limits](../engineering/hardware-validation/2026-11-15-super-resolution-nvenc.md).
 
 A library that reduces noise (see [Reduce noise](configuration.md#reduce-noise)) cleans the
 pictures before the engine sees them, so the engine does not sharpen noise into false detail.

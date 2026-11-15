@@ -215,13 +215,25 @@ public sealed class SuperResolutionPipelinePlanTests
             QueueDispatcher.RefuseUnsuitableSource(work, Options));
     }
 
-    [Fact]
-    public void A_hardware_encoder_is_refused()
+    [Theory]
+    [InlineData("h264_nvenc")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("av1_nvenc")]
+    public void Nvenc_can_encode_the_upscaled_software_frames(string encoder)
     {
-        var work = VideoWork() with { VideoEncoder = "hevc_nvenc" };
+        QueueDispatcher.RefuseUnsuitableSource(VideoWork() with { VideoEncoder = encoder }, Options);
+    }
+
+    [Theory]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("hevc_videotoolbox")]
+    public void An_unqualified_hardware_encoder_is_refused(string encoder)
+    {
+        var work = VideoWork() with { VideoEncoder = encoder };
         var problem = Assert.Throws<InvalidOperationException>(() =>
             QueueDispatcher.RefuseUnsuitableSource(work, Options));
-        Assert.Contains("hevc_nvenc", problem.Message);
+        Assert.Contains(encoder, problem.Message);
     }
 
     [Fact]

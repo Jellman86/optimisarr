@@ -172,14 +172,9 @@ public sealed partial class QueueDispatcher
         var hooks = new SuperResolutionRunHooks(
             () => WorkPaths.TryGetAvailableFreeSpace(_workRoot),
             () => pauseManager.IsPaused,
-            processId =>
-            {
-                // Visible to the metrics broadcaster, and suspended by a manual pause like any encode.
-                var registration = encodes.Track(processId, hardwareEncoder: false);
-                pauseManager.OnEncodeStarted(processId);
-                return registration;
-            },
-            fraction => UpdateProgressAsync(jobId, fraction));
+            processId => TrackProcess(processId, hardwareEncoder: false),
+            fraction => UpdateProgressAsync(jobId, fraction),
+            TrackEncoder: processId => TrackProcess(processId, IsHardwareEncoder(work.VideoEncoder)));
         var run = await SuperResolutionPipeline.RunAsync(request, hooks, cancellationToken);
         if (run.ExitCode != 0 || source.AttachmentCount == 0 || IsMp4Family(work.Spec.OutputPath))
         {
@@ -197,6 +192,13 @@ public sealed partial class QueueDispatcher
                 Error = $"The candidate kept {candidate.AttachmentCount} of the source's {source.AttachmentCount} attachments, " +
                     "such as subtitle fonts; it was not accepted.",
             };
+
+        IDisposable TrackProcess(int processId, bool hardwareEncoder)
+        {
+            var registration = encodes.Track(processId, hardwareEncoder);
+            pauseManager.OnEncodeStarted(processId);
+            return registration;
+        }
     }
 
     private static bool IsMp4Family(string path) =>
@@ -294,12 +296,13 @@ public sealed partial class QueueDispatcher
                 "This library's rules cap the frame rate, which a super-resolution job does not " +
                 "apply: the engine runs on every source frame. Remove the cap or leave the file to the normal pipeline.");
         }
-        if (IsHardwareEncoder(work.VideoEncoder))
+        if (IsHardwareEncoder(work.VideoEncoder)
+            && work.VideoEncoder is not ("h264_nvenc" or "hevc_nvenc" or "av1_nvenc"))
         {
             throw new InvalidOperationException(
                 $"Super-resolution reassembles with the library's encoder ({work.VideoEncoder}), which is a " +
-                "hardware encoder needing its own upload filters on extracted frames. Switch the queue's " +
-                "encoder mode to software, or leave this file to the normal pipeline.");
+                "hardware encoder not supported by the super-resolution pipeline. Choose software " +
+                "or NVIDIA NVENC in the queue's encoder mode, or leave this file to the normal pipeline.");
         }
     }
 

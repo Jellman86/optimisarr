@@ -81,15 +81,13 @@ public static class SuperResolutionCommandBuilder
         }
 
         args.AddRange(["-map", "0:v:0", "-c:v:0", resolvedEncoder]);
-        if (spec.Crf is { } crf)
-        {
-            // Super-resolution runs on the CPU encoder families only (a hardware family needs its
-            // upload filters, a combination this pipeline refuses), so CRF is their quality knob.
-            args.AddRange(["-crf", crf.ToString(CultureInfo.InvariantCulture)]);
-        }
+        FfmpegCommandBuilder.AppendQualityArguments(args, resolvedEncoder, spec.Crf);
         // The pictures arrive as RGB: convert back with the source's matrix and range to its own
         // 4:2:0 layout and bit depth, and restore the colour tags it carried.
-        var layout = sourceBitDepth > 8 ? "yuv420p10le" : "yuv420p";
+        var nvenc = resolvedEncoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase);
+        // NVENC accepts software frames and performs its own upload. Its 10-bit input is
+        // semiplanar P010, unlike the planar 10-bit input used by the software encoders.
+        var layout = sourceBitDepth > 8 ? nvenc ? "p010le" : "yuv420p10le" : "yuv420p";
         args.AddRange(["-vf", $"scale=out_color_matrix={colour.Matrix}:out_range={colour.Range},format={layout}"]);
         if (colour.Tagged)
         {
@@ -98,9 +96,18 @@ public static class SuperResolutionCommandBuilder
             if (colour.Transfer is { } transfer) args.AddRange(["-color_trc", transfer]);
         }
         if (colour.RangeTagged) args.AddRange(["-color_range", colour.Range]);
+        if (resolvedEncoder == "h264_nvenc" && colour.RangeTagged)
+        {
+            // NVENC can omit H.264's limited-range VUI when the other colour tags are unknown.
+            args.AddRange(["-bsf:v:0", "h264_metadata=video_full_range_flag=" + (colour.Range == "pc" ? "1" : "0")]);
+        }
         if (!string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.AddRange(["-preset", spec.Preset]);
+        }
+        if (spec.Tuning is { IsEmpty: false } tuning)
+        {
+            args.AddRange(EncoderTuningPolicy.Resolve(resolvedEncoder, tuning));
         }
 
         if (copiesSource)
