@@ -35,6 +35,53 @@ public sealed class SuperResolutionCommandBuilderTests
         SuperResolutionColour? colour = null) =>
         SuperResolutionCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth, colour ?? Hd);
 
+    [Theory]
+    [InlineData("h264_nvenc", 8, "yuv420p")]
+    [InlineData("hevc_nvenc", 8, "yuv420p")]
+    [InlineData("hevc_nvenc", 10, "p010le")]
+    [InlineData("av1_nvenc", 8, "yuv420p")]
+    [InlineData("av1_nvenc", 10, "p010le")]
+    public void Nvenc_uses_constant_quality_and_uploads_software_frames_without_hardware_decode(string encoder, int bitDepth, string layout)
+    {
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec() with { Preset = "p5" }, encoder,
+            25, 4, "optimisarr-1", 0.042, bitDepth, Hd);
+
+        Assert.Equal(encoder, After(args, "-c:v:0"));
+        Assert.Equal("vbr", After(args, "-rc"));
+        Assert.Equal("20", After(args, "-cq"));
+        Assert.Equal("0", After(args, "-b:v"));
+        Assert.Equal("p5", After(args, "-preset"));
+        Assert.DoesNotContain("-crf", args);
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.Equal($"scale=out_color_matrix=bt709:out_range=tv,format={layout}", After(args, "-vf"));
+        Assert.Equal("0.042", After(args, "-itsoffset"));
+        Assert.Equal("copy", After(args, "-c:a"));
+        Assert.Equal("copy", After(args, "-c:s"));
+        Assert.Contains("1:t?", args);
+    }
+
+    [Theory]
+    [InlineData("tv", "0")]
+    [InlineData("pc", "1")]
+    public void Nvenc_h264_preserves_an_explicit_range_even_without_other_colour_tags(string range, string fullRangeFlag)
+    {
+        var colour = new SuperResolutionColour("bt709", range, null, null, null, RangeTagged: true);
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec(), "h264_nvenc", 25, 4, null, 0, 8, colour);
+
+        Assert.Equal(range, After(args, "-color_range"));
+        Assert.Equal($"h264_metadata=video_full_range_flag={fullRangeFlag}", After(args, "-bsf:v:0"));
+    }
+
+    [Fact]
+    public void Nvenc_honours_the_librarys_bitrate_cap_and_adaptive_quantisation()
+    {
+        var spec = Spec() with { Tuning = new EncoderTuning(MaxBitrateKbps: 2000, StrongerAdaptiveQuantisation: true) };
+        var args = SuperResolutionCommandBuilder.BuildEncoder(spec, "hevc_nvenc", 25, 4, null, 0, 8, Hd);
+
+        Assert.Equal("2000k", After(args, "-maxrate"));
+        Assert.Equal("1", After(args, "-spatial-aq"));
+    }
+
     [Fact]
     public void Noise_is_reduced_before_the_engine_sees_the_picture()
     {

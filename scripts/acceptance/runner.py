@@ -1159,6 +1159,10 @@ class Harness:
                 for name in missing_workers(self.workers, expected_workers):
                     self.report.case("required-worker-at-start-" + name,
                         lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+            if regression == "super-resolution":
+                from .super_resolution import run
+                return run(self, local_encoders, variants, fixture_seconds,
+                           *getattr(self, "super_resolution_paths", (None, None)))
             if regression == "house-corpus":
                 require(corpus, "house-corpus regression requires --corpus")
                 manifest = json.loads(Path(corpus).read_text())

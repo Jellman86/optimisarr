@@ -810,6 +810,9 @@ public static class FfmpegCommandBuilder
 
     // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;
     // the hardware encoders each name constant quality differently and reject -crf.
+    internal static void AppendQualityArguments(List<string> args, string encoder, int? crf) =>
+        AppendQualityArguments(args, FamilyOf(encoder), crf);
+
     private static void AppendQualityArguments(List<string> args, EncoderFamily family, int? crf)
     {
         if (crf is not { } quality)

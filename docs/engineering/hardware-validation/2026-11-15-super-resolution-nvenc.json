@@ -1,0 +1,173 @@
+{
+  "date": "2026-11-15",
+  "baseCommit": "73b3d5b9b7e9db12c11e326fe1667ffe0fefe2f2",
+  "hardware": "NVIDIA RTX 4070",
+  "driver": "617.42",
+  "runtime": ".NET 10.0.404, native Windows",
+  "tools": {
+    "ffmpeg": "ffmpeg version n8.1.3-9-g29e619e767-20260930 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version n8.1.3-9-g29e619e767-20260930 Copyright (c) 2007-2026 the FFmpeg developers",
+    "vmaf": "ffmpeg version n8.1.3-9-g29e619e767-20260930 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "engine": {
+    "release": "Real-ESRGAN ncnn Vulkan 20220424, v0.2.5.0",
+    "archiveSha256": "abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d",
+    "model": "realesr-animevideov3",
+    "scale": 2
+  },
+  "sourceHashes": [
+    {
+      "file": "src/Optimisarr.Api/Queue/QueueDispatcher.SuperResolution.cs",
+      "sha256": "f8b7b1eb2c1d9c6f182b9ea6e3ac04e25f895aa313bbe50cb626f13afcb5c0c7"
+    },
+    {
+      "file": "src/Optimisarr.Api/Queue/SuperResolutionPipeline.cs",
+      "sha256": "aca796a91da3793abb6dc23527a06481e12b18f7864836daaf8942b589fe9815"
+    },
+    {
+      "file": "src/Optimisarr.Core/Queue/FfmpegCommandBuilder.cs",
+      "sha256": "62a84491172e48551af76d74e037ddf47072205336864ed00578267dbc7bf830"
+    },
+    {
+      "file": "src/Optimisarr.Core/SuperResolution/SuperResolutionCommandBuilder.cs",
+      "sha256": "fc9bb2691988b60f3bee0992ac8bdf1e3a309b62910302f89a3ae5eb0bb05557"
+    },
+    {
+      "file": "scripts/acceptance/super_resolution.py",
+      "sha256": "c9c4dcdef84bad1fcb1749a61001f017b7657e76e72d163a3d518260f6fd6e96"
+    }
+  ],
+  "fixture": {
+    "sourceSize": [
+      320,
+      180
+    ],
+    "candidateSize": [
+      640,
+      360
+    ],
+    "seconds": 8,
+    "frames": 96,
+    "frameRate": 12,
+    "audio": "FLAC",
+    "subtitles": "SubRip",
+    "attachments": 1
+  },
+  "cases": [
+    {
+      "name": "super-resolution-h264_nvenc-sdr",
+      "status": "passed",
+      "encoder": "h264_nvenc",
+      "variant": "sdr",
+      "originalRestored": true,
+      "verificationPassed": true,
+      "vmaf": {
+        "measured": true,
+        "error": null,
+        "scores": {
+          "vmafMean": 87.31318700000001,
+          "vmafHarmonicMean": 87.30426399999999,
+          "vmafMin": 85.391569,
+          "psnrYMean": null,
+          "ssimMean": null,
+          "modelVersion": "vmaf_v1.0.16_3d0h",
+          "preprocessing": "SDR (10-bit VMAF v1, encode-aware CAMBI) \u00b7 12 fps, frames paired by number; Full file",
+          "vmafFifthPercentile": 86.00962200000001,
+          "frameCount": 96
+        }
+      }
+    },
+    {
+      "name": "super-resolution-hevc_nvenc-sdr",
+      "status": "passed",
+      "encoder": "hevc_nvenc",
+      "variant": "sdr",
+      "originalRestored": true,
+      "verificationPassed": true,
+      "vmaf": {
+        "measured": true,
+        "error": null,
+        "scores": {
+          "vmafMean": 87.698808,
+          "vmafHarmonicMean": 87.689366,
+          "vmafMin": 85.615288,
+          "psnrYMean": null,
+          "ssimMean": null,
+          "modelVersion": "vmaf_v1.0.16_3d0h",
+          "preprocessing": "SDR (10-bit VMAF v1, encode-aware CAMBI) \u00b7 12 fps, frames paired by number; Full file",
+          "vmafFifthPercentile": 86.37081825,
+          "frameCount": 96
+        }
+      }
+    },
+    {
+      "name": "super-resolution-av1_nvenc-sdr",
+      "status": "passed",
+      "encoder": "av1_nvenc",
+      "variant": "sdr",
+      "originalRestored": true,
+      "verificationPassed": true,
+      "vmaf": {
+        "measured": true,
+        "error": null,
+        "scores": {
+          "vmafMean": 87.25320700000002,
+          "vmafHarmonicMean": 87.244691,
+          "vmafMin": 85.27587,
+          "psnrYMean": null,
+          "ssimMean": null,
+          "modelVersion": "vmaf_v1.0.16_3d0h",
+          "preprocessing": "SDR (10-bit VMAF v1, encode-aware CAMBI) \u00b7 12 fps, frames paired by number; Full file",
+          "vmafFifthPercentile": 86.0200635,
+          "frameCount": 96
+        }
+      }
+    },
+    {
+      "name": "super-resolution-hevc_nvenc-ten-bit",
+      "status": "passed",
+      "encoder": "hevc_nvenc",
+      "variant": "ten-bit",
+      "originalRestored": true,
+      "verificationPassed": true,
+      "vmaf": {
+        "measured": true,
+        "error": null,
+        "scores": {
+          "vmafMean": 88.37507799999999,
+          "vmafHarmonicMean": 88.368293,
+          "vmafMin": 86.875509,
+          "psnrYMean": null,
+          "ssimMean": null,
+          "modelVersion": "vmaf_v1.0.16_3d0h",
+          "preprocessing": "SDR (10-bit VMAF v1, encode-aware CAMBI) \u00b7 12 fps, frames paired by number; Full file",
+          "vmafFifthPercentile": 87.209832,
+          "frameCount": 96
+        }
+      }
+    },
+    {
+      "name": "super-resolution-av1_nvenc-ten-bit",
+      "status": "passed",
+      "encoder": "av1_nvenc",
+      "variant": "ten-bit",
+      "originalRestored": true,
+      "verificationPassed": true,
+      "vmaf": {
+        "measured": true,
+        "error": null,
+        "scores": {
+          "vmafMean": 88.242529,
+          "vmafHarmonicMean": 88.235735,
+          "vmafMin": 86.692313,
+          "psnrYMean": null,
+          "ssimMean": null,
+          "modelVersion": "vmaf_v1.0.16_3d0h",
+          "preprocessing": "SDR (10-bit VMAF v1, encode-aware CAMBI) \u00b7 12 fps, frames paired by number; Full file",
+          "vmafFifthPercentile": 87.085162,
+          "frameCount": 96
+        }
+      }
+    }
+  ]
+}

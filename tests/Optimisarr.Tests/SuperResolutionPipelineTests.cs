@@ -143,6 +143,29 @@ public sealed class SuperResolutionPipelineTests : IDisposable
     }
 
     [PosixFact]
+    public async Task Only_the_encoder_uses_the_hardware_registration_and_every_registration_is_released()
+    {
+        var (request, output) = Request(FakeFfmpeg(16), FakeEngine(), batch: 8);
+        var registry = new Optimisarr.Api.Realtime.ActiveEncodeRegistry();
+        var encoders = 0;
+        var others = 0;
+        var hooks = Hooks() with
+        {
+            TrackProcess = pid => { others++; return registry.Track(pid, hardwareEncoder: false); },
+            TrackEncoder = pid => { encoders++; return registry.Track(pid, hardwareEncoder: true); },
+        };
+
+        var run = await SuperResolutionPipeline.RunAsync(request, hooks, CancellationToken.None);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("16", await File.ReadAllTextAsync(output));
+        Assert.Equal(1, encoders);
+        Assert.Equal(3, others);
+        Assert.Equal(0, registry.Count);
+        Assert.False(registry.AnyHardware);
+    }
+
+    [PosixFact]
     public async Task Every_picture_reaches_the_encoder_while_scratch_stays_within_one_batch()
     {
         var (request, output) = Request(FakeFfmpeg(50), FakeEngine(), batch: 8);

@@ -21,7 +21,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 REGRESSIONS = ("interactive-samples", "interactive-lifecycle", "subtitle-mux", "fractional-timing",
     "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy", "audio", "soundtrack-quality",
     "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp",
-    "quality-first-metadata", "quality-first-retry", "quality-first-ownership")
+    "quality-first-metadata", "quality-first-retry", "quality-first-ownership", "super-resolution")
 WORKER_REGRESSIONS = {"interactive-lifecycle", "quality-first-workers"}
 PROPERTIES = set(REGRESSIONS) | HOUSE_PROPERTIES | {"smoke", "fleet", "house-corpus", "image", "macos-package", "windows-package",
     "release-check"}
