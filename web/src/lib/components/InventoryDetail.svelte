@@ -58,7 +58,7 @@
     <section class="detail-verdict" aria-label={i18n.m.onePlan.can_it}>
       <div class="flex flex-wrap items-center justify-between gap-2"><h3>{i18n.m.onePlan.can_it}</h3><span class="badge {row.eligible ? 'tone-ok' : 'tone-muted'}">{verdict}</span></div>
       <p id="inventory-detail-verdict">{row.reason ?? i18n.m.inventory.verdict_probe_hint}</p>
-      {#if row.eligible === false && file.libraryId}
+      {#if row.eligible === false && file.libraryId && row.retryJobId == null}
         <p>{t(i18n.m.onePlan.skipped_where, { library: libraryName })} <a class="focus-ring font-medium text-accent underline" href={`#/libraries/${file.libraryId}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a></p>
       {/if}
     </section>

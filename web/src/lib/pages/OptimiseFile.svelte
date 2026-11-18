@@ -173,7 +173,7 @@
         <span class="badge {plan.eligible ? 'tone-ok' : 'tone-muted'}">{plan.eligible ? i18n.m.onePlan.yes : i18n.m.onePlan.no}</span>
       </div>
       <p class="mt-2 text-sm leading-relaxed text-ink-2">{plan.reason}</p>
-      {#if !plan.eligible && library}
+      {#if !plan.eligible && library && plan.retryJobId == null}
         <p class="mt-3 text-sm leading-relaxed text-ink-3">
           {t(i18n.m.onePlan.skipped_where, { library: libraryName })}
           <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a>
@@ -351,17 +351,20 @@
             <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
           </button>
         {/if}
-        <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
-          <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
-        </button>
-      </div>
-      <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">
-        {#if plan.retryJobId != null}
-          {i18n.m.onePlan.retry_note} <a class="focus-ring font-medium text-accent underline" href="#/queue/failures">{i18n.m.onePlan.why_failed}</a>
-        {:else}
-          {plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}
+        <!-- A file to try again has a real run to look at instead of a sample, so Preview is not offered. -->
+        {#if plan.retryJobId == null}
+          <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
+            <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
+          </button>
         {/if}
-      </p>
+      </div>
+      {#if plan.retryJobId == null}
+        <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">{plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}</p>
+      {:else if queued === null}
+        <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">
+          {i18n.m.onePlan.retry_note} <a class="focus-ring font-medium text-accent underline" href="#/queue/failures">{i18n.m.onePlan.why_failed}</a>
+        </p>
+      {/if}
     </section>
   </div>
 {/if}

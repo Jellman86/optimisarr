@@ -201,6 +201,32 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task An_excluded_file_with_a_current_failure_offers_nothing_to_retry()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(new Job { MediaFileId = file.Id, LibraryId = library.Id, Status = JobStatus.Failed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z") });
+            db.Exclusions.Add(new Exclusion { Path = file.Path, LibraryId = library.Id, RelativePath = file.RelativePath });
+            await db.SaveChangesAsync();
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+
+        Assert.Contains("Excluded", result.Reason);
+        Assert.Null(result.RetryJobId);
+    }
+
+    [Fact]
     public async Task A_file_changed_after_its_job_becomes_eligible_again()
     {
         await using (var db = new OptimisarrDbContext(_options))

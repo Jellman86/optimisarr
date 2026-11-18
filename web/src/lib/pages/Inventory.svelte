@@ -57,7 +57,8 @@
     catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
-  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
+  // keepSelection: a file just tried again leaves the Skipped filter, but its details stay open to say so.
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, keepSelection = false) {
     // A slow response from a previous filter must never replace the current selection.
     const request = ++requestId
     loading = true
@@ -70,7 +71,7 @@
       rows = result.items
       total = result.total
       counts = result.counts
-      if (selected) selected = result.items.find(row => row.file.id === selected?.file.id) ?? null
+      if (selected) selected = result.items.find(row => row.file.id === selected?.file.id) ?? (keepSelection ? selected : null)
     } catch (err) {
       if (request === requestId && !disposed) error = err instanceof Error ? err.message : i18n.m.inventory.error_load
     } finally {
@@ -322,7 +323,7 @@
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => void loadInventory(selectedLibrary, show, page)} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => void loadInventory(selectedLibrary, show, page, true)} />
   {/key}
 {/if}
 {#if previewing}

@@ -189,6 +189,41 @@ test('a file held back by its last failure can be tried again from its details',
   expect(retries).toEqual(['/api/jobs/55/retry'])
 })
 
+test('trying again from the Skipped filter keeps the details open to say it was queued', async ({ page }) => {
+  await mockInventory(page)
+  let retried = false
+  const failedReason = 'Failed last time, so it isn’t tried again by itself'
+  // As the server does: once retried, the file is no longer skipped, so the Skipped page loses it.
+  await page.route('**/api/inventory?*', route => {
+    const show = new URL(route.request().url()).searchParams.get('show')
+    const item = { file: inventoryFiles[1], eligible: false, reason: failedReason, retryJobId: 55 }
+    const items = retried && show === 'skipped' ? [] : [retried ? { ...item, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null } : item]
+    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0 } } })
+  })
+  let refuse = true
+  await page.route('**/api/jobs/55/retry*', route => {
+    if (refuse) return route.fulfill({ status: 409, json: { code: 'job.retry.alreadyActive', error: 'This file already has an active job. Wait for it to finish, or cancel it, before retrying this one.' } })
+    retried = true
+    return route.fulfill({ json: { id: 55, status: 'Queued' } })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /^Skipped/ }).click()
+  await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('link', { name: 'Films → Which files' })).toHaveCount(0)
+  const tryAgain = dialog.getByRole('button', { name: 'Try again', exact: true })
+
+  await tryAgain.click()
+  await expect(dialog.getByRole('alert')).toContainText('already has an active job')
+  await expect(tryAgain).toBeEnabled()
+
+  refuse = false
+  await tryAgain.click()
+
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-inventory-retried]')).toContainText('Added to the queue')
+})
+
 test('a file that has not been probed says to probe it before it can be optimised', async ({ page }) => {
   await mockInventory(page)
   await page.goto('/#/inventory')

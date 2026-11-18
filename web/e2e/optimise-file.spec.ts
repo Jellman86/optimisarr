@@ -255,11 +255,14 @@ test('a file held back by its last failure is tried again from the plan, through
   const tryAgain = page.getByRole('button', { name: 'Try again', exact: true })
   await expect(tryAgain).toHaveAccessibleDescription(/It failed last time.*Try again puts it back in the queue/)
   await expect(page.getByRole('link', { name: 'See why it failed' })).toHaveAttribute('href', '#/queue/failures')
+  await expect(page.getByRole('link', { name: 'Films → Which files' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0)
 
   await tryAgain.click()
 
   await expect(page.locator('[data-plan-queued]')).toContainText('Added to the queue')
   await expect(tryAgain).toBeDisabled()
+  await expect(page.getByRole('link', { name: 'See why it failed' })).toHaveCount(0)
   expect(retried).toEqual(['/api/jobs/55/retry'])
   expect(enqueued).toBe(0)
 })
