@@ -343,7 +343,7 @@
       {/if}
       <div class="flex flex-wrap items-center gap-2">
         {#if plan.retryJobId != null}
-          <button class="btn btn-primary min-h-11" onclick={queue} disabled={queueing || queued !== null} aria-describedby="plan-action-note" data-plan-try-again>
+          <button class="btn btn-primary min-h-11" onclick={queue} disabled={queueing || queued !== null} aria-describedby={queued === null ? 'plan-action-note' : undefined} data-plan-try-again>
             <Icon name="retry" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
           </button>
         {:else}

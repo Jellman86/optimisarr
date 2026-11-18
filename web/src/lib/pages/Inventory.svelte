@@ -23,6 +23,7 @@
   let page = $state(1)
   const pageSize = 50
   let selected = $state<InventoryRow | null>(null)
+  let retriedFileId = $state<number | null>(null)
   let previewing = $state<MediaFile | null>(null)
   let previewSource = $state<InventoryRow | null>(null)
   let error = $state<string | null>(null)
@@ -57,8 +58,7 @@
     catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
-  // keepSelection: a file just tried again leaves the Skipped filter, but its details stay open to say so.
-  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, keepSelection = false) {
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
     // A slow response from a previous filter must never replace the current selection.
     const request = ++requestId
     loading = true
@@ -71,7 +71,8 @@
       rows = result.items
       total = result.total
       counts = result.counts
-      if (selected) selected = result.items.find(row => row.file.id === selected?.file.id) ?? (keepSelection ? selected : null)
+      // A file just tried again can leave the Skipped filter; its details stay open to say it was queued.
+      if (selected) selected = result.items.find(row => row.file.id === selected?.file.id) ?? (selected.file.id === retriedFileId ? selected : null)
     } catch (err) {
       if (request === requestId && !disposed) error = err instanceof Error ? err.message : i18n.m.inventory.error_load
     } finally {
@@ -226,10 +227,11 @@
     selection.clear()
   }
   function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null; selection.clear() }
-  function selectRow(row: InventoryRow) { selected = row; probeError = null; probeMessage = null }
+  function selectRow(row: InventoryRow) { selected = row; retriedFileId = null; probeError = null; probeMessage = null }
   async function closeDetails() {
     const id = selected?.file.id
     selected = null
+    retriedFileId = null
     await tick()
     if (id !== undefined) document.getElementById(`inventory-file-${id}`)?.focus()
   }
@@ -323,7 +325,7 @@
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => void loadInventory(selectedLibrary, show, page, true)} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => { retriedFileId = selected?.file.id ?? null; void loadInventory(selectedLibrary, show, page) }} />
   {/key}
 {/if}
 {#if previewing}
