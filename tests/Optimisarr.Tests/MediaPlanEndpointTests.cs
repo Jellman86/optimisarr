@@ -76,6 +76,43 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
     }
 
     [Fact]
+    public async Task A_file_held_back_by_its_last_failure_names_the_job_to_try_again_in_the_plan_and_the_inventory()
+    {
+        var (libraryId, mediaId) = await SeedAsync();
+        using var scope = api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var failed = new Job { MediaFileId = mediaId, LibraryId = libraryId, Status = JobStatus.Failed, FinishedAt = DateTimeOffset.UtcNow.AddMinutes(5) };
+        db.Jobs.Add(failed);
+        await db.SaveChangesAsync();
+        using var client = Admin();
+        try
+        {
+            var plan = await client.GetFromJsonAsync<JsonElement>($"/api/media/{mediaId}/plan");
+            var inventory = await client.GetFromJsonAsync<JsonElement>($"/api/inventory?libraryId={libraryId}");
+            var row = inventory.GetProperty("items").EnumerateArray().Single();
+
+            Assert.False(plan.GetProperty("eligible").GetBoolean());
+            Assert.Equal(failed.Id, plan.GetProperty("retryJobId").GetInt32());
+            Assert.Equal(failed.Id, row.GetProperty("retryJobId").GetInt32());
+        }
+        finally
+        {
+            await db.Jobs.Where(job => job.MediaFileId == mediaId).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_file_skipped_by_the_rules_offers_no_job_to_try_again()
+    {
+        var (_, mediaId) = await SeedAsync(videoCodec: "hevc");
+        using var client = Admin();
+
+        var plan = await client.GetFromJsonAsync<JsonElement>($"/api/media/{mediaId}/plan");
+
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("retryJobId").ValueKind);
+    }
+
+    [Fact]
     public async Task Plan_needs_a_probed_file_and_a_file_that_exists()
     {
         var (_, unprobed) = await SeedAsync(status: MediaFileStatus.Discovered);
