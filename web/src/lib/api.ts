@@ -811,6 +811,8 @@ export type Job = {
   /** The original's size when the job started; null for jobs that predate the record. */
   sourceSizeBytes: number | null
   outputSizeBytes: number | null
+  /** Video, Audio or Image; null for a job whose file is gone. */
+  mediaKind?: string | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
   perceptualSearchJson?: string | null
@@ -1517,6 +1519,8 @@ export const api = {
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
   mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
   previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+  /** A verified output that is waiting to replace its original. */
+  jobOutputContentUrl: (jobId: number) => `/api/jobs/${jobId}/output/content`,
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),

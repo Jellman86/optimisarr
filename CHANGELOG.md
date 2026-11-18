@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- See the original and the optimised file side by side before you replace (#536). Pressing **Replace original** on one file now shows both, playing together, with their sizes, in the dialog that asks you to confirm. Before, the comparison only appeared in Quarantine, after the original had already been moved. **Replace all** still asks without one. Adds the read-only `GET /api/jobs/{id}/output/content`, which serves only a verified output that is waiting to replace its original. Jobs now include `mediaKind`. No migration.
+
 - Allow AI super-resolution to finish with NVIDIA NVENC instead of failing when the queue selects it (#507). H.264, HEVC and AV1 use NVENC's constant-quality controls, with the selected preset and tuning; supported 10-bit sources remain 10-bit. Upscaled results still require verification and manual replacement. Other hardware encoder families remain unsupported for this pipeline.
 
 - Keep the Windows tool-probe timeout test independent of temporary script-file locks. The timeout and bounded-output checks still run against a real child process.

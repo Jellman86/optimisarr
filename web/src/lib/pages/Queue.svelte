@@ -8,6 +8,7 @@
   import PosterGlow from '../components/PosterGlow.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
+  import MediaCompare from '../components/MediaCompare.svelte'
   import { api, type BatchFailure, type BulkReplacementResult, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type SoundtrackSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, sizeChangePercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
@@ -1177,7 +1178,18 @@
     <p class="mb-4 whitespace-pre-line">{replacementTarget === 'all'
       ? t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() })
       : i18n.m.queue.confirm_replace}</p>
-    {#if replacementTarget !== 'all'}<p class="mb-4 break-words">{jobName(replacementTarget)}</p>{/if}
+    {#if replacementTarget !== 'all'}
+      {@const target = replacementTarget}
+      <p class="mb-4 break-words">{jobName(target)}</p>
+      <!-- What Replace would put in place, next to what it replaces, before anything moves. -->
+      {#if target.mediaKind && target.mediaKind !== 'Unknown'}
+        <div class="mb-5" data-replacement-compare>
+          <MediaCompare mediaKind={target.mediaKind} poster={api.jobArtworkUrl(target.id)}
+            left={{ label: i18n.m.shared.original, url: api.mediaContentUrl(target.mediaFileId), sizeBytes: target.sourceSizeBytes }}
+            right={{ label: i18n.m.shared.encoded, url: api.jobOutputContentUrl(target.id), sizeBytes: target.outputSizeBytes }} />
+        </div>
+      {/if}
+    {/if}
     {#if replacementError}
       <div role="alert" class="mb-4">
         <Banner kind="error">{replacementError}</Banner>
@@ -1199,6 +1211,7 @@
 
 <style>
   .replacement-confirmation { width: min(42rem, calc(100vw - 2rem)); padding: 1.5rem; overflow-y: auto; overflow-wrap: anywhere; }
+  .replacement-confirmation:has([data-replacement-compare]) { width: min(64rem, calc(100vw - 2rem)); }
   #queue-list-title { scroll-margin-block-start: .75rem; }
   .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
   .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }
