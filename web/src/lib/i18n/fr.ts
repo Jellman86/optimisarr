@@ -1771,6 +1771,7 @@ result_dismiss: 'Masquer',
     download: 'Télécharger',
     playback_note:
       'La lecture utilise les flux originaux. Certains navigateurs ne peuvent pas lire MKV, HEVC, AV1 ou E-AC-3 ; utilisez Télécharger pour consulter chaque fichier localement. Les statistiques et la vérification ci-dessous restent valides.',
+    playback_note_short: 'La lecture utilise les flux originaux. Certains navigateurs ne peuvent pas lire MKV, HEVC, AV1 ou E-AC-3 ; utilisez Télécharger pour consulter chaque fichier localement.',
     refresh: 'Actualiser',
     available: 'Disponible',
     missing: 'Manquant',

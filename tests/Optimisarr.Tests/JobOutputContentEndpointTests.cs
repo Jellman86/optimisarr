@@ -51,6 +51,20 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
     }
 
     [Fact]
+    public async Task A_ready_job_whose_verification_did_not_pass_is_not_served()
+    {
+        var (jobId, mediaId) = await SeedAsync(JobStatus.ReadyToReplace, JobType.Normal, [9], verificationPassed: false);
+        using var client = Admin();
+        try
+        {
+            using var response = await client.GetAsync($"/api/jobs/{jobId}/output/content");
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally { await CleanUpAsync(mediaId); }
+    }
+
+    [Fact]
     public async Task The_output_needs_the_admin_token()
     {
         var (jobId, mediaId) = await SeedAsync(JobStatus.ReadyToReplace, JobType.Normal, [1]);
@@ -86,7 +100,7 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
         return client;
     }
 
-    private async Task<(int JobId, int MediaId)> SeedAsync(JobStatus status, JobType type, byte[] output)
+    private async Task<(int JobId, int MediaId)> SeedAsync(JobStatus status, JobType type, byte[] output, bool? verificationPassed = null)
     {
         var root = Path.Combine(api.LibraryDirectory, "output-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -109,7 +123,7 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
         var job = new Job
         {
             MediaFileId = file.Id, LibraryId = library.Id, Status = status, Type = type,
-            WorkOutputPath = outputPath, VerificationPassed = status == JobStatus.ReadyToReplace,
+            WorkOutputPath = outputPath, VerificationPassed = verificationPassed ?? status == JobStatus.ReadyToReplace,
         };
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
@@ -122,5 +136,9 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
         using var scope = api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await db.Jobs.Where(job => job.MediaFileId == mediaId).ExecuteDeleteAsync();
+        var file = await db.MediaFiles.AsNoTracking().SingleAsync(f => f.Id == mediaId);
+        await db.MediaFiles.Where(f => f.Id == mediaId).ExecuteDeleteAsync();
+        await db.Libraries.Where(l => l.Id == file.LibraryId).ExecuteDeleteAsync();
+        Directory.Delete(Path.GetDirectoryName(file.Path)!, recursive: true);
     }
 }

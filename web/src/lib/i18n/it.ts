@@ -1770,6 +1770,7 @@ result_dismiss: 'Nascondi',
     download: 'Scarica',
     playback_note:
       'La riproduzione usa i flussi originali. Alcuni browser non supportano MKV, HEVC, AV1 o E-AC-3; usa Scarica per analizzare ciascun file localmente. Le statistiche e la verifica qui sotto restano valide.',
+    playback_note_short: 'La riproduzione usa i flussi originali. Alcuni browser non supportano MKV, HEVC, AV1 o E-AC-3; usa Scarica per analizzare ciascun file localmente.',
     refresh: 'Aggiorna',
     available: 'Disponibile',
     missing: 'Assente',

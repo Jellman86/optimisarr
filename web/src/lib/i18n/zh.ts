@@ -1727,6 +1727,7 @@ export const zh: Messages = {
     pause_both: "两者都暂停",
     download: "下载",
     playback_note: "播放使用原始流。部分浏览器无法播放MKV、HEVC、AV1或E-AC-3；使用“下载”在本地检查任一确切文件。下面的统计数据和验证仍然适用。",
+    playback_note_short: "播放使用原始流。部分浏览器无法播放MKV、HEVC、AV1或E-AC-3；使用“下载”在本地检查任一确切文件。",
     refresh: "刷新",
     available: "可用的",
     missing: "缺失或不可用",

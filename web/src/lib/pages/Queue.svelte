@@ -1182,9 +1182,10 @@
       {@const target = replacementTarget}
       <p class="mb-4 break-words">{jobName(target)}</p>
       <!-- What Replace would put in place, next to what it replaces, before anything moves. -->
-      {#if target.mediaKind && target.mediaKind !== 'Unknown'}
+      <!-- Unmounted while replacing, so neither file is held open while it moves. -->
+      {#if target.mediaKind && target.mediaKind !== 'Unknown' && !replacementPending}
         <div class="mb-5" data-replacement-compare>
-          <MediaCompare mediaKind={target.mediaKind} poster={api.jobArtworkUrl(target.id)}
+          <MediaCompare mediaKind={target.mediaKind} poster={api.jobArtworkUrl(target.id)} playbackNote={i18n.m.shared.playback_note_short}
             left={{ label: i18n.m.shared.original, url: api.mediaContentUrl(target.mediaFileId), sizeBytes: target.sourceSizeBytes }}
             right={{ label: i18n.m.shared.encoded, url: api.jobOutputContentUrl(target.id), sizeBytes: target.outputSizeBytes }} />
         </div>

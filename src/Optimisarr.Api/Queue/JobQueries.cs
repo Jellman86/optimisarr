@@ -61,7 +61,7 @@ public sealed record JobDto(
     bool WaitingForResources = false,
     /// <summary>Per-soundtrack bitrate search evidence while final verification has not produced its own report.</summary>
     string? SoundtrackSearchJson = null,
-    /// <summary>Video, Audio or Image, so the original and the output can be compared in the right viewer.</summary>
+    /// <summary>Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer.</summary>
     string? MediaKind = null);
 
 public static class JobQueries

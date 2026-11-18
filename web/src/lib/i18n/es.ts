@@ -1773,6 +1773,7 @@ result_dismiss: 'Descartar',
     download: 'Descargar',
     playback_note:
       'La reproducción utiliza los flujos originales. Algunos navegadores no pueden reproducir MKV, HEVC, AV1 o E-AC-3; usa Descargar para inspeccionar el archivo exacto localmente. Las estadísticas y verificación a continuación aún aplican.',
+    playback_note_short: 'La reproducción utiliza los flujos originales. Algunos navegadores no pueden reproducir MKV, HEVC, AV1 o E-AC-3; usa Descargar para inspeccionar el archivo exacto localmente.',
     refresh: 'Actualizar',
     available: 'Disponible',
     missing: 'Faltante',

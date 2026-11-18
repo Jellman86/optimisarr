@@ -811,7 +811,7 @@ export type Job = {
   /** The original's size when the job started; null for jobs that predate the record. */
   sourceSizeBytes: number | null
   outputSizeBytes: number | null
-  /** Video, Audio or Image; null for a job whose file is gone. */
+  /** Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer. */
   mediaKind?: string | null
   verificationPassed: boolean | null
   verificationReportJson: string | null

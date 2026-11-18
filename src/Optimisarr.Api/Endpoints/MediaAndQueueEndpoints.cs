@@ -328,7 +328,8 @@ internal static class MediaAndQueueEndpoints
             CancellationToken cancellationToken) =>
         {
             var path = await db.Jobs
-                .Where(job => job.Id == id && job.Type == JobType.Normal && job.Status == JobStatus.ReadyToReplace)
+                .Where(job => job.Id == id && job.Type == JobType.Normal && job.Status == JobStatus.ReadyToReplace
+                    && job.VerificationPassed == true)
                 .Select(job => job.WorkOutputPath)
                 .FirstOrDefaultAsync(cancellationToken);
             return FileServing.ServeFile(path);
