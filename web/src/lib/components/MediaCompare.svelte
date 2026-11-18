@@ -7,9 +7,11 @@
 
   // A still shown in each video player before playback, so the pair reads as the title rather
   // than two black boxes. It is a recognition aid only and never stands in for either file.
-  let { mediaKind, left, right, comparisonDurationSeconds = null, poster = null }: {
+  let { mediaKind, left, right, comparisonDurationSeconds = null, poster = null, playbackNote = i18n.m.shared.playback_note }: {
     mediaKind: string
     poster?: string | null
+    /** The note under video players; a caller with no stats below them passes a shorter one. */
+    playbackNote?: string
     left: { label: string; url: string; sizeBytes?: number | null; startSeconds?: number | null }
     right: { label: string; url: string; sizeBytes?: number | null; startSeconds?: number | null }
     comparisonDurationSeconds?: number | null
@@ -226,5 +228,5 @@
   {/each}
 </div>
 {#if mediaKind !== 'Image' && mediaKind !== 'Audio'}
-  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.shared.playback_note}</p>
+  <p class="mt-3 text-xs leading-relaxed text-ink-3">{playbackNote}</p>
 {/if}

@@ -1780,6 +1780,7 @@ result_dismiss: 'Ausblenden',
     download: 'Herunterladen',
     playback_note:
       'Die Wiedergabe verwendet die Originalstreams. Manche Browser können MKV, HEVC, AV1 oder E-AC-3 nicht abspielen; laden Sie die Dateien herunter, um sie lokal zu prüfen. Die Statistiken und Prüfungen unten gelten weiterhin.',
+    playback_note_short: 'Die Wiedergabe verwendet die Originalstreams. Manche Browser können MKV, HEVC, AV1 oder E-AC-3 nicht abspielen; laden Sie die Dateien herunter, um sie lokal zu prüfen.',
     refresh: 'Aktualisieren',
     available: 'Verfügbar',
     missing: 'Fehlt',

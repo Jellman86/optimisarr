@@ -33,10 +33,10 @@ function job(id: number, status: string, verificationPassed: boolean | null) {
   }
 }
 
-async function mockQueue(page: Page) {
+async function mockQueue(page: Page, firstJob: Record<string, unknown> = {}) {
   await queueHub(page)
   let jobs = [
-    job(1, 'ReadyToReplace', true),
+    { ...job(1, 'ReadyToReplace', true), ...firstJob },
     job(2, 'ReadyToReplace', true),
     job(3, 'Queued', null),
   ]
@@ -153,6 +153,42 @@ test('replacement refusal stays visible above the job details and allows a retry
   expect(requests).toBe(2)
 })
 
+test('replacing one file shows the original and the verified output side by side first', async ({ page }) => {
+  await mockQueue(page, { mediaKind: 'Video', sourceSizeBytes: 4_000 })
+  const streamed: string[] = []
+  await page.route(/\/api\/(media\/1\/content|jobs\/1\/output\/content)$/, route => {
+    streamed.push(new URL(route.request().url()).pathname)
+    return route.fulfill({ status: 404 })
+  })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  const confirmation = page.locator('#queue-replacement-dialog')
+
+  const compare = confirmation.locator('[data-replacement-compare]')
+  await expect(compare).toContainText('Original')
+  await expect(compare).toContainText('Encoded')
+  await expect(compare.locator('video')).toHaveCount(2)
+  await expect(compare.locator('video').first()).toHaveAttribute('src', '/api/media/1/content')
+  await expect(compare.locator('video').last()).toHaveAttribute('src', '/api/jobs/1/output/content')
+  await expect(compare).not.toContainText('below still apply')
+  await expect(confirmation.getByRole('button', { name: 'Replace', exact: true })).toBeVisible()
+})
+
+test('replace all and a job of unknown media kind ask without a comparison', async ({ page }) => {
+  await mockQueue(page, { mediaKind: 'Unknown' })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  await expect(page.locator('#queue-replacement-dialog')).toBeVisible()
+  await expect(page.locator('[data-replacement-compare]')).toHaveCount(0)
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Replace all (2)' }).click()
+  await expect(page.locator('#queue-replacement-dialog')).toContainText('Replace all 2 verified outputs?')
+  await expect(page.locator('[data-replacement-compare]')).toHaveCount(0)
+})
+
 test('cancelling on-page replacement leaves verified jobs untouched', async ({ page }) => {
   const bulkRequests = await mockQueue(page)
   await page.goto('/#/queue')
@@ -229,7 +265,7 @@ test('a pending replacement ignores repeated submission and Escape until its res
 
 test('long replacement refusals keep cancel reachable in a short narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 375 })
-  await mockQueue(page)
+  await mockQueue(page, { mediaKind: 'Video', sourceSizeBytes: 4_000 })
   await page.route('**/api/jobs/1/replace', route => route.fulfill({
     status: 409, contentType: 'application/json',
     body: JSON.stringify({ error: 'The retained source changed. ' + 'Keep both files and re-verify the candidate before retrying. '.repeat(12) }),

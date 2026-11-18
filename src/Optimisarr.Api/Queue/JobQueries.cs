@@ -60,7 +60,9 @@ public sealed record JobDto(
     /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
     bool WaitingForResources = false,
     /// <summary>Per-soundtrack bitrate search evidence while final verification has not produced its own report.</summary>
-    string? SoundtrackSearchJson = null);
+    string? SoundtrackSearchJson = null,
+    /// <summary>Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer.</summary>
+    string? MediaKind = null);
 
 public static class JobQueries
 {
@@ -186,7 +188,8 @@ public static class JobQueries
                 job.VerificationReportJson == null ? job.PerceptualSearchJson : null,
                 job.AppliedAudioFilter,
                 false,
-                job.VerificationReportJson == null ? job.SoundtrackSearchJson : null))
+                job.VerificationReportJson == null ? job.SoundtrackSearchJson : null,
+                job.MediaFile != null ? job.MediaFile.MediaKind.ToString() : null))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();

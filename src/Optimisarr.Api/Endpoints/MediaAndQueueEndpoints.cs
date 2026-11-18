@@ -320,6 +320,22 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("GetPreviewContent");
 
+        // Streams a verified output that is waiting to replace its original, so it can be compared with
+        // the original before Replace is pressed. Any other job, or a preview, has nothing to compare.
+        app.MapGet("/api/jobs/{id:int}/output/content", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var path = await db.Jobs
+                .Where(job => job.Id == id && job.Type == JobType.Normal && job.Status == JobStatus.ReadyToReplace
+                    && job.VerificationPassed == true)
+                .Select(job => job.WorkOutputPath)
+                .FirstOrDefaultAsync(cancellationToken);
+            return FileServing.ServeFile(path);
+        })
+        .WithName("GetJobOutputContent");
+
         app.MapGet("/api/preview/{jobId:int}/reference", async (
             int jobId, PreviewService preview, CancellationToken cancellationToken) =>
             FileServing.ServeFile(await preview.ReferencePathAsync(jobId, cancellationToken)))

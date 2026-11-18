@@ -1871,6 +1871,7 @@ result_dismiss: 'Dismiss',
     download: 'Download',
     playback_note:
       'Playback uses the original streams. Some browsers cannot play MKV, HEVC, AV1, or E-AC-3; use Download to inspect either exact file locally. The stats and verification below still apply.',
+    playback_note_short: 'Playback uses the original streams. Some browsers cannot play MKV, HEVC, AV1, or E-AC-3; use Download to inspect either exact file locally.',
     refresh: 'Refresh',
     available: 'Available',
     missing: 'Missing',
