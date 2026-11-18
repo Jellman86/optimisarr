@@ -322,7 +322,7 @@
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => void loadInventory(selectedLibrary, show, page)} />
   {/key}
 {/if}
 {#if previewing}

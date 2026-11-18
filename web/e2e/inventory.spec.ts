@@ -154,6 +154,39 @@ test('a file the rules skip keeps the button, off, with the reason and where to 
   await expect(optimise).toBeDisabled()
   await expect(optimise).toHaveAccessibleDescription('Already uses the target codec.')
   await expect(dialog.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0)
+})
+
+test('a file held back by its last failure can be tried again from its details', async ({ page }) => {
+  await mockInventory(page)
+  let retriedOnce = false
+  const failedReason = 'Failed last time, so it isn’t tried again by itself'
+  await page.route('**/api/inventory?*', route => {
+    const file = inventoryFiles[1]
+    const item = retriedOnce
+      ? { file, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null }
+      : { file, eligible: false, reason: failedReason, retryJobId: 55 }
+    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0 } } })
+  })
+  const retries: string[] = []
+  await page.route('**/api/jobs/55/retry*', route => {
+    retries.push(new URL(route.request().url()).pathname)
+    retriedOnce = true
+    return route.fulfill({ json: { id: 55, status: 'Queued' } })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('region', { name: 'Can it be optimised?' })).toContainText(failedReason)
+  const tryAgain = dialog.getByRole('button', { name: 'Try again', exact: true })
+  await expect(tryAgain).toHaveAccessibleDescription(failedReason)
+
+  await tryAgain.click()
+
+  await expect(dialog.locator('[data-inventory-retried]')).toContainText('Added to the queue')
+  await expect(dialog.locator('[data-inventory-retried]').getByRole('link', { name: 'Open the queue' })).toHaveAttribute('href', '#/queue')
+  await expect(tryAgain).toHaveCount(0)
+  expect(retries).toEqual(['/api/jobs/55/retry'])
 })
 
 test('a file that has not been probed says to probe it before it can be optimised', async ({ page }) => {

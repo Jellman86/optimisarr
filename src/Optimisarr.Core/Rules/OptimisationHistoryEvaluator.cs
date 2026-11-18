@@ -8,7 +8,8 @@ namespace Optimisarr.Core.Rules;
 /// </summary>
 /// <param name="LastCompletedAt">When the most recent successful job for this file finished, if any.</param>
 /// <param name="LastFailedAt">When the most recent failed job for this file finished, if any.</param>
-public sealed record OptimisationHistory(DateTimeOffset? LastCompletedAt, DateTimeOffset? LastFailedAt)
+/// <param name="LastFailedJobId">That most recent failed job, so the user can try it again.</param>
+public sealed record OptimisationHistory(DateTimeOffset? LastCompletedAt, DateTimeOffset? LastFailedAt, int? LastFailedJobId = null)
 {
     public static readonly OptimisationHistory None = new(null, null);
 }
@@ -40,7 +41,7 @@ public static class OptimisationHistoryEvaluator
 
         if (IsCurrent(history.LastFailedAt, fileModifiedAt))
         {
-            return CandidateDecision.Skipped("Previously failed — retry from the Queue page");
+            return CandidateDecision.HeldBackByFailure("Failed last time, so it isn't tried again by itself", history.LastFailedJobId);
         }
 
         return baseDecision;

@@ -235,8 +235,33 @@ test('a file the rules skip cannot be queued or previewed and says where the rul
   await expect(verdict.getByRole('link', { name: 'Films → Which files' })).toHaveAttribute('href', '#/libraries/1/configure/files')
   const queue = page.getByRole('button', { name: 'Queue this file', exact: true })
   await expect(queue).toBeDisabled()
-  await expect(queue).toHaveAccessibleDescription(/the library’s rules skip this file/)
+  await expect(queue).toHaveAccessibleDescription('Queue and Preview are off because this file is skipped. The reason is above.')
   await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeDisabled()
+  await expect(page.locator('[data-plan-try-again]')).toHaveCount(0)
+})
+
+test('a file held back by its last failure is tried again from the plan, through that job', async ({ page }) => {
+  await mockPlan(page, { plan: { ...plan, eligible: false, reason: 'Failed last time, so it isn’t tried again by itself', retryJobId: 55 } })
+  const retried: string[] = []
+  let enqueued = 0
+  await page.route('**/api/jobs/55/retry*', route => {
+    retried.push(new URL(route.request().url()).pathname)
+    return route.fulfill({ json: { id: 55, status: 'Queued' } })
+  })
+  await page.route('**/api/media/7/enqueue', route => { enqueued += 1; return route.fulfill({ json: { jobId: 41, alreadyQueued: false } }) })
+  await page.goto('/#/inventory/optimise/7')
+
+  await expect(page.getByRole('button', { name: 'Queue this file', exact: true })).toHaveCount(0)
+  const tryAgain = page.getByRole('button', { name: 'Try again', exact: true })
+  await expect(tryAgain).toHaveAccessibleDescription(/It failed last time.*Try again puts it back in the queue/)
+  await expect(page.getByRole('link', { name: 'See why it failed' })).toHaveAttribute('href', '#/queue/failures')
+
+  await tryAgain.click()
+
+  await expect(page.locator('[data-plan-queued]')).toContainText('Added to the queue')
+  await expect(tryAgain).toBeDisabled()
+  expect(retried).toEqual(['/api/jobs/55/retry'])
+  expect(enqueued).toBe(0)
 })
 
 test('what happens to the original follows the library’s files choice', async ({ page }) => {

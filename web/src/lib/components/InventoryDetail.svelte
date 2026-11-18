@@ -1,15 +1,34 @@
 <script lang="ts">
-  import type { InventoryRow } from '../api'
+  import { api, type InventoryRow } from '../api'
   import { containerLabel, formatDuration, formatSize, languageList } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { modal } from '../modal'
   import Thumbnail from './Thumbnail.svelte'
   import Icon from './Icon.svelte'
 
-  let { row, libraryName, probing, error, onclose, onprobe, onpreview }: {
+  let { row, libraryName, probing, error, onclose, onprobe, onpreview, onretried }: {
     row: InventoryRow; libraryName: string; probing: boolean; error: string | null
-    onclose: () => void; onprobe: () => void; onpreview: () => void
+    onclose: () => void; onprobe: () => void; onpreview: () => void; onretried: () => void
   } = $props()
+  let retrying = $state(false)
+  let retried = $state(false)
+  let retryError = $state<string | null>(null)
+
+  // A file held back by its last failure is offered that job again here, where the user found it.
+  async function tryAgain(jobId: number) {
+    if (retrying) return
+    retrying = true
+    retryError = null
+    try {
+      await api.retryJob(jobId)
+      retried = true
+      onretried()
+    } catch (err) {
+      retryError = err instanceof Error ? err.message : i18n.m.inventory.error_queue
+    } finally {
+      retrying = false
+    }
+  }
   let file = $derived(row.file)
   let title = $derived((file.relativePath.split(/[\\/]/).pop() ?? file.relativePath).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '))
   let artworkFailed = $state(false)
@@ -44,6 +63,13 @@
       {/if}
     </section>
     {#if error}<p class="callout tone-bad mb-4" role="alert">{error}</p>{/if}
+    {#if retryError}<p class="callout tone-bad mb-4" role="alert">{retryError}</p>{/if}
+    {#if retried}
+      <p class="callout tone-ok mb-4" role="status" data-inventory-retried>
+        {i18n.m.inventory.queue_added}
+        <a class="focus-ring font-medium underline" href="#/queue">{i18n.m.onePlan.open_queue}</a>
+      </p>
+    {/if}
     {#if file.probeError}<p class="callout tone-bad mb-4">{t(i18n.m.inventory.probe_failed, { error: file.probeError })}</p>{/if}
     <dl class="detail-specs">
       <div><dt>{i18n.m.inventory.detail_status}</dt><dd>{file.status}</dd></div>
@@ -64,6 +90,11 @@
     <!-- A file the rules skip keeps the button, off, and the reason is the verdict above it. -->
     {#if row.eligible}
       <a class="btn btn-primary" href={`#/inventory/optimise/${file.id}`}>{i18n.m.onePlan.open}</a>
+    {:else if row.retryJobId != null && !retried}
+      {@const retryJobId = row.retryJobId}
+      <button class="btn btn-primary" onclick={() => void tryAgain(retryJobId)} disabled={retrying} aria-describedby="inventory-detail-verdict" data-inventory-try-again>
+        <Icon name="retry" />{retrying ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
+      </button>
     {:else}
       <button class="btn btn-primary" disabled aria-describedby="inventory-detail-verdict">{i18n.m.onePlan.open}</button>
     {/if}

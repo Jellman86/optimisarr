@@ -166,7 +166,38 @@ public sealed class CandidateServiceTests : IDisposable
         var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
 
         Assert.False(result.Eligible);
-        Assert.Contains("Previously failed", result.Reason);
+        Assert.Contains("Failed last time", result.Reason);
+    }
+
+    [Fact]
+    public async Task A_held_back_failed_file_names_its_latest_failed_job_to_retry()
+    {
+        int latestFailedId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(new Job { MediaFileId = file.Id, LibraryId = library.Id, Status = JobStatus.Failed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z") });
+            var latest = new Job { MediaFileId = file.Id, LibraryId = library.Id, Status = JobStatus.Failed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T03:00:00Z") };
+            db.Jobs.Add(latest);
+            db.Jobs.Add(new Job { MediaFileId = file.Id, LibraryId = library.Id, Status = JobStatus.Failed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T02:00:00Z") });
+            await db.SaveChangesAsync();
+            latestFailedId = latest.Id;
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+
+        Assert.Equal(latestFailedId, result.RetryJobId);
     }
 
     [Fact]

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Try a failed file again from where you find it (#507). A file whose last job failed is held back, so it does not fail over and over. Before, its details said "Previously failed — retry from the Queue page", and **Optimise this file…** was off, with no way back from there. Now the file's details and its plan offer **Try again**, which puts that failed job back in the queue, with a link to why it failed. The reason now reads "Failed last time, so it isn't tried again by itself". A file skipped for any other reason no longer says the library's rules skip it. The inventory and `GET /api/media/{id}/plan` now include `retryJobId`. No migration.
+
 - Allow AI super-resolution to finish with NVIDIA NVENC instead of failing when the queue selects it (#507). H.264, HEVC and AV1 use NVENC's constant-quality controls, with the selected preset and tuning; supported 10-bit sources remain 10-bit. Upscaled results still require verification and manual replacement. Other hardware encoder families remain unsupported for this pipeline.
 
 - Keep the Windows tool-probe timeout test independent of temporary script-file locks. The timeout and bounded-output checks still run against a real child process.

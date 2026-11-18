@@ -718,7 +718,8 @@ internal sealed record MediaPlanDto(
     IReadOnlyList<PlannedTrack>? AudioTracks,
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
     PlannedFile File,
-    MediaPlanImageDto? Image)
+    MediaPlanImageDto? Image,
+    int? RetryJobId)
 {
     public static MediaPlanDto From(MediaFile file, Candidate? candidate, OptimisationPlan plan) => new(
         file.Id,
@@ -742,7 +743,8 @@ internal sealed record MediaPlanDto(
         plan.File,
         plan.Image is { } image
             ? new MediaPlanImageDto(image.Format, image.Quality, image.ResizeMode.ToString(), image.ResizeValue, image.RecompressesLossy)
-            : null);
+            : null,
+        candidate?.RetryJobId);
 }
 
 /// <summary>The file as it is now: the "before" side of the plan, from what the last probe recorded.</summary>

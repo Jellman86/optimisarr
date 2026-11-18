@@ -13,8 +13,9 @@ public enum InventoryFilter
 }
 
 /// <summary>One inventory row: the probed file detail plus its eligibility verdict (null when the file
-/// has not been probed and so has no verdict yet).</summary>
-public sealed record InventoryRow(MediaFileDto File, bool? Eligible, string? Reason);
+/// has not been probed and so has no verdict yet). RetryJobId names the failed job to try again when
+/// an earlier failure is what holds the file back.</summary>
+public sealed record InventoryRow(MediaFileDto File, bool? Eligible, string? Reason, int? RetryJobId = null);
 
 /// <summary>Per-filter tallies so the UI can label its chips without fetching every row.</summary>
 public sealed record InventoryCounts(int All, int Eligible, int Skipped, int Unprobed);
@@ -47,7 +48,7 @@ public sealed class InventoryQueries(OptimisarrDbContext db, CandidateService ca
 
         var rows = files
             .Select(file => verdicts.TryGetValue(file.Id, out var verdict)
-                ? new InventoryRow(file, verdict.Eligible, verdict.Reason)
+                ? new InventoryRow(file, verdict.Eligible, verdict.Reason, verdict.RetryJobId)
                 : new InventoryRow(file, null, null))
             .ToList();
 

@@ -61,11 +61,18 @@
   async function queue() {
     if (!plan || queueing) return
     const id = plan.mediaFileId
+    const retryJobId = plan.retryJobId
     // An answer that arrives after another file was opened belongs to the file it was asked for.
     const stillShown = () => !disposed && plan?.mediaFileId === id
     queueing = true
     queueError = null
     try {
+      // A file held back by its last failure goes back in by trying that job again.
+      if (retryJobId != null) {
+        await api.retryJob(retryJobId)
+        if (stillShown()) queued = 'added'
+        return
+      }
       const { alreadyQueued } = await api.enqueueFile(id)
       if (stillShown()) queued = alreadyQueued ? 'already' : 'added'
     } catch (err) {
@@ -335,15 +342,25 @@
         </p>
       {/if}
       <div class="flex flex-wrap items-center gap-2">
-        <button class="btn btn-primary min-h-11" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
-          <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
-        </button>
+        {#if plan.retryJobId != null}
+          <button class="btn btn-primary min-h-11" onclick={queue} disabled={queueing || queued !== null} aria-describedby="plan-action-note" data-plan-try-again>
+            <Icon name="retry" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
+          </button>
+        {:else}
+          <button class="btn btn-primary min-h-11" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
+            <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
+          </button>
+        {/if}
         <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
           <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
         </button>
       </div>
       <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">
-        {plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}
+        {#if plan.retryJobId != null}
+          {i18n.m.onePlan.retry_note} <a class="focus-ring font-medium text-accent underline" href="#/queue/failures">{i18n.m.onePlan.why_failed}</a>
+        {:else}
+          {plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}
+        {/if}
       </p>
     </section>
   </div>
