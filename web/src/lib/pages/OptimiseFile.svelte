@@ -61,11 +61,18 @@
   async function queue() {
     if (!plan || queueing) return
     const id = plan.mediaFileId
+    const retryJobId = plan.retryJobId
     // An answer that arrives after another file was opened belongs to the file it was asked for.
     const stillShown = () => !disposed && plan?.mediaFileId === id
     queueing = true
     queueError = null
     try {
+      // A file held back by its last failure goes back in by trying that job again.
+      if (retryJobId != null) {
+        await api.retryJob(retryJobId)
+        if (stillShown()) queued = 'added'
+        return
+      }
       const { alreadyQueued } = await api.enqueueFile(id)
       if (stillShown()) queued = alreadyQueued ? 'already' : 'added'
     } catch (err) {
@@ -166,7 +173,7 @@
         <span class="badge {plan.eligible ? 'tone-ok' : 'tone-muted'}">{plan.eligible ? i18n.m.onePlan.yes : i18n.m.onePlan.no}</span>
       </div>
       <p class="mt-2 text-sm leading-relaxed text-ink-2">{plan.reason}</p>
-      {#if !plan.eligible && library}
+      {#if !plan.eligible && library && plan.retryJobId == null}
         <p class="mt-3 text-sm leading-relaxed text-ink-3">
           {t(i18n.m.onePlan.skipped_where, { library: libraryName })}
           <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a>
@@ -335,16 +342,29 @@
         </p>
       {/if}
       <div class="flex flex-wrap items-center gap-2">
-        <button class="btn btn-primary min-h-11" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
-          <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
-        </button>
-        <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
-          <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
-        </button>
+        {#if plan.retryJobId != null}
+          <button class="btn btn-primary min-h-11" onclick={queue} disabled={queueing || queued !== null} aria-describedby={queued === null ? 'plan-action-note' : undefined} data-plan-try-again>
+            <Icon name="retry" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
+          </button>
+        {:else}
+          <button class="btn btn-primary min-h-11" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
+            <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
+          </button>
+        {/if}
+        <!-- A file to try again has a real run to look at instead of a sample, so Preview is not offered. -->
+        {#if plan.retryJobId == null}
+          <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
+            <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
+          </button>
+        {/if}
       </div>
-      <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">
-        {plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}
-      </p>
+      {#if plan.retryJobId == null}
+        <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">{plan.eligible ? i18n.m.onePlan.queue_note : i18n.m.onePlan.queue_disabled}</p>
+      {:else if queued === null}
+        <p id="plan-action-note" class="mt-3 text-xs leading-relaxed text-ink-3">
+          {i18n.m.onePlan.retry_note} <a class="focus-ring font-medium text-accent underline" href="#/queue/failures">{i18n.m.onePlan.why_failed}</a>
+        </p>
+      {/if}
     </section>
   </div>
 {/if}

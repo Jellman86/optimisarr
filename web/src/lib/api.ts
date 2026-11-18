@@ -1156,6 +1156,8 @@ export type MediaPlan = {
   libraryId: number | null
   eligible: boolean
   reason: string
+  /** The failed job to try again, when an earlier failure is what holds this file back. */
+  retryJobId: number | null
   kind: string
   action: 'Encode' | 'Remux' | 'TrackCleanup' | 'Audio' | 'Image'
   source: {
@@ -1218,6 +1220,8 @@ export type InventoryRow = {
   file: MediaFile
   eligible: boolean | null
   reason: string | null
+  /** The failed job to try again, when an earlier failure is what holds this file back. */
+  retryJobId?: number | null
 }
 
 export type InventoryCounts = {

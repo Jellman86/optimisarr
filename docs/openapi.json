@@ -3377,6 +3377,15 @@
           "reason": {
             "type": "string"
           },
+          "retryJobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "sound": {
             "oneOf": [
               {
@@ -3413,7 +3422,8 @@
           "audioTracks",
           "subtitleTracks",
           "file",
-          "image"
+          "image",
+          "retryJobId"
         ],
         "type": "object"
       },
