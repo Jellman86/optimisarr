@@ -22,6 +22,26 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "subrip", "subrip" }, result.SubtitleCodecs);
     }
 
+    [Theory]
+    [InlineData("\"sample_aspect_ratio\":\"64:45\",", 64, 45)]
+    [InlineData("\"sample_aspect_ratio\":\"1:1\",", 1, 1)]
+    public void Parse_records_the_primary_videos_pixel_shape(string field, int numerator, int denominator)
+    {
+        var result = MediaProbeService.Parse($$"""
+            {"streams":[{"index":0,"codec_type":"video",{{field}}"codec_name":"h264","width":720,"height":576}]}
+            """);
+        Assert.Equal(new SampleAspectRatio(numerator, denominator), result.PixelAspect);
+    }
+
+    [Fact]
+    public void A_video_with_no_reported_pixel_shape_records_none()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[{"index":0,"codec_type":"video","codec_name":"h264","sample_aspect_ratio":"0:1"}]}
+            """);
+        Assert.Null(result.PixelAspect);
+    }
+
     [Fact]
     public void An_unknown_subtitle_stream_index_is_not_guessed_from_its_relative_position()
     {

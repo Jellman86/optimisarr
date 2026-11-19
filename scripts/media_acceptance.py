@@ -71,7 +71,7 @@ def main():
     worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
     parser.add_argument("--worker-encoder", action="append", default=[], help="Limit disposable worker discovery to these encoders")
     parser.add_argument("--local-encoder", action="append", default=[], help="Limit local encoding matrix (otherwise every available encoder)")
-    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit", "fractional", "uneven", "dts-only", "dts-only-no-subtitles"))
+    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit", "fractional", "uneven", "dts-only", "dts-only-no-subtitles", "anamorphic"))
     parser.add_argument("--soak-cycles", type=int, default=0, help="Repeat encode/verify/rollback on every selected worker on the same server")
     parser.add_argument("--fixture-seconds", type=int, default=8, help="Generated source duration, 8 to 600 seconds")
     parser.add_argument("--pairing-wait", type=int, default=0, help="Seconds to allow TEST sidecars to pair before starting")

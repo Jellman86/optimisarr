@@ -79,6 +79,11 @@ public sealed record VerificationInput(
     // them it requires the source size, as it always has. Only meaningful for a re-encoded stream.
     int? ExpectedWidth = null,
     int? ExpectedHeight = null,
+    // The output must keep the source's pixel shape. Neither the size check nor VMAF notices a
+    // stored-size output whose pixels became square, though it would play squashed.
+    bool RequirePixelShapeRetained = false,
+    SampleAspectRatio? OriginalPixelAspect = null,
+    SampleAspectRatio? OutputPixelAspect = null,
     // The rate a frame-rate cap told the encode to produce, and the rate the output actually has.
     // With an expectation set the structure gate holds the output to it; without one the frame
     // rate is not judged, as it never was. Only meaningful for a re-encoded stream.

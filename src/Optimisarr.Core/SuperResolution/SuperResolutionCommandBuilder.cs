@@ -49,7 +49,9 @@ public static class SuperResolutionCommandBuilder
     /// Encodes the upscaled pictures arriving on stdin, with the original as the second input so
     /// audio, subtitles, chapters, metadata and (for Matroska) attachments such as subtitle fonts
     /// are copied exactly as the source carries them, minus the kept-language removals the spec
-    /// resolved. The pictures are placed at the source video's start so audio stays in sync.
+    /// resolved. The pictures are placed at the source video's start so audio stays in sync. The
+    /// engine writes pictures with no pixel shape, so a non-square source's shape is set again here;
+    /// without it a widescreen DVD would play squashed.
     /// </summary>
     public static IReadOnlyList<string> BuildEncoder(
         TranscodeSpec spec,
@@ -59,7 +61,8 @@ public static class SuperResolutionCommandBuilder
         string? optimisedMarker,
         double videoStartSeconds,
         int sourceBitDepth,
-        SuperResolutionColour colour)
+        SuperResolutionColour colour,
+        Domain.SampleAspectRatio? pixelAspect = null)
     {
         var args = new List<string>
         {
@@ -88,7 +91,8 @@ public static class SuperResolutionCommandBuilder
         // NVENC accepts software frames and performs its own upload. Its 10-bit input is
         // semiplanar P010, unlike the planar 10-bit input used by the software encoders.
         var layout = sourceBitDepth > 8 ? nvenc ? "p010le" : "yuv420p10le" : "yuv420p";
-        args.AddRange(["-vf", $"scale=out_color_matrix={colour.Matrix}:out_range={colour.Range},format={layout}"]);
+        var shape = pixelAspect is { IsSquare: false } aspect ? $",setsar=sar={aspect.FilterValue}" : "";
+        args.AddRange(["-vf", $"scale=out_color_matrix={colour.Matrix}:out_range={colour.Range}{shape},format={layout}"]);
         if (colour.Tagged)
         {
             if (colour.Space is { } space) args.AddRange(["-colorspace", space]);

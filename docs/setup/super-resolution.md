@@ -151,13 +151,21 @@ carries; the VMAF gate still judges every result. To avoid losing detail or timi
 are refused before anything runs, and are left to the normal pipeline:
 
 - other layouts and depths, such as 4:2:2, 4:4:4 or 12-bit video;
-- non-square pixels (anamorphic video), rotated video, or more than one video stream;
+- rotated video, or more than one video stream;
 - interlaced video, because the engine would enlarge the combing between fields as if it were detail,
   unless the library deinterlaces it first (see [Interlaced video](configuration.md#interlaced-video));
 - HDR and variable-frame-rate video;
 - libraries whose rules crop, downscale or cap the frame rate;
 - Intel QSV, VA-API and VideoToolbox encoders. Choose **CPU only** or **NVIDIA NVENC** in the queue's
   encoder settings for super-resolution. Automatic selection also works when it selects a supported encoder.
+
+Video with non-square pixels, such as a widescreen DVD (720x576 shown at 1024x576), is supported.
+The stored picture is upscaled as it is, so a 2x upscale of that DVD is 1440x1152, and the
+original's pixel shape is written on the result, so it plays at 2048x1152 with the same shape as
+before. Verification checks the pixel shape survived and refuses a result that would play squashed.
+H.264 and HEVC carry the shape in the video itself; AV1 carries it in the container only, so a
+player that ignores the container shows an AV1 result squashed. Many DVDs are also interlaced:
+those still need the library to deinterlace them.
 
 NVENC accepts the engine's converted frames directly, including 10-bit HEVC and AV1 on GPUs that
 support those codecs. It uses the same constant-quality, preset and advanced encoder settings as

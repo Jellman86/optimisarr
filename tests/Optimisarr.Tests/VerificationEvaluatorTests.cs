@@ -533,6 +533,65 @@ public sealed class VerificationEvaluatorTests
     // an encode intended to produce a particular size, the gate checks the output against that
     // intent rather than against the source.
 
+    // An upscaled DVD is judged against its stored pixels, and VMAF scales the candidate to the
+    // reference's stored size whatever shape its pixels are, so neither the size check nor the
+    // quality score notices an output that lost its pixel shape. This check does.
+
+    [Fact]
+    public void An_output_that_lost_the_sources_pixel_shape_fails_and_says_it_would_display_squashed()
+    {
+        var input = Healthy() with
+        {
+            RequirePixelShapeRetained = true,
+            OriginalPixelAspect = new SampleAspectRatio(64, 45),
+            OutputPixelAspect = null,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        var failure = Assert.Single(report.Checks, c => c.Outcome == CheckOutcome.Failed);
+        Assert.Equal("Picture shape", failure.Name);
+        Assert.Contains("64:45", failure.Detail);
+        Assert.Contains("1:1", failure.Detail);
+    }
+
+    [Theory]
+    [InlineData(64, 45, 64, 45)]
+    [InlineData(1280, 1281, 1, 1)]
+    public void An_output_that_kept_the_pixel_shape_passes(int originalNumerator, int originalDenominator, int outputNumerator, int outputDenominator)
+    {
+        var input = Healthy() with
+        {
+            RequirePixelShapeRetained = true,
+            OriginalPixelAspect = new SampleAspectRatio(originalNumerator, originalDenominator),
+            OutputPixelAspect = new SampleAspectRatio(outputNumerator, outputDenominator),
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join(" | ", report.Checks.Where(c => c.Outcome != CheckOutcome.Passed).Select(c => c.Detail)));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Picture shape"));
+    }
+
+    [Fact]
+    public void Square_and_unspecified_pixels_are_the_same_shape()
+    {
+        var input = Healthy() with { RequirePixelShapeRetained = true, OriginalPixelAspect = null, OutputPixelAspect = new SampleAspectRatio(1, 1) };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Picture shape"));
+    }
+
+    [Fact]
+    public void The_pixel_shape_is_judged_only_when_the_job_asks_for_it()
+    {
+        var input = Healthy() with { OriginalPixelAspect = new SampleAspectRatio(64, 45), OutputPixelAspect = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Picture shape");
+    }
+
     [Fact]
     public void An_output_at_the_intended_size_passes_the_structure_gate()
     {

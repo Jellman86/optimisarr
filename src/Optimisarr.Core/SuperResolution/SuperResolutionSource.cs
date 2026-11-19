@@ -10,12 +10,16 @@ namespace Optimisarr.Core.SuperResolution;
 /// 8-bit or 10-bit 4:2:0 source is accepted: a 10-bit source is dithered into the engine's 8-bit
 /// pictures and encoded back to 10-bit, which suits drawn content mastered in 8-bit and released in
 /// 10-bit for compression. Anything else is refused before extraction: other chroma layouts or
-/// depths, non-square pixels, rotation, or a second real video stream.
+/// depths, rotation, or a second real video stream. Non-square pixels, as on a DVD, are accepted:
+/// the stored picture is upscaled as stored and its pixel shape written on the output.
 /// </summary>
 public sealed record SuperResolutionSource(
     string? Refusal, double VideoStartSeconds, int AttachmentCount, int BitDepth = 8, SuperResolutionColour? Colour = null)
 {
     public double? FrameRate { get; init; }
+
+    /// <summary>The pixel shape to restore on the output; null for square or unreported pixels.</summary>
+    public Domain.SampleAspectRatio? PixelAspect { get; init; }
 
     private static readonly Dictionary<string, int> Supported420 = new()
     {
@@ -47,6 +51,7 @@ public sealed record SuperResolutionSource(
         return new SuperResolutionSource(RefusalFor(video, videos.Count, deinterlaced) ?? ColourRefusal(video), start, attachments, depth, colour)
         {
             FrameRate = MediaProbeService.Parse(ffprobeJson).VideoFrameRate,
+            PixelAspect = Domain.SampleAspectRatio.Parse(Text(video, "sample_aspect_ratio")) is { IsSquare: false } shape ? shape : null,
         };
     }
 
@@ -96,10 +101,6 @@ public sealed record SuperResolutionSource(
         {
             return $"Super-resolution supports 8-bit and 10-bit 4:2:0 video; this source is {pixelFormat ?? "an unknown format"}. " +
                 "Its frames would lose colour or detail on the way through the engine.";
-        }
-        if (Text(video, "sample_aspect_ratio") is { } aspect && aspect is not ("1:1" or "0:1"))
-        {
-            return $"Super-resolution needs square pixels; this source has a sample aspect ratio of {aspect}.";
         }
         if (Rotation(video) is { } rotation && rotation % 360 != 0)
         {

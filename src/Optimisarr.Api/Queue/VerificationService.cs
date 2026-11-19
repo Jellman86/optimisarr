@@ -55,7 +55,9 @@ public sealed record OriginalSnapshot(
     // The encode applies an audio filter chain, which a sampled downmix reference cannot reproduce.
     bool AudioFiltered = false,
     // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
-    string? VmafModel = null);
+    string? VmafModel = null,
+    // The output must keep the source's pixel shape. Set for super-resolution, whose engine drops it.
+    bool PixelShapeMustMatch = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -412,6 +414,9 @@ public sealed class VerificationService(
                 OutputHeight: outputProbe.Height,
                 ExpectedWidth: reference.ExpectedWidth,
                 ExpectedHeight: reference.ExpectedHeight,
+                RequirePixelShapeRetained: reference.PixelShapeMustMatch,
+                OriginalPixelAspect: originalProbe.PixelAspect,
+                OutputPixelAspect: outputProbe.PixelAspect,
                 ExpectedFrameRate: reference.FrameRate?.TargetFps,
                 OutputFrameRate: outputProbe.VideoFrameRate,
                 ImageQualityMeasured: imageQualityResult?.Measured ?? false,
