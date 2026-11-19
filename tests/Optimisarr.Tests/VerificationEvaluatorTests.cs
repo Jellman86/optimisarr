@@ -750,6 +750,62 @@ public sealed class VerificationEvaluatorTests
         Assert.False(report.Passed);
     }
 
+    // --- Silence trimmed from a music file's start and end ---------------------------------
+
+    private static readonly AudioTrimPlan Trim = new(StartSample: 121_252, EndSample: 474_075, SampleRate: 44_100, SourceSeconds: 13.7);
+
+    private static VerificationInput Trimmed(double output, double leading = 0.25, double trailing = 0.25) => HealthyAudio() with
+    {
+        OriginalDurationSeconds = 13.7, OriginalAudioLastPresentationSeconds = 13.7, OutputDurationSeconds = output,
+        SilenceTrim = Trim, OutputEdgeSilence = new EdgeSilence(leading, trailing),
+    };
+
+    [Fact]
+    public void A_trimmed_file_is_judged_against_the_length_it_was_meant_to_keep()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds + 0.03), VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Contains("after trimming", report.Checks.Single(c => c.Name == "Duration").Detail);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Theory]
+    [InlineData(-0.5)]
+    [InlineData(0.5)]
+    public void Cutting_more_or_less_than_planned_fails_the_trim_check(double off)
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds + off), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void A_window_shifted_into_the_music_fails_even_at_the_right_length()
+    {
+        // The right number of seconds, but cut late: the start keeps too much silence.
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 1.2, trailing: 0), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void A_trim_whose_output_silence_was_not_measured_cannot_pass()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds) with { OutputEdgeSilence = null }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void An_untrimmed_file_has_no_trim_check_and_keeps_its_plain_length_check()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyAudio(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Silence trimmed");
+        Assert.StartsWith("Original 3600s", report.Checks.Single(c => c.Name == "Duration").Detail);
+    }
+
     private static VerificationInput Healthy() => new(
         DecodeSucceeded: true,
         DecodeError: null,

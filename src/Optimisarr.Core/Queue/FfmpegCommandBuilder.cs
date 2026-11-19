@@ -74,6 +74,12 @@ public sealed record TranscodeSpec(
     public bool AudioSampleOnly { get; init; }
 
     /// <summary>
+    /// For a music file, the window to keep once silence is trimmed from its start and end. Applied
+    /// to the whole-file encode only: a sample or a clip is a window of its own.
+    /// </summary>
+    public AudioTrimPlan? SilenceTrim { get; init; }
+
+    /// <summary>
     /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
     /// single library bitrate for every re-encoded track.
     /// </summary>
@@ -609,17 +615,30 @@ public static class FfmpegCommandBuilder
         return new(layout.Applies ? layout.Filter : explicitFilter, layout);
     }
 
+    /// <summary>
+    /// Every audio filter the whole-file encode runs: the silence trim first, so the timestamps
+    /// restart before anything else sees them, then the resolved chain.
+    /// </summary>
+    public static string? AudioFilterChain(TranscodeSpec spec)
+    {
+        var chain = ResolveAudioFilter(spec).Chain;
+        // Never a video's soundtrack, which must stay in step with its picture.
+        var trim = spec is { SilenceTrim: { } plan, Kind: not MediaKind.Video, AudioSampleOnly: false, ClipSeconds: null, ClipStartSeconds: null }
+            ? plan.FilterExpression
+            : null;
+        return trim is null ? chain : chain is null ? trim : $"{trim},{chain}";
+    }
+
     private static void AppendAudioFilter(List<string> args, TranscodeSpec spec)
     {
-        var resolution = ResolveAudioFilter(spec);
-        if (resolution.Chain is null)
+        if (AudioFilterChain(spec) is not { } chain)
         {
             return;
         }
 
         // The filter is its own argument, so the chain never reaches a shell string.
         args.Add("-af");
-        args.Add(resolution.Chain);
+        args.Add(chain);
     }
 
     private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)

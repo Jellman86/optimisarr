@@ -35,6 +35,7 @@ public static class VerificationEvaluator
         if (!isImage)
         {
             checks.Add(DurationWithinTolerance(input, policy));
+            if (input.SilenceTrim is { } trim) checks.Add(SilenceTrimmedAsPlanned(input, trim));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
 
@@ -880,16 +881,56 @@ public static class VerificationEvaluator
             return Fail("Duration", "Output duration is unknown.");
         }
 
-        var driftSeconds = Math.Abs(original - output);
-        var driftPercent = driftSeconds / original * 100.0;
-        var detail = string.Format(
-            CultureInfo.InvariantCulture,
-            "Original {0:0.###}s, output {1:0.###}s ({2:0.##}% drift, tolerance {3:0.##}%).",
-            original, output, driftPercent, policy.DurationTolerancePercent);
+        // A trimmed file is meant to be shorter by exactly the silence removed.
+        var expected = input.SilenceTrim?.KeptSeconds ?? original;
+        var driftSeconds = Math.Abs(expected - output);
+        var driftPercent = driftSeconds / expected * 100.0;
+        var detail = input.SilenceTrim is { } trim
+            ? string.Format(
+                CultureInfo.InvariantCulture,
+                "Expected {0:0.###}s after trimming {1:0.###}s of silence from the original {2:0.###}s; output {3:0.###}s ({4:0.##}% drift, tolerance {5:0.##}%).",
+                expected, original - expected, original, output, driftPercent, policy.DurationTolerancePercent)
+            : string.Format(
+                CultureInfo.InvariantCulture,
+                "Original {0:0.###}s, output {1:0.###}s ({2:0.##}% drift, tolerance {3:0.##}%).",
+                original, output, driftPercent, policy.DurationTolerancePercent);
 
         return driftPercent <= policy.DurationTolerancePercent
             ? Pass("Duration", detail)
             : Fail("Duration", detail);
+    }
+
+    /// <summary>Within this of the planned length, the cut is where it was planned. Allows for codec padding.</summary>
+    internal const double TrimLengthToleranceSeconds = 0.15;
+
+    /// <summary>A trimmed edge may keep its padding plus this much; any more and the trim missed.</summary>
+    internal const double TrimEdgeToleranceSeconds = 0.1;
+
+    /// <summary>
+    /// The percentage duration check alone cannot prove a trim: one percent of a four-minute track is
+    /// more than two seconds. The exact length pins how much was cut, and the silence the output
+    /// still starts and ends with pins where, so a window shifted into the music fails too.
+    /// </summary>
+    private static VerificationCheck SilenceTrimmedAsPlanned(VerificationInput input, Optimisarr.Core.Queue.AudioTrimPlan trim)
+    {
+        const string name = "Silence trimmed";
+        if (input.OutputDurationSeconds is not { } output || output <= 0)
+            return Fail(name, "Output duration is unknown, so the trim cannot be checked.");
+        if (input.OutputEdgeSilence is not { } edges)
+            return Fail(name, "The output's silence could not be measured, so the trim cannot be checked.");
+
+        var lengthOff = Math.Abs(output - trim.KeptSeconds);
+        var limit = Optimisarr.Core.Queue.SilenceTrimPlanner.PaddingSeconds + TrimEdgeToleranceSeconds;
+        var detail = string.Format(CultureInfo.InvariantCulture,
+            "Planned {0:0.###}s kept, output {1:0.###}s; it starts with {2:0.##}s and ends with {3:0.##}s of silence.",
+            trim.KeptSeconds, output, edges.Leading, edges.Trailing);
+        if (lengthOff > TrimLengthToleranceSeconds)
+            return Fail(name, detail + string.Format(CultureInfo.InvariantCulture,
+                " The length is {0:0.###}s off the plan (allowed {1:0.##}s).", lengthOff, TrimLengthToleranceSeconds));
+        if (trim.TrimsStart && edges.Leading > limit || trim.TrimsEnd && edges.Trailing > limit)
+            return Fail(name, detail + string.Format(CultureInfo.InvariantCulture,
+                " A trimmed edge kept more than {0:0.##}s of silence, so the cut is not where it was planned.", limit));
+        return Pass(name, detail);
     }
 
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)
