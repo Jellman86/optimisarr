@@ -3567,6 +3567,7 @@ public sealed partial class QueueDispatcher(
         job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
+        job.AcceptedBelowTargetAt = null;
         job.FinishedAt = null;
     }
 
@@ -3759,19 +3760,10 @@ public sealed partial class QueueDispatcher(
 
         await WithJobAsync(jobId, job =>
         {
-            job.SourceSizeBytes = outcome.SourceSizeBytes;
-            job.OutputSizeBytes = outcome.OutputSizeBytes;
-            job.VerificationReportJson = reportJson;
-            job.VerificationPassed = outcome.Report.Passed;
-            // Kept whatever the verdict: a person may accept a file that missed only its picture
-            // target, and replacing it needs proof these are still the bytes that were judged.
-            job.VerifiedSourceSha256 = verifiedSource;
-            job.VerifiedOutputSha256 = verifiedOutput;
+            RecordVerdict(job, outcome, reportJson, verifiedSource, verifiedOutput, DateTimeOffset.UtcNow);
             job.CalibrationReferenceStartSeconds = work.IsCalibration
                 ? work.WorkerSample?.PresentationOffset ?? outcome.ReferenceStartSeconds
                 : null;
-            job.VerifiedAt = DateTimeOffset.UtcNow;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
 
         if (!outcome.Report.Passed)
@@ -3856,6 +3848,22 @@ public sealed partial class QueueDispatcher(
 
         await FinishSuccessfulJobAsync(jobId, outputPath, work, settings.DryRunMode);
         return VerificationDisposition.Finished;
+    }
+
+    // Internal so a test can prove a failed verdict keeps the file identity Accept anyway depends on.
+    internal static void RecordVerdict(
+        Job job, VerificationOutcome outcome, string reportJson, string? verifiedSource, string? verifiedOutput, DateTimeOffset nowUtc)
+    {
+        job.SourceSizeBytes = outcome.SourceSizeBytes;
+        job.OutputSizeBytes = outcome.OutputSizeBytes;
+        job.VerificationReportJson = reportJson;
+        job.VerificationPassed = outcome.Report.Passed;
+        // Kept whatever the verdict: a person may accept a file that missed only its picture
+        // target, and replacing it needs proof these are still the bytes that were judged.
+        job.VerifiedSourceSha256 = verifiedSource;
+        job.VerifiedOutputSha256 = verifiedOutput;
+        job.VerifiedAt = nowUtc;
+        job.UpdatedAt = nowUtc;
     }
 
     internal static VerificationClip? BuildVerificationClip(

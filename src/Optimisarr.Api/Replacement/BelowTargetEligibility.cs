@@ -37,7 +37,7 @@ public static class BelowTargetEligibility
         BelowTargetRefusal.SuperResolution => "Super-resolution output is judged differently and cannot be accepted below target.",
         BelowTargetRefusal.SavesToAnotherFolder => "This library saves optimised files to another folder instead of replacing originals.",
         BelowTargetRefusal.DryRun => "Dry-run mode is on, so originals are left untouched.",
-        BelowTargetRefusal.NoVerifiedIdentity => "This output has no record of the exact files that were measured. Try the file again.",
+        BelowTargetRefusal.NoVerifiedIdentity => "There is no record of the exact files that were measured, or the output is gone. Try the file again.",
         BelowTargetRefusal.BelowCatastrophicFloor => "Part of the picture scored below the safety floor, which usually means a damaged decode. This cannot be accepted.",
         BelowTargetRefusal.QualityNotMeasured => "The picture quality could not be measured, so there is no score to accept.",
         _ => "Only a job whose sole failed check is the picture-quality score can be accepted below target."

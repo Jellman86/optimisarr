@@ -1534,12 +1534,26 @@ test('a file that only missed its picture target can be accepted by hand after c
 
   const confirmation = page.locator('#queue-replacement-dialog')
   await expect(confirmation.getByRole('heading', { name: 'Scored 94, target was 95' })).toBeVisible()
-  await expect(confirmation).toContainText('Every other check passed. Accepting replaces the original, which is kept in quarantine')
+  await expect(confirmation).toContainText('Every other check passed. Accepting moves the original to Quarantine and puts this file in its place.')
+  await expect(confirmation.locator('[data-accept-undo]')).toHaveText('You can put the original back for 30 days. After that it is deleted and this cannot be undone.')
   await expect(confirmation.locator('[data-replacement-compare] video').last()).toHaveAttribute('src', '/api/jobs/9/output/content')
   await confirmation.getByRole('button', { name: 'Accept and replace' }).click()
 
   await expect(page).toHaveURL(/#\/quarantine$/)
   expect(accepted).toEqual([{ executionAttempt: 3 }])
+})
+
+test('a score just under target never rounds up to the target, and both misses are named', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [belowTargetJob({
+    eligible: false, refusal: 'NotVideo',
+    shortfalls: [{ target: 'HarmonicMean', score: 94.96, minimum: 95 }, { target: 'FifthPercentile', score: 88.2, minimum: 90 }],
+  })]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+
+  await expect(page.locator('#queue-job-dialog [data-accept-below-target-refused]')).toHaveText(
+    'Scored 94.9, target was 95; Weakest scenes scored 88.2, target was 90. Only a video can be accepted below its picture-quality target.')
 })
 
 test('accepting below target is locked with the reason while replacing is locked', async ({ page }) => {

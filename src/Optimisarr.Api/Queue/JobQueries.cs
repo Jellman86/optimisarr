@@ -242,15 +242,25 @@ public static class JobQueries
         var failedIds = jobs.Where(job => job.Status == nameof(JobStatus.Failed) && job.VerificationReportJson != null)
             .Select(job => job.Id).ToList();
         if (failedIds.Count == 0) return [];
+        // Only the fields the rule reads: this runs on every queue poll, and a failed job's log can be large.
         var failed = await db.Jobs.AsNoTracking()
-            .Include(job => job.MediaFile).ThenInclude(file => file!.Library)
-            .Where(job => failedIds.Contains(job.Id))
+            .Where(job => failedIds.Contains(job.Id) && job.MediaFile != null)
+            .Select(job => new
+            {
+                Job = new Job
+                {
+                    Id = job.Id, Type = job.Type, Status = job.Status, SuperResolutionApplied = job.SuperResolutionApplied,
+                    VerifiedSourceSha256 = job.VerifiedSourceSha256, VerifiedOutputSha256 = job.VerifiedOutputSha256,
+                    WorkOutputPath = job.WorkOutputPath, VerificationReportJson = job.VerificationReportJson,
+                },
+                job.MediaFile!.MediaKind,
+                SavesElsewhere = job.MediaFile.Library != null && job.MediaFile.Library.MoveOnComplete,
+            })
             .ToListAsync(cancellationToken);
         var decisions = new Dictionary<int, BelowTargetDto>();
-        foreach (var job in failed)
+        foreach (var (job, kind, savesElsewhere) in failed.Select(row => (row.Job, row.MediaKind, row.SavesElsewhere)))
         {
-            if (job.MediaFile is not { } media) continue;
-            var decision = BelowTargetEligibility.Decide(job, media.MediaKind, media.Library?.MoveOnComplete == true, dryRun: false);
+            var decision = BelowTargetEligibility.Decide(job, kind, savesElsewhere, dryRun: false);
             if (decision.Shortfalls.Count == 0) continue;
             decisions[job.Id] = new BelowTargetDto(decision.Eligible, decision.Refusal.ToString(),
                 [.. decision.Shortfalls.Select(s => new BelowTargetShortfallDto(s.Target.ToString(), s.Score, s.Minimum))]);

@@ -336,8 +336,8 @@ place, as Replace does. You can put the original back for as long as it stays in
 
 It is offered only when:
 
-- every other check passed. A wrong length, a missing track, a file that will not play to the end,
-  a frame shift or any other failed check is still a hard stop;
+- every other check passed. A wrong length, a missing track, a file that will not play to the end
+  or any other failed check is still a hard stop;
 - the picture quality was measured. A score that could not be measured is not a score to accept;
 - no part of the picture fell below the safety floor (the "catastrophic minimum"), which usually
   means a damaged decode rather than a slightly soft picture;
@@ -345,6 +345,10 @@ It is offered only when:
   another folder;
 - the original and the output are still the exact files that were measured. Jobs that failed before
   this release did not keep that record; retry them first.
+
+A low score does not always mean a slightly soft picture. Lost or repeated frames also lower it, and
+they are easy to miss in a side-by-side view, so watch some motion before you accept a file that
+scored well under its target.
 
 It is one file at a time and always by hand. No library setting turns it on, and **Replace all**
 never includes it. While replacing is locked (dry-run), it is off with the reason. The job is then

@@ -66,7 +66,8 @@ targets may be overridden, but the catastrophic VMAF floor may not, because it i
 corrupt decode; a score that could not be measured, any other failed check, audio and image scores,
 super-resolution and save-to-another-folder libraries are all excluded; and the source and output
 must still hash to the bytes that were measured. The job records `AcceptedBelowTargetAt` and keeps
-its failed report.
+its failed report. Lost or repeated frames surface only as a lower VMAF score, so a score above the
+floor can still hide them; the guide says so rather than adding a separate gate.
 
 **Recorded default, 7 November 2026:** a new library keeps each file's container ("Same as source")
 instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real

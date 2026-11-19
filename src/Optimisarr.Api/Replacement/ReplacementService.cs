@@ -333,6 +333,13 @@ public sealed class ReplacementService
             permanent: true);
     }
 
+    // An acceptance whose output never reached the original's place did not happen: the job is
+    // still the plain failure it was, and can be accepted again.
+    private static void ForgetUnfinishedAcceptance(Job? job)
+    {
+        if (job is { Status: JobStatus.Failed }) job.AcceptedBelowTargetAt = null;
+    }
+
     // A failed job a person accepted is finished, not failed: it must not be counted among failures.
     private static void ClearFailureOnceAccepted(Job job)
     {
@@ -600,7 +607,7 @@ public sealed class ReplacementService
             {
                 _db.Replacements.Remove(replacement);
                 // The original is back, so nothing was accepted; the job stays a plain failure.
-                job.AcceptedBelowTargetAt = null;
+                ForgetUnfinishedAcceptance(job);
                 await _db.SaveChangesAsync(CancellationToken.None);
             }
 
@@ -927,6 +934,7 @@ public sealed class ReplacementService
             if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256, replacement.MediaFileId))
             {
                 _db.Replacements.Remove(replacement);
+                ForgetUnfinishedAcceptance(replacement.Job);
                 await _db.SaveChangesAsync(cancellationToken);
                 _logger.LogWarning(
                     "Restored original for interrupted pending replacement {ReplacementId}",
@@ -938,6 +946,7 @@ public sealed class ReplacementService
         {
             // The process stopped after recording Pending but before moving the original.
             _db.Replacements.Remove(replacement);
+            ForgetUnfinishedAcceptance(replacement.Job);
             await _db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -1029,8 +1038,6 @@ public sealed class ReplacementService
 
         replacement.Status = ReplacementStatus.RolledBack;
         replacement.RolledBackAt = DateTimeOffset.UtcNow;
-        // An acceptance interrupted before its output was placed never happened.
-        if (replacement.Job is { Status: JobStatus.Failed } failed) failed.AcceptedBelowTargetAt = null;
         await _lifetime.ApplyRollbackAsync(
             replacement.OriginalSizeBytes,
             replacement.NewSizeBytes,

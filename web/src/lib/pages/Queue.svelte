@@ -87,16 +87,20 @@
     else await performReplace(replacementTarget, acceptingBelowTarget)
   }
 
-  function formatScore(value: number): string {
-    return value.toLocaleString(i18n.locale, { maximumFractionDigits: 1 })
+  // A score is rounded down, so 94.96 against 95 never reads as "Scored 95, target was 95".
+  function formatScore(value: number, round: 'down' | 'nearest' = 'nearest'): string {
+    const shown = round === 'down' ? Math.floor(value * 10) / 10 : value
+    return shown.toLocaleString(i18n.locale, { maximumFractionDigits: 1 })
   }
 
   function belowTargetHeading(job: Job): string {
-    const shortfall = job.belowTarget?.shortfalls[0]
-    if (!shortfall) return i18n.m.queue.action_accept_anyway
-    const template = shortfall.target === 'FifthPercentile' ? i18n.m.queue.accept_heading_fifth : i18n.m.queue.accept_heading_harmonic
-    return t(template, { score: formatScore(shortfall.score), target: formatScore(shortfall.minimum) })
+    const shortfalls = job.belowTarget?.shortfalls ?? []
+    if (shortfalls.length === 0) return i18n.m.queue.action_accept_anyway
+    return shortfalls.map((shortfall) => t(
+      shortfall.target === 'FifthPercentile' ? i18n.m.queue.accept_heading_fifth : i18n.m.queue.accept_heading_harmonic,
+      { score: formatScore(shortfall.score, 'down'), target: formatScore(shortfall.minimum) })).join('; ')
   }
+
 
   function belowTargetRefusal(refusal: string): string | null {
     if (refusal === 'NotVideo') return i18n.m.queue.accept_refused_not_video
@@ -140,6 +144,12 @@
   // Unknown until the settings arrive; the server refuses a replacement under dry-run either way.
   let dryRun = $state(false)
   let retentionDays = $state<number | null>(null)
+  // How long Accept anyway's original stays in Quarantine, worded as JobResult says it for Replace.
+  const acceptUndo = $derived(retentionDays === null
+    ? i18n.m.jobResult.replace_undo
+    : retentionDays === 0
+      ? i18n.m.jobResult.replace_undo_kept
+      : plural(retentionDays, i18n.m.jobResult.replace_undo_days_one, i18n.m.jobResult.replace_undo_days_other))
 
   async function loadReplacementSettings() {
     try {
@@ -1170,7 +1180,7 @@
               <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
-              <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
+              <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
           {/each}</tbody>
@@ -1223,6 +1233,7 @@
     <p class="mb-4 whitespace-pre-line">{replacementTarget === 'all'
       ? t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() })
       : acceptingBelowTarget ? i18n.m.queue.accept_body : i18n.m.queue.confirm_replace}</p>
+    {#if replacementTarget !== 'all' && acceptingBelowTarget}<p class="mb-4" data-accept-undo>{acceptUndo}</p>{/if}
     {#if replacementTarget !== 'all'}
       {@const target = replacementTarget}
       <p class="mb-4 break-words">{jobName(target)}</p>

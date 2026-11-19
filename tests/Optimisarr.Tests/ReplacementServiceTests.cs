@@ -1298,6 +1298,40 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal("ORIGINAL", File.ReadAllText(original));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_acceptance_interrupted_by_a_crash_is_kept_only_if_its_output_was_placed(bool outputPlaced)
+    {
+        var (original, output) = WriteFiles("Crash.avi", "Crash.mkv", "ORIGINAL", "NEW");
+        var (id, _) = await SeedBelowTargetJobAsync(original, output);
+        await using (var seed = new OptimisarrDbContext(_options))
+            await seed.Jobs.ExecuteUpdateAsync(setters => setters.SetProperty(j => j.AcceptedBelowTargetAt, DateTimeOffset.UtcNow));
+        var quarantinePath = Path.Combine(_trashDir, "pending-job", "Crash.avi");
+        var finalPath = Path.Combine(_dataDir, "Crash.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantinePath)!);
+        File.Move(original, quarantinePath);
+        if (outputPlaced) File.Move(output, finalPath);
+        await SeedPendingReplacementAsync(id, original, finalPath, quarantinePath);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        var job = await db.Jobs.AsNoTracking().SingleAsync();
+        if (outputPlaced)
+        {
+            Assert.Equal(JobStatus.Completed, job.Status);
+            Assert.NotNull(job.AcceptedBelowTargetAt);
+            Assert.Null(job.FailureCategory);
+        }
+        else
+        {
+            Assert.Equal("ORIGINAL", File.ReadAllText(original));
+            Assert.Equal(JobStatus.Failed, job.Status);
+            Assert.Null(job.AcceptedBelowTargetAt);
+        }
+    }
+
     private async Task<(int Id, int Attempt)> SeedBelowTargetJobAsync(
         string originalPath, string outputPath, string? otherFailedCheck = null, double minimum = 70)
     {

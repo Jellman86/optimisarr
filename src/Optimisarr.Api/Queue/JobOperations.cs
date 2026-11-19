@@ -217,6 +217,7 @@ public static class JobOperations
         job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
+        job.AcceptedBelowTargetAt = null;
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);

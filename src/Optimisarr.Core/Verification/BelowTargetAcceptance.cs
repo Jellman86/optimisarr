@@ -53,7 +53,9 @@ public sealed record BelowTargetAcceptanceDecision(
 /// pass": the score is a judgement call, so the person looking at the file may make it, one job at a
 /// time. Everything that means the file is broken stays a hard stop — any other failed check, a
 /// score that could not be measured, and the catastrophic VMAF floor, which is the signature of a
-/// corrupt decode rather than a slightly soft picture.
+/// corrupt decode rather than a slightly soft picture. A score above the floor can still come from
+/// lost or repeated frames, which VMAF measures rather than a separate check; the person's guide
+/// says so rather than this rule pretending to tell them apart.
 /// </summary>
 public static class BelowTargetAcceptance
 {
