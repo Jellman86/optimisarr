@@ -8,6 +8,23 @@ export const inventoryFiles = [
 
 export const poster = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><defs><linearGradient id="sky" x2="1" y2="1"><stop stop-color="#153756"/><stop offset="1" stop-color="#050915"/></linearGradient><radialGradient id="star"><stop stop-color="#ffdfa0"/><stop offset=".5" stop-color="#b57745"/><stop offset="1" stop-color="#543249"/></radialGradient></defs><path fill="url(#sky)" d="M0 0h400v600H0z"/><circle cx="268" cy="205" r="170" fill="url(#star)"/><circle cx="315" cy="168" r="166" fill="#111c32"/><path d="M0 430L170 320l230 130v150H0" fill="#17283e"/><text x="34" y="516" font-family="sans-serif" font-size="57" fill="#f0e3c9" letter-spacing="10">ORBIT</text><text x="38" y="550" font-family="sans-serif" font-size="13" fill="#bdc7d5" letter-spacing="5">ARTWORK FIXTURE</text></svg>'
 
+// Opening Orbit's plan needs a whole plan: an empty object leaves the page without a source to show.
+const orbitPlan = {
+  mediaFileId: 7, libraryId: 1, eligible: true, reason: 'Video codec differs from the library’s HEVC target.',
+  kind: 'Video', action: 'Encode',
+  source: {
+    relativePath: inventoryFiles[0].relativePath, sizeBytes: inventoryFiles[0].sizeBytes, container: 'matroska',
+    videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, isHdr: false, isDolbyVision: false,
+    interlaced: false, audioCodecs: 'truehd, aac', maxAudioChannels: 8, audioTrackCount: 2, subtitleTrackCount: 4,
+  },
+  picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+  image: null,
+  sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false },
+  audioTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: false }],
+  subtitleTracks: [],
+  file: { container: 'mkv', fileName: 'Orbit.2025.2160p.mkv', renamed: false, mayBecomeMatroska: false },
+}
+
 export async function mockInventory(page: Page) {
   const json = (route: Route, body: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/api/**', async route => {
@@ -20,6 +37,9 @@ export async function mockInventory(page: Page) {
     if (path === '/api/health') return json(route, { status: 'healthy', version: 'test' })
     if (path === '/api/media/7/thumbnail') return route.fulfill({ contentType: 'image/svg+xml', body: poster })
     if (path.endsWith('/thumbnail')) return route.fulfill({ status: 404 })
+    if (path === '/api/media/7/plan') return json(route, orbitPlan)
+    if (path === '/api/library-options') return json(route, { ruleProfileSpecs: [] })
+    if (path === '/api/settings') return json(route, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
     if (path === '/api/inventory') {
       const library = url.searchParams.get('libraryId'), show = url.searchParams.get('show')
       const scoped = inventoryFiles.filter(f => !library || f.libraryId === Number(library))
@@ -137,6 +157,7 @@ test('an eligible file answers the question and opens its plan instead of queuei
 
   await expect(page).toHaveURL(/#\/inventory\/optimise\/7$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Optimise this file' })).toBeVisible()
+  await expect(page.locator('[data-one-file-plan]')).toContainText('Orbit.2025.2160p.mkv')
   expect(enqueues).toEqual([])
 })
 
