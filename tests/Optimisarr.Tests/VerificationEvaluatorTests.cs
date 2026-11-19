@@ -752,12 +752,15 @@ public sealed class VerificationEvaluatorTests
 
     // --- Silence trimmed from a music file's start and end ---------------------------------
 
-    private static readonly AudioTrimPlan Trim = new(StartSample: 121_252, EndSample: 474_075, SampleRate: 44_100, SourceSeconds: 13.7);
+    private static readonly AudioTrimPlan Trim = new(StartSample: 121_252, EndSample: 474_075, SampleRate: 44_100, SourceSeconds: 13.7, ThresholdDb: -60);
 
-    private static VerificationInput Trimmed(double output, double leading = 0.25, double trailing = 0.25) => HealthyAudio() with
+    private static VerificationInput Trimmed(double output, double leading = 0.25, double trailing = 0.25,
+        double? lenientLeading = null, double? lenientTrailing = null) => HealthyAudio() with
     {
         OriginalDurationSeconds = 13.7, OriginalAudioLastPresentationSeconds = 13.7, OutputDurationSeconds = output,
-        SilenceTrim = Trim, OutputEdgeSilence = new EdgeSilence(leading, trailing),
+        SilenceTrim = Trim,
+        OutputEdgeSilence = new TrimmedEdges(new EdgeSilence(leading, trailing),
+            new EdgeSilence(lenientLeading ?? leading, lenientTrailing ?? trailing)),
     };
 
     [Fact]
@@ -781,12 +784,30 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
-    public void A_window_shifted_into_the_music_fails_even_at_the_right_length()
+    public void A_cut_that_stopped_short_keeps_too_much_silence_and_fails()
     {
-        // The right number of seconds, but cut late: the start keeps too much silence.
-        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 1.2, trailing: 0), VerificationPolicy.Default);
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 1.2), VerificationPolicy.Default);
+
+        Assert.Contains("stopped short", report.Checks.Single(c => c.Name == "Silence trimmed").Detail);
+    }
+
+    [Fact]
+    public void A_cut_that_reached_into_the_music_keeps_too_little_silence_and_fails_even_at_the_right_length()
+    {
+        // The right length, but the window moved: the start lost its padding and the end has it twice
+        // over, or a start-only trim simply begins on music.
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 0, trailing: 0.3), VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+        Assert.Contains("reached into the music", report.Checks.Single(c => c.Name == "Silence trimmed").Detail);
+    }
+
+    [Fact]
+    public void Lossy_noise_in_the_kept_padding_is_forgiven_by_the_lenient_measurement()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 0.05, lenientLeading: 0.24), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Silence trimmed"));
     }
 
     [Fact]

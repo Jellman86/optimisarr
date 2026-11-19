@@ -218,6 +218,7 @@ public static class JobOperations
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.AcceptedBelowTargetAt = null;
+        job.DetectedSilenceTrim = null;
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);

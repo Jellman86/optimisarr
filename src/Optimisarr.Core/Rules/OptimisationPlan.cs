@@ -122,7 +122,9 @@ public static class OptimisationPlanner
                 media.Kind,
                 Audio,
                 null,
-                new PlannedSound(rules.TargetAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo, rules.TrimAudioSilence),
+                // Only a file that is converted is trimmed, so a copied one says nothing about silence.
+                new PlannedSound(rules.TargetAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo,
+                    rules.TrimAudioSilence && spec.AudioEncoder is not null),
                 null,
                 null,
                 file);

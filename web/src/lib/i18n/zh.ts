@@ -2148,7 +2148,7 @@ export const zh: Messages = {
     trim_silence_sentence: "裁剪每首曲目最开头和最结尾的静音，保留四分之一秒。曲目中间的静音不会被裁剪。",
     trim_silence_more: "适用于音乐前后有静音的录音。曲目之间有刻意停顿的专辑会失去这些停顿，请保持关闭。只有在曲目本来就要转换时才会裁剪。含多个音频流的文件不会改动，带同步歌词或 cue 表的文件只裁剪结尾的静音。每个裁剪后的文件都会检查缩短后的长度和裁剪位置。",
     silence_threshold_label: "静音的音量低于",
-    silence_threshold_sentence: "单位 dB。-60 dB 会忽略轻微底噪；数值越低，只把接近数字静音的部分算作静音。",
+    silence_threshold_sentence: "单位 dB。-60 dB 会忽略轻微底噪；数值越低，只把接近数字静音的部分算作静音。 接近 -30 dB 时，安静的前奏或淡出也可能被当作静音。",
     silence_minimum_label: "裁剪的最短静音",
     silence_minimum_sentence: "单位秒。开头或结尾更短的空白会保留。",
     trim_silence_no_measure: "裁剪静音暂时不能与音质测量同时使用。请关闭其中一个。",

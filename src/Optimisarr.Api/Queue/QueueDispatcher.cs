@@ -2051,7 +2051,10 @@ public sealed partial class QueueDispatcher(
             Deinterlace = isVideoJob && spec.VideoCodec is not null && VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, sourceFieldOrder),
             Denoise = isVideoJob && spec.VideoCodec is not null ? rules.NoiseReduction : NoiseReduction.Off,
         };
-        if (media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence && spec.AudioEncoder is not null)
+        // The audio quality measurement compares windows at equal offsets in files of equal length, so
+        // a library that measures it is never trimmed, whatever an older save left switched on.
+        if (media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence && spec.AudioEncoder is not null
+            && library is { AudioQualityReportingEnabled: false, AudioQualityGateEnabled: false, AdaptiveAudioQuality: false })
         {
             spec = spec with { SilenceTrim = await PlanSilenceTrimAsync(scope, job, media, rules, cancellationToken) };
         }
@@ -2198,7 +2201,6 @@ public sealed partial class QueueDispatcher(
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
             SilenceTrim: spec.SilenceTrim,
-            SilenceThresholdDb: rules.AudioSilenceThresholdDb,
             FrameRate: spec.FrameRate,
             Deinterlaced: spec.Deinterlace,
             Denoised: spec.Denoise,
@@ -3579,6 +3581,8 @@ public sealed partial class QueueDispatcher(
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.AcceptedBelowTargetAt = null;
+        // Measured again for each attempt: the file at the path may not be the one measured before.
+        job.DetectedSilenceTrim = null;
         job.FinishedAt = null;
     }
 
@@ -3878,11 +3882,9 @@ public sealed partial class QueueDispatcher(
     }
 
     /// <summary>
-    /// Measures a music file's silence once and remembers the decision on the job, so a retry trims
-    /// the same window. Every doubt resolves to no trim: a file that cannot be probed or measured, more
-    /// than one audio stream (one window would be applied to all of them), or a measurement that finds
-    /// nothing at the edges. Something timed from the start, such as synchronised lyrics or a cue
-    /// sheet, would be shifted by cutting the start, so only the end is trimmed then.
+    /// Measures a music file's silence and remembers the decision on the job for the rest of this
+    /// attempt; a new attempt measures again, because the file at the path may have changed. Every
+    /// doubt resolves to no trim (see <see cref="SilenceTrimPlanner.Decide"/>).
     /// </summary>
     private async Task<AudioTrimPlan?> PlanSilenceTrimAsync(
         AsyncServiceScope scope, Job job, MediaFile media, Optimisarr.Core.Rules.RuleSettings rules, CancellationToken cancellationToken)
@@ -3890,18 +3892,21 @@ public sealed partial class QueueDispatcher(
         if (job.DetectedSilenceTrim is { } decided) return AudioTrimPlan.TryParse(decided);
 
         var probe = await scope.ServiceProvider.GetRequiredService<MediaProbeService>().ProbeAsync(media.Path, cancellationToken);
-        SilenceTrimDecision decision;
-        if (!probe.Success || probe.DurationSeconds is not > 0)
-            decision = new(null, "The file could not be probed, so nothing was trimmed.");
-        else if (probe.AudioTrackCount != 1)
-            decision = new(null, "The file has more than one audio stream, so nothing was trimmed.");
-        else if (await scope.ServiceProvider.GetRequiredService<SilenceDetectService>().DetectAsync(
-                media.Path, probe.DurationSeconds.Value, rules.AudioSilenceThresholdDb, rules.AudioSilenceMinimumSeconds,
-                cancellationToken) is not { } silence)
-            decision = new(null, "The file's silence could not be measured, so nothing was trimmed.");
-        else
-            decision = SilenceTrimPlanner.Plan(silence, probe.DurationSeconds.Value, probe.MaxAudioSampleRate,
-                trimStart: probe.SubtitleTrackCount == 0 && !SilenceTrimPlanner.HasStartTimedTags(probe.FormatTags));
+        var source = new SilenceTrimSource(
+            probe.Success,
+            probe.DurationSeconds,
+            probe.AudioTrackCount,
+            probe.MaxAudioSampleRate,
+            StartIsTimed: probe.SubtitleTrackCount > 0
+                || SilenceTrimPlanner.HasStartTimedTags(probe.FormatTags)
+                // Audiobooks carry chapters, and a sidecar .lrc times its lines from the start.
+                || Path.GetExtension(media.Path).Equals(".m4b", StringComparison.OrdinalIgnoreCase)
+                || File.Exists(Path.ChangeExtension(media.Path, ".lrc")));
+        var measurement = source is { Probed: true, AudioStreamCount: 1 }
+            ? await scope.ServiceProvider.GetRequiredService<SilenceDetectService>().DetectAsync(
+                media.Path, rules.AudioSilenceThresholdDb, rules.AudioSilenceMinimumSeconds, cancellationToken)
+            : null;
+        var decision = SilenceTrimPlanner.Decide(source, measurement, rules.AudioSilenceThresholdDb);
 
         var stored = decision.Plan?.ToString() ?? "none";
         await WithJobAsync(job.Id, tracked => tracked.DetectedSilenceTrim = stored, cancellationToken);

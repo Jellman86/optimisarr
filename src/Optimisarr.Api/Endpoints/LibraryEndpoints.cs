@@ -255,6 +255,7 @@ internal static class LibraryEndpoints
                 AdaptiveImageQuality = request.AdaptiveImageQuality ?? library.AdaptiveImageQuality,
                 AdaptiveSoundtrackQuality = request.AdaptiveSoundtrackQuality ?? library.AdaptiveSoundtrackQuality,
                 AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
+                AudioQualityReportingEnabled = request.AudioQualityReportingEnabled ?? library.AudioQualityReportingEnabled,
                 MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
                 SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
                 MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance,

@@ -353,15 +353,18 @@ What it does and does not cut:
 - A file is only trimmed when it is converted anyway. It does not make a file eligible on its own.
 - A file with more than one audio stream is left alone, because one window would apply to all of
   them.
-- A file with synchronised lyrics or a cue sheet only loses silence at the end, because cutting the
-  start would shift their times.
+- A file with synchronised lyrics, a cue sheet, chapters (`.m4b`) or a sidecar `.lrc` file only
+  loses silence at the end, because cutting the start would shift their times.
+- A file whose audio is longer or shorter than its container says, such as a chained Ogg file, is
+  left alone: a trim measured on one length would be cut against the other.
 - An album with deliberate pauses between tracks would lose them, so leave it off for those
   libraries.
 
-The silence is measured once per file and remembered on the job, so a retry trims the same window.
-Verification expects the shorter length, and a **Silence trimmed as planned** check measures the
-output again: its length must be within 0.15 seconds of the plan, and each trimmed edge may keep at
-most the quarter second plus 0.1 seconds of silence. This cannot yet be combined with **Audio
+The silence is measured at the start of every attempt, so a retry measures the file that is there
+now. Verification expects the shorter length, and a **Silence trimmed as planned** check measures the
+output again: its length must be within 0.15 seconds of the plan, and each trimmed edge must keep
+its quarter second of silence, give or take 0.1 seconds. Too much means the cut stopped short; too
+little means it reached into the music. This cannot yet be combined with **Audio
 quality**, which compares two files of the same length, so saving refuses that combination. Trimmed
 files are encoded on this server, never on a remote worker.
 

@@ -58,10 +58,9 @@ public sealed record OriginalSnapshot(
     string? VmafModel = null,
     // The output must keep the source's pixel shape. Set for super-resolution, whose engine drops it.
     bool PixelShapeMustMatch = false,
-    // The silence the encode trimmed from a music file's start and end, and the level that counted
+    // The silence the encode trimmed from a music file's start and end, with the level that counted
     // as silence, so verification expects the shorter length and checks where the cut fell.
-    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
-    double SilenceThresholdDb = Optimisarr.Core.Queue.SilenceTrimSettings.DefaultThresholdDb);
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -349,9 +348,8 @@ public sealed class VerificationService(
                 ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
                 : OutputDurationForVerification(outputProbe, reference.Kind, timestampResult);
             // Trimmed jobs never go to a worker, so this always measures the file here.
-            var outputEdgeSilence = reference.SilenceTrim is not null && silence is not null && remoteEvidence is null
-                && outputDuration is > 0
-                ? await silence.MeasureEdgesAsync(outputPath, outputDuration.Value, reference.SilenceThresholdDb, cancellationToken)
+            var outputEdgeSilence = reference.SilenceTrim is { } trim && silence is not null && remoteEvidence is null
+                ? await silence.MeasureEdgesAsync(outputPath, trim.ThresholdDb, cancellationToken)
                 : null;
 
             var input = new VerificationInput(

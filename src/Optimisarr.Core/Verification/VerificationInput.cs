@@ -139,4 +139,4 @@ public sealed record VerificationInput(
     // A music file trimmed of silence at its start and end: the length to expect, and the silence
     // the output was measured to start and end with. Null when nothing was trimmed.
     Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
-    Optimisarr.Core.Queue.EdgeSilence? OutputEdgeSilence = null);
+    Optimisarr.Core.Queue.TrimmedEdges? OutputEdgeSilence = null);

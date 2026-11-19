@@ -1387,8 +1387,10 @@
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       adaptiveAudioQuality: showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled,
       trimAudioSilence: showAudioOptions && !!form.trimAudioSilence,
-      audioSilenceThresholdDb: Number(form.audioSilenceThresholdDb ?? -60),
-      audioSilenceMinimumSeconds: Number(form.audioSilenceMinimumSeconds ?? 2),
+      // Left out while trimming is off, so a number typed before switching it off cannot block a save;
+      // the server keeps what it has.
+      audioSilenceThresholdDb: form.trimAudioSilence ? Number(form.audioSilenceThresholdDb ?? -60) : undefined,
+      audioSilenceMinimumSeconds: form.trimAudioSilence ? Number(form.audioSilenceMinimumSeconds ?? 2) : undefined,
       adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
       adaptiveSoundtrackQuality: showVideoOptions && soundtrackSearchAvailable && !!form.adaptiveSoundtrackQuality && !!form.soundtrackQualityGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
