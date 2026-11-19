@@ -671,13 +671,16 @@ class Harness:
         return {"original": before, "encoded": after, "restoredOriginal": True}
 
     def audio_trim(self, codec="opus"):
-        # 3 s silence, 20 s music, a 2.5 s pause, 10 s music, 4 s silence. The pause must survive:
+        # 3 s silence, 120 s music, a 2.5 s pause, 60 s music, 4 s silence. The pause must survive:
         # it is longer than the shortest silence trimmed, but it does not touch an edge.
         name = f"audio-trim-{codec}"
         fixture = self.root / "fixtures" / f"{name}.flac"
         silence = lambda seconds: ["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={seconds}"]
-        noise = lambda seconds, seed: ["-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={seconds}:sample_rate=48000:seed={seed}"]
-        self.tools.encode(silence(3) + noise(20, 42) + silence(2.5) + noise(10, 7) + silence(4) + [
+        # Long and loud enough to stay over the 4 MB floor every music file must clear, and kept under
+        # 10 kHz so AAC and MP3, which drop the top octave, do not move its loudness on their own.
+        noise = lambda seconds, seed: ["-f", "lavfi", "-i",
+            f"anoisesrc=color=white:amplitude=0.4:duration={seconds}:sample_rate=48000:seed={seed},lowpass=f=10000"]
+        self.tools.encode(silence(3) + noise(120, 42) + silence(2.5) + noise(60, 7) + silence(4) + [
             "-filter_complex", "[1]aformat=channel_layouts=stereo[a];[3]aformat=channel_layouts=stereo[b];[0][a][2][b][4]concat=n=5:v=0:a=1",
             "-c:a", "flac", "-metadata", "title=Trim fixture", self.tools.path(fixture)])
         case = self.create_job(name, fixture, overrides={"mediaType": "Music", "audioTargetCodec": codec,
@@ -694,12 +697,13 @@ class Harness:
                 "Duration was not judged against the trimmed length")
         candidate = self.output(case)
         duration = float(self.tools.probe(candidate)["format"]["duration"])
-        require(abs(duration - 33.0) <= 0.15, f"Trimmed length {duration:.3f}s is not the planned 33 s")
+        # 2.75 s comes off the start and 3.75 s off the end: a quarter second of each silence stays.
+        require(abs(duration - 183.0) <= 0.15, f"Trimmed length {duration:.3f}s is not the planned 183 s")
         log = self.tools.run(self.tools.ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-i", self.tools.path(candidate),
             "-af", "silencedetect=noise=-60dB:d=0.1", "-f", "null", "-"], include_stderr=True)
         starts = [float(value) for value in re.findall(r"silence_start: (-?[\d.]+)", log)]
         ends = [float(value) for value in re.findall(r"silence_end: ([\d.]+)", log)]
-        require(any(abs(start - 20.25) <= 0.2 for start in starts) and any(abs(end - 22.75) <= 0.2 for end in ends),
+        require(any(abs(start - 120.25) <= 0.2 for start in starts) and any(abs(end - 122.75) <= 0.2 for end in ends),
                 "The pause inside the track was cut")
         before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
         require(abs(before["lufs"] - after["lufs"]) <= 1, "Trimming moved the loudness by more than 1 LUFS")
