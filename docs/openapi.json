@@ -2822,6 +2822,24 @@
               "boolean"
             ]
           },
+          "audioSilenceMinimumSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "audioSilenceThresholdDb": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -3281,6 +3299,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "trimAudioSilence": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "videoAudioBitrateKbps": {
@@ -4124,6 +4148,10 @@
             ]
           },
           "downmixToStereo": {
+            "type": "boolean"
+          },
+          "trimsSilence": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -5502,6 +5530,24 @@
               "boolean"
             ]
           },
+          "audioSilenceMinimumSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "audioSilenceThresholdDb": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -6001,6 +6047,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "trimAudioSilence": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "videoAudioBitrateKbps": {
