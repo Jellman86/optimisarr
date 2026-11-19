@@ -15,7 +15,7 @@ public readonly record struct SampleAspectRatio(int Numerator, int Denominator)
     /// </summary>
     private const double SameShapeTolerance = 0.01;
 
-    public double Value => Numerator / (double)Denominator;
+    public double Ratio => Numerator / (double)Denominator;
 
     public bool IsSquare => Numerator == Denominator;
 
@@ -38,8 +38,8 @@ public readonly record struct SampleAspectRatio(int Numerator, int Denominator)
     /// <summary>Whether two pixels have the same shape; an unreported shape is square.</summary>
     public static bool SameShape(SampleAspectRatio? first, SampleAspectRatio? second)
     {
-        var a = first?.Value ?? 1;
-        var b = second?.Value ?? 1;
+        var a = first?.Ratio ?? 1;
+        var b = second?.Ratio ?? 1;
         return Math.Abs(a - b) <= a * SameShapeTolerance;
     }
 }

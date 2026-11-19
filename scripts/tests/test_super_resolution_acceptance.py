@@ -47,7 +47,7 @@ class SuperResolutionAcceptanceTests(unittest.TestCase):
         candidate = copy.deepcopy(self.candidate)
         candidate["streams"][0].update(sample_aspect_ratio="64:45", display_aspect_ratio="16:9")
         validate_candidate(source, candidate, "hevc_nvenc")
-        for change in ({"sample_aspect_ratio": "1:1"}, {"sample_aspect_ratio": None}, {"display_aspect_ratio": "16:9", "sample_aspect_ratio": "1:1"}):
+        for change in ({"sample_aspect_ratio": "1:1"}, {"sample_aspect_ratio": None}, {"display_aspect_ratio": "4:3"}):
             with self.subTest(change=change):
                 squashed = copy.deepcopy(candidate)
                 squashed["streams"][0].update(change)

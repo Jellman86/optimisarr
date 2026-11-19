@@ -85,6 +85,8 @@ def main():
     args = parser.parse_args()
     if args.regression == "house-corpus" and not args.corpus:
         parser.error("--regression house-corpus requires --corpus")
+    if "anamorphic" in (args.fixture_variant or []) and args.regression != "super-resolution":
+        parser.error("--fixture-variant anamorphic is only built by --regression super-resolution")
     if args.worker_name and (not re.fullmatch(r"[a-zA-Z0-9_-]+", args.worker_name)
                             or len(args.worker_encoder) != 1 or not (args.worker_command or args.worker_image)):
         parser.error("--worker-name requires a safe unique name, one --worker-encoder and a worker launcher")

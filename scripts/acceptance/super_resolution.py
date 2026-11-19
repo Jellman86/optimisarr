@@ -87,6 +87,9 @@ def run_case(harness, source, encoder, variant):
     require(sha256(case["source"]) == case["sourceSha256"], "Upscale changed its original before approval")
     require(job["status"] == "ReadyToReplace" and job["verificationPassed"] is True,
             f"Upscale failed application verification: {job['status']}: {job.get('errorMessage')}")
+    checks = {c["name"]: c["outcome"] for c in json.loads(job["verificationReportJson"])["checks"]}
+    require(checks.get("Picture shape") == "Passed",
+            f"Verification did not pass a Picture shape check: {checks.get('Picture shape')}")
     require(job.get("superResolutionRun") == "realesrgan realesr-animevideov3 2x"
             and job["videoEncoder"] == encoder, "Requested engine/encoder was not used")
     require(not any(r["jobId"] == case["jobId"] for r in harness.api.request("/api/replacements")),

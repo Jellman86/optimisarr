@@ -16,7 +16,7 @@ public sealed class SampleAspectRatioTests
         Assert.Equal(new SampleAspectRatio(64, 45), ratio);
         Assert.False(ratio!.Value.IsSquare);
         Assert.Equal("64/45", ratio.Value.FilterValue);
-        Assert.Equal(64 / 45.0, ratio.Value.Value, 9);
+        Assert.Equal(64 / 45.0, ratio.Value.Ratio, 9);
     }
 
     [Theory]
