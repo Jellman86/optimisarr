@@ -1,7 +1,7 @@
 <script lang="ts">
   // The result of one job, for the person deciding what to do next. A passed job says plainly
   // what replacing does and offers it; a job that missed a check says what can be done instead.
-  // There is no "replace anyway": a file that missed a check never replaces an original.
+  // The one exception is a picture-quality score under target, which a person may accept by hand.
   import type { Job, VerificationCheck } from '../api'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { isPictureQualityCheck, pictureQualityWasMeasured } from '../plain-checks'
@@ -75,9 +75,12 @@
           {/if}
         </li>
       {/if}
+      {#if job.belowTarget?.eligible}
+        <li data-advice="accept"><strong>{i18n.m.jobResult.advice_accept_title}</strong> {t(i18n.m.jobResult.advice_accept_body, { action: i18n.m.queue.action_accept_anyway })}</li>
+      {/if}
       <li data-advice="exclude"><strong>{i18n.m.jobResult.advice_exclude_title}</strong> {t(i18n.m.jobResult.advice_exclude_body, { action: i18n.m.queue.action_exclude })}</li>
     </ul>
-    <p class="job-result-rule">{i18n.m.jobResult.no_replace_anyway}</p>
+    <p class="job-result-rule">{job.belowTarget?.eligible ? i18n.m.jobResult.accept_rule : i18n.m.jobResult.no_replace_anyway}</p>
   </section>
 {/if}
 

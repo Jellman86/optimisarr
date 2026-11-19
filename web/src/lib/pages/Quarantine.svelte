@@ -287,7 +287,8 @@
       {:else}<div class="card p-5 text-sm leading-relaxed text-ink-3">{i18n.m.quarantine.finished_note}</div>{/if}
       <section class="card p-5 sm:p-6" aria-labelledby="quarantine-verification">
         <div class="mb-4 flex flex-wrap items-center gap-3"><h2 id="quarantine-verification" class="text-base font-semibold">{i18n.m.quarantine.verification}</h2>
-          {#if r.verificationPassed !== null}<span class="badge {r.verificationPassed ? 'tone-ok' : 'tone-bad'}">{r.verificationPassed ? i18n.m.quarantine.passed : i18n.m.quarantine.failed}</span>{/if}
+          {#if r.acceptedBelowTargetAt}<span class="badge tone-warn" data-accepted-below-target>{i18n.m.quarantine.accepted_below_target}</span>
+          {:else if r.verificationPassed !== null}<span class="badge {r.verificationPassed ? 'tone-ok' : 'tone-bad'}">{r.verificationPassed ? i18n.m.quarantine.passed : i18n.m.quarantine.failed}</span>{/if}
         </div>
         <AudioQualityReport report={audioReport(detail)} />
         <SoundtrackQualityReport report={soundtrackReport(detail)} />

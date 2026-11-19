@@ -25,7 +25,9 @@ Optimisarr's entire reason to exist is that it is safer than the alternatives.
   decisions include Adaptive per-title VMAF for new video re-encode libraries while still
   labelled Experimental, remote workers available/enabled for fresh installations with
   explicit pairing and strict verification, and verified cross-filesystem replacement allowed,
-  because the source is deleted only after its copy is proved identical. Their reasoning is documented in
+  because the source is deleted only after its copy is proved identical. One recorded exception to
+  "every gate has passed" exists: a person may accept, one job at a time, a video whose only failed
+  gate is a measured VMAF score under target and above the catastrophic floor. Their reasoning is documented in
   [`docs/roadmap.md`](docs/roadmap.md) under the corresponding roadmap entries. Do not treat
   these as licence to default other unproven paths on;
   a new exception needs the same explicit reasoning and a matching record.

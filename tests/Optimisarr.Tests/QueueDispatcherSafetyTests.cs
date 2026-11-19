@@ -52,6 +52,33 @@ public sealed class QueueDispatcherSafetyTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_verdict_keeps_the_identity_of_the_files_it_judged_whether_or_not_they_passed(bool passed)
+    {
+        var job = new Job();
+        var outcome = new VerificationOutcome(new Optimisarr.Core.Verification.VerificationReport(
+            [new("Perceptual quality (VMAF)", passed ? Optimisarr.Core.Verification.CheckOutcome.Passed : Optimisarr.Core.Verification.CheckOutcome.Failed, "94")]),
+            OutputSizeBytes: 10);
+
+        QueueDispatcher.RecordVerdict(job, outcome, "{}", new string('a', 64), new string('b', 64), DateTimeOffset.UtcNow);
+
+        Assert.Equal(passed, job.VerificationPassed);
+        Assert.Equal(new string('a', 64), job.VerifiedSourceSha256);
+        Assert.Equal(new string('b', 64), job.VerifiedOutputSha256);
+    }
+
+    [Fact]
+    public void A_new_attempt_forgets_an_earlier_acceptance()
+    {
+        var job = new Job { AcceptedBelowTargetAt = DateTimeOffset.UtcNow };
+
+        QueueDispatcher.PrepareForAttempt(job, DateTimeOffset.UtcNow);
+
+        Assert.Null(job.AcceptedBelowTargetAt);
+    }
+
+    [Theory]
     [InlineData(0, 0, true)]
     [InlineData(1, 0, false)]
     [InlineData(0, 1, false)]

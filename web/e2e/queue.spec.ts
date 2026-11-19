@@ -1505,6 +1505,93 @@ test('a job that missed another check is not told to lower the quality target', 
   await expect(result).toContainText('There is no “replace anyway”.')
 })
 
+function belowTargetJob(belowTarget: Record<string, unknown>) {
+  return {
+    ...failedJob('Perceptual quality (VMAF)'),
+    mediaKind: 'Video', sourceSizeBytes: 4_000, executionAttempt: 3,
+    belowTarget: { shortfalls: [{ target: 'HarmonicMean', score: 94.04, minimum: 95 }], ...belowTarget },
+  }
+}
+
+test('a file that only missed its picture target can be accepted by hand after comparing it with the original', async ({ page }) => {
+  await mockQueue(page)
+  await mockReplacementSettings(page, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
+  const accepted: unknown[] = []
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [belowTargetJob({ eligible: true, refusal: 'None' })]) : route.fallback())
+  await page.route('**/api/jobs/9/accept-below-target', route => {
+    accepted.push(route.request().postDataJSON())
+    return json(route, { id: 4, jobId: 9, status: 'Replaced' })
+  })
+  await page.route(/\/api\/(media\/9\/content|jobs\/9\/output\/content)$/, route => route.fulfill({ status: 404 }))
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog.locator('[data-advice="accept"]')).toContainText('Accept anyway… replaces the original with this file')
+  await expect(dialog.locator('[data-job-result]')).toContainText('Only a picture-quality score can be accepted this way')
+  await expect(dialog.locator('[data-job-result]')).not.toContainText('There is no “replace anyway”')
+  await dialog.getByRole('button', { name: 'Accept anyway…' }).click()
+
+  const confirmation = page.locator('#queue-replacement-dialog')
+  await expect(confirmation.getByRole('heading', { name: 'Scored 94, target was 95' })).toBeVisible()
+  await expect(confirmation).toContainText('Every other check passed. Accepting moves the original to Quarantine and puts this file in its place.')
+  await expect(confirmation.locator('[data-accept-undo]')).toHaveText('You can put the original back for 30 days. After that it is deleted and this cannot be undone.')
+  await expect(confirmation.locator('[data-replacement-compare] video').last()).toHaveAttribute('src', '/api/jobs/9/output/content')
+  await confirmation.getByRole('button', { name: 'Accept and replace' }).click()
+
+  await expect(page).toHaveURL(/#\/quarantine$/)
+  expect(accepted).toEqual([{ executionAttempt: 3 }])
+})
+
+test('a score just under target never rounds up to the target, and both misses are named', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [belowTargetJob({
+    eligible: false, refusal: 'NotVideo',
+    shortfalls: [{ target: 'HarmonicMean', score: 94.96, minimum: 95 }, { target: 'FifthPercentile', score: 88.2, minimum: 90 }],
+  })]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+
+  await expect(page.locator('#queue-job-dialog [data-accept-below-target-refused]')).toHaveText(
+    'Scored 94.9, target was 95; Weakest scenes scored 88.2, target was 90. Only a video can be accepted below its picture-quality target.')
+})
+
+test('accepting below target is locked with the reason while replacing is locked', async ({ page }) => {
+  await mockQueue(page)
+  await mockReplacementSettings(page, { dryRunMode: true, replacementQuarantineRetentionDays: 30 })
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [belowTargetJob({ eligible: true, refusal: 'None' })]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+
+  const accept = page.locator('#queue-job-dialog').getByRole('button', { name: 'Accept anyway…' })
+  await expect(accept).toBeDisabled()
+  await expect(accept).toHaveAccessibleDescription('Replace is off because replacing is locked (dry-run).')
+})
+
+test('a picture-quality miss that cannot be accepted says why and offers no button', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [belowTargetJob({ eligible: false, refusal: 'SavesToAnotherFolder' })]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog.locator('[data-accept-below-target-refused]')).toHaveText('Scored 94, target was 95. This library saves optimised files to another folder, so there is no original to replace.')
+  await expect(dialog.getByRole('button', { name: 'Accept anyway…' })).toHaveCount(0)
+  await expect(dialog.locator('[data-job-result]')).toContainText('There is no “replace anyway”')
+})
+
+test('a job accepted below target says so instead of only failed', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [{
+    ...failedJob('Perceptual quality (VMAF)'), status: 'Completed', errorMessage: null, failureCategory: null,
+    acceptedBelowTargetAt: '2026-11-19T20:00:00Z',
+  }]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'Accepted below target' }).click()
+
+  await expect(page.locator('#queue-job-dialog [data-accepted-below-target]')).toHaveText('Accepted by hand, below its picture-quality target')
+})
+
 test('each check is named in plain words and keeps the name a log would quote', async ({ page }) => {
   await mockQueue(page)
   await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failedJob('Perceptual quality (VMAF)')]) : route.fallback())

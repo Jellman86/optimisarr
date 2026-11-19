@@ -341,7 +341,9 @@ public sealed class AdminTokenAuthEndpointTests
                 MediaFileId = mediaId,
                 Status = JobStatus.Failed,
                 AdaptiveVideoQuality = 22,
-                ErrorMessage = "Output exceeded its size budget."
+                ErrorMessage = "Output exceeded its size budget.",
+                // A stale acceptance left by an interrupted Accept anyway must not label the next attempt.
+                AcceptedBelowTargetAt = DateTimeOffset.UtcNow,
             };
             db.Jobs.Add(job);
             await db.SaveChangesAsync();
@@ -359,6 +361,7 @@ public sealed class AdminTokenAuthEndpointTests
             var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
             Assert.Equal(JobStatus.Queued, persisted.Status);
             Assert.Null(persisted.AdaptiveVideoQuality);
+            Assert.Null(persisted.AcceptedBelowTargetAt);
         }
         finally
         {
