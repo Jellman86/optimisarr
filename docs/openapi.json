@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "AcceptBelowTargetRequest": {
+        "properties": {
+          "executionAttempt": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "executionAttempt"
+        ],
+        "type": "object"
+      },
       "ActivityWatcherSnapshot": {
         "properties": {
           "apiToken": {
@@ -923,6 +939,57 @@
         },
         "required": [
           "ids"
+        ],
+        "type": "object"
+      },
+      "BelowTargetDto": {
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "refusal": {
+            "type": "string"
+          },
+          "shortfalls": {
+            "items": {
+              "$ref": "#/components/schemas/BelowTargetShortfallDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligible",
+          "refusal",
+          "shortfalls"
+        ],
+        "type": "object"
+      },
+      "BelowTargetShortfallDto": {
+        "properties": {
+          "minimum": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "score": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "score",
+          "minimum"
         ],
         "type": "object"
       },
@@ -2386,6 +2453,13 @@
       },
       "JobDto": {
         "properties": {
+          "acceptedBelowTargetAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "appliedAudioFilter": {
             "type": [
               "null",
@@ -2396,6 +2470,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "belowTarget": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BelowTargetDto"
+              }
             ]
           },
           "clearable": {
@@ -8973,6 +9057,44 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Queue"
+        ]
+      }
+    },
+    "/api/jobs/{id}/accept-below-target": {
+      "post": {
+        "operationId": "AcceptJobBelowTarget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptBelowTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"

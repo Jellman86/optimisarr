@@ -836,6 +836,19 @@ export type Job = {
   sidecarVerification?: boolean
   /** The verified output is currently being safely moved into place by the container. */
   finalizing?: boolean
+  /** When a person accepted this output although its picture-quality score missed the target. */
+  acceptedBelowTargetAt?: string | null
+  /** For a failed job whose only miss is picture quality: whether it may be accepted, and by how much it fell short. */
+  belowTarget?: BelowTarget | null
+}
+
+export type BelowTargetShortfall = { target: 'HarmonicMean' | 'FifthPercentile'; score: number; minimum: number }
+
+export type BelowTarget = {
+  eligible: boolean
+  /** Why it cannot be accepted; 'None' when it can. */
+  refusal: 'None' | 'NotVideo' | 'SuperResolution' | 'SavesToAnotherFolder' | 'NoVerifiedIdentity' | string
+  shortfalls: BelowTargetShortfall[]
 }
 
 /** One row of a bulk action that could not be completed, with the reason it was refused. */
@@ -934,6 +947,7 @@ export type ReplacementDetail = Replacement & {
   mediaKind: string
   verificationPassed: boolean | null
   verificationReportJson: string | null
+  acceptedBelowTargetAt?: string | null
 }
 
 export type ActivityWatcherType = 'Plex' | 'Jellyfin' | 'Emby'
@@ -1696,6 +1710,8 @@ export const api = {
     request<BulkReplacementResult>('/api/jobs/replace-ready', { method: 'POST' }),
   replaceFromJob: (id: number) =>
     request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
+  acceptJobBelowTarget: (id: number, executionAttempt: number) =>
+    request<Replacement>(`/api/jobs/${id}/accept-below-target`, { method: 'POST', body: JSON.stringify({ executionAttempt }) }),
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),

@@ -10,8 +10,8 @@ using Optimisarr.Data;
 namespace Optimisarr.Tests;
 
 /// <summary>
-/// Before pressing Replace, the user compares the original with the verified output that would
-/// take its place. Only an output that is waiting to replace its original is served.
+/// Before pressing Replace or Accept anyway, the user compares the original with the output that
+/// would take its place. Only an output one of those could put in place is served.
 /// </summary>
 [Collection(TokenedApiCollection.Name)]
 public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.TokenedApi api)
@@ -65,6 +65,29 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
     }
 
     [Fact]
+    public async Task A_failed_job_that_only_missed_its_picture_target_streams_its_output_and_says_it_can_be_accepted()
+    {
+        var bytes = new byte[] { 4, 2 };
+        var (jobId, mediaId) = await SeedAsync(JobStatus.Failed, JobType.Normal, bytes, verificationPassed: false, belowTarget: true);
+        using var client = Admin();
+        try
+        {
+            using var response = await client.GetAsync($"/api/jobs/{jobId}/output/content");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(bytes, await response.Content.ReadAsByteArrayAsync());
+
+            var jobs = await client.GetFromJsonAsync<JsonElement>("/api/jobs");
+            var belowTarget = jobs.EnumerateArray().Single(j => j.GetProperty("id").GetInt32() == jobId).GetProperty("belowTarget");
+            Assert.True(belowTarget.GetProperty("eligible").GetBoolean());
+            var shortfall = belowTarget.GetProperty("shortfalls").EnumerateArray().Single();
+            Assert.Equal("HarmonicMean", shortfall.GetProperty("target").GetString());
+            Assert.Equal(94, shortfall.GetProperty("score").GetDouble());
+            Assert.Equal(95, shortfall.GetProperty("minimum").GetDouble());
+        }
+        finally { await CleanUpAsync(mediaId); }
+    }
+
+    [Fact]
     public async Task The_output_needs_the_admin_token()
     {
         var (jobId, mediaId) = await SeedAsync(JobStatus.ReadyToReplace, JobType.Normal, [1]);
@@ -100,7 +123,8 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
         return client;
     }
 
-    private async Task<(int JobId, int MediaId)> SeedAsync(JobStatus status, JobType type, byte[] output, bool? verificationPassed = null)
+    private async Task<(int JobId, int MediaId)> SeedAsync(
+        JobStatus status, JobType type, byte[] output, bool? verificationPassed = null, bool belowTarget = false)
     {
         var root = Path.Combine(api.LibraryDirectory, "output-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -125,6 +149,16 @@ public sealed class JobOutputContentEndpointTests(AdminTokenAuthEndpointTests.To
             MediaFileId = file.Id, LibraryId = library.Id, Status = status, Type = type,
             WorkOutputPath = outputPath, VerificationPassed = verificationPassed ?? status == JobStatus.ReadyToReplace,
         };
+        if (belowTarget)
+        {
+            job.VerifiedSourceSha256 = new string('a', 64);
+            job.VerifiedOutputSha256 = new string('b', 64);
+            job.VerificationReportJson = JsonSerializer.Serialize(new Optimisarr.Core.Verification.VerificationReport(
+                [new("Perceptual quality (VMAF)", Optimisarr.Core.Verification.CheckOutcome.Failed, "94 under 95")],
+                Context: new("libx265", 24, 24, "Crf", 1, "Full file", 95, 90, 40),
+                Vmaf: new(true, null, new(95, 94, 70, null, null, VmafFifthPercentile: 91))),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web) { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+        }
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
         return (job.Id, file.Id);

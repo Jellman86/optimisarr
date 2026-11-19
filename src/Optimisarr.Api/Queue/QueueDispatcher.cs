@@ -3763,8 +3763,10 @@ public sealed partial class QueueDispatcher(
             job.OutputSizeBytes = outcome.OutputSizeBytes;
             job.VerificationReportJson = reportJson;
             job.VerificationPassed = outcome.Report.Passed;
-            job.VerifiedSourceSha256 = outcome.Report.Passed ? verifiedSource : null;
-            job.VerifiedOutputSha256 = outcome.Report.Passed ? verifiedOutput : null;
+            // Kept whatever the verdict: a person may accept a file that missed only its picture
+            // target, and replacing it needs proof these are still the bytes that were judged.
+            job.VerifiedSourceSha256 = verifiedSource;
+            job.VerifiedOutputSha256 = verifiedOutput;
             job.CalibrationReferenceStartSeconds = work.IsCalibration
                 ? work.WorkerSample?.PresentationOffset ?? outcome.ReferenceStartSeconds
                 : null;

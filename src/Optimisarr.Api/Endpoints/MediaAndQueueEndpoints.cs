@@ -320,19 +320,24 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("GetPreviewContent");
 
-        // Streams a verified output that is waiting to replace its original, so it can be compared with
-        // the original before Replace is pressed. Any other job, or a preview, has nothing to compare.
+        // Streams an output that Replace or Accept anyway could put in place of its original, so the two
+        // can be compared before either is pressed: a verified output waiting to replace, or a failed
+        // one whose only fault is a picture-quality score under target. Anything else has nothing to compare.
         app.MapGet("/api/jobs/{id:int}/output/content", async (
             int id,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
-            var path = await db.Jobs
-                .Where(job => job.Id == id && job.Type == JobType.Normal && job.Status == JobStatus.ReadyToReplace
-                    && job.VerificationPassed == true)
-                .Select(job => job.WorkOutputPath)
-                .FirstOrDefaultAsync(cancellationToken);
-            return FileServing.ServeFile(path);
+            var job = await db.Jobs.AsNoTracking().Include(row => row.MediaFile).ThenInclude(file => file!.Library)
+                .FirstOrDefaultAsync(row => row.Id == id && row.Type == JobType.Normal, cancellationToken);
+            var comparable = job switch
+            {
+                { Status: JobStatus.ReadyToReplace, VerificationPassed: true } => true,
+                { Status: JobStatus.Failed, MediaFile: { } media } => BelowTargetEligibility.Decide(
+                    job, media.MediaKind, media.Library?.MoveOnComplete == true, dryRun: false).Eligible,
+                _ => false
+            };
+            return FileServing.ServeFile(comparable ? job!.WorkOutputPath : null);
         })
         .WithName("GetJobOutputContent");
 
@@ -712,8 +717,24 @@ internal static class MediaAndQueueEndpoints
             return ReplacementResults.ToHttp(result);
         })
         .WithName("ReplaceFromJob");
+
+        // The one exception to "every check must pass": a person accepts a failed output whose only
+        // fault is a picture-quality score under target. The original is quarantined as for Replace.
+        app.MapPost("/api/jobs/{id:int}/accept-below-target", async (
+            int id,
+            AcceptBelowTargetRequest request,
+            ReplacementService replacement,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await replacement.AcceptBelowTargetAsync(id, request.ExecutionAttempt, cancellationToken);
+            return ReplacementResults.ToHttp(result);
+        })
+        .WithName("AcceptJobBelowTarget");
     }
 }
+
+/// <summary>The attempt the person looked at, so a job retried since is not accepted on stale evidence.</summary>
+internal sealed record AcceptBelowTargetRequest(int ExecutionAttempt);
 
 internal sealed record FileEnqueueDto(int JobId, bool AlreadyQueued);
 

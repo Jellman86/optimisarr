@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Queue;
@@ -62,7 +63,19 @@ public sealed record JobDto(
     /// <summary>Per-soundtrack bitrate search evidence while final verification has not produced its own report.</summary>
     string? SoundtrackSearchJson = null,
     /// <summary>Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer.</summary>
-    string? MediaKind = null);
+    string? MediaKind = null,
+    /// <summary>When a person accepted this output although its picture-quality score missed the target.</summary>
+    DateTimeOffset? AcceptedBelowTargetAt = null,
+    /// <summary>For a failed job: whether a person may accept it below target, and the scores that fell short.</summary>
+    BelowTargetDto? BelowTarget = null);
+
+/// <summary>
+/// Whether a failed job's output may be accepted below its picture-quality target. Dry-run is not
+/// applied here: the page already locks Replace while it is on, and the server refuses either way.
+/// </summary>
+public sealed record BelowTargetDto(bool Eligible, string Refusal, IReadOnlyList<BelowTargetShortfallDto> Shortfalls);
+
+public sealed record BelowTargetShortfallDto(string Target, double Score, double Minimum);
 
 public static class JobQueries
 {
@@ -189,7 +202,9 @@ public static class JobQueries
                 job.AppliedAudioFilter,
                 false,
                 job.VerificationReportJson == null ? job.SoundtrackSearchJson : null,
-                job.MediaFile != null ? job.MediaFile.MediaKind.ToString() : null))
+                job.MediaFile != null ? job.MediaFile.MediaKind.ToString() : null,
+                job.AcceptedBelowTargetAt,
+                null))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();
@@ -198,6 +213,7 @@ public static class JobQueries
             .Select(replacement => replacement.JobId).ToListAsync(cancellationToken)).ToHashSet();
         var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
         var waiting = await WaitingForWorkerAsync(db, jobs, availability, cancellationToken);
+        var belowTarget = await BelowTargetAsync(db, jobs, cancellationToken);
 
         var ordered = jobs
             .Select(job => job with
@@ -209,10 +225,37 @@ public static class JobQueries
                 RemoteStage = remote.GetValueOrDefault(job.Id).Stage,
                 WaitingForWorker = waiting.Contains(job.Id),
                 SidecarVerification = remote.GetValueOrDefault(job.Id).SidecarVerification,
+                BelowTarget = belowTarget.GetValueOrDefault(job.Id),
             })
             .ToList();
 
         return new JobQueryResult(ordered, total);
+    }
+
+    /// <summary>
+    /// The accept-below-target decision for each failed job on the page whose only failed check is
+    /// picture quality. Other jobs carry none, so the page offers nothing it would then refuse.
+    /// </summary>
+    private static async Task<Dictionary<int, BelowTargetDto>> BelowTargetAsync(
+        OptimisarrDbContext db, IReadOnlyList<JobDto> jobs, CancellationToken cancellationToken)
+    {
+        var failedIds = jobs.Where(job => job.Status == nameof(JobStatus.Failed) && job.VerificationReportJson != null)
+            .Select(job => job.Id).ToList();
+        if (failedIds.Count == 0) return [];
+        var failed = await db.Jobs.AsNoTracking()
+            .Include(job => job.MediaFile).ThenInclude(file => file!.Library)
+            .Where(job => failedIds.Contains(job.Id))
+            .ToListAsync(cancellationToken);
+        var decisions = new Dictionary<int, BelowTargetDto>();
+        foreach (var job in failed)
+        {
+            if (job.MediaFile is not { } media) continue;
+            var decision = BelowTargetEligibility.Decide(job, media.MediaKind, media.Library?.MoveOnComplete == true, dryRun: false);
+            if (decision.Shortfalls.Count == 0) continue;
+            decisions[job.Id] = new BelowTargetDto(decision.Eligible, decision.Refusal.ToString(),
+                [.. decision.Shortfalls.Select(s => new BelowTargetShortfallDto(s.Target.ToString(), s.Score, s.Minimum))]);
+        }
+        return decisions;
     }
 
     /// <summary>

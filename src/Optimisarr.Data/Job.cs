@@ -263,7 +263,10 @@ public sealed class Job
     /// </summary>
     public string? SourceSha256 { get; set; }
 
-    /// <summary>Exact bytes that earned the current verification verdict; absent on historical jobs.</summary>
+    /// <summary>
+    /// Exact bytes that earned the current verification verdict, passed or failed; absent on
+    /// historical jobs. Replacement re-hashes both files against these before anything moves.
+    /// </summary>
     public string? VerifiedSourceSha256 { get; set; }
     public string? VerifiedOutputSha256 { get; set; }
 
@@ -282,6 +285,13 @@ public sealed class Job
     public string? VerificationReportJson { get; set; }
 
     public DateTimeOffset? VerifiedAt { get; set; }
+
+    /// <summary>
+    /// When a person accepted this job's output although its picture-quality score missed the
+    /// library's target. The report keeps <see cref="VerificationPassed"/> false and the scores,
+    /// so the history says plainly that this file was accepted by hand, below target.
+    /// </summary>
+    public DateTimeOffset? AcceptedBelowTargetAt { get; set; }
 
     /// <summary>
     /// Set when a hardware-decoded candidate for this job failed verification with the signature

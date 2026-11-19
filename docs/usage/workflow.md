@@ -320,9 +320,35 @@ A job that **missed a check** says what you can do instead:
 - **Change the quality target for the whole library**, when a picture-quality score fell short. This
   changes the check itself, for every file in the library. It is not offered when picture quality
   could not be measured at all: there is no score to compare, so the advice is to retry.
+- **Accept anyway…**, when a measured video picture-quality score was the only check missed. See
+  below.
 - **Exclude** the file, so it is not offered or queued again.
 
-There is no "replace anyway". A file that missed a check never replaces an original.
+Apart from **Accept anyway…**, a file that missed a check never replaces an original.
+
+#### Accept a file just under its picture-quality target
+
+Whether a file that scored 94 against a target of 95 is good enough is your call, so a failed video
+job whose only miss is its picture-quality score offers **Accept anyway…**. It opens the same
+side-by-side comparison as Replace, headed with the score and the target, for example "Scored 94,
+target was 95". **Accept and replace** moves the original to Quarantine and puts the file in its
+place, as Replace does. You can put the original back for as long as it stays in Quarantine.
+
+It is offered only when:
+
+- every other check passed. A wrong length, a missing track, a file that will not play to the end,
+  a frame shift or any other failed check is still a hard stop;
+- the picture quality was measured. A score that could not be measured is not a score to accept;
+- no part of the picture fell below the safety floor (the "catastrophic minimum"), which usually
+  means a damaged decode rather than a slightly soft picture;
+- it is a video, not super-resolution, and its library replaces originals rather than saving to
+  another folder;
+- the original and the output are still the exact files that were measured. Jobs that failed before
+  this release did not keep that record; retry them first.
+
+It is one file at a time and always by hand. No library setting turns it on, and **Replace all**
+never includes it. While replacing is locked (dry-run), it is off with the reason. The job is then
+recorded as **Accepted below target** in the Queue and in Quarantine, and keeps its scores.
 
 Each check is named in plain words, such as "Plays from start to end without errors" or "Same
 length". Hover a name to see the name logs and diagnostics use, such as `Decode health`.

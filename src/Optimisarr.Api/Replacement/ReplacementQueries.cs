@@ -56,7 +56,9 @@ public sealed record ReplacementDetailDto(
     DateTimeOffset? PurgedAt,
     string MediaKind,
     bool? VerificationPassed,
-    string? VerificationReportJson);
+    string? VerificationReportJson,
+    /// <summary>Set when a person accepted this output although its picture-quality score missed the target.</summary>
+    DateTimeOffset? AcceptedBelowTargetAt = null);
 
 public static class ReplacementQueries
 {
@@ -101,7 +103,8 @@ public static class ReplacementQueries
             replacement.PurgedAt,
             mediaKind.ToString(),
             job?.VerificationPassed,
-            job?.VerificationReportJson);
+            job?.VerificationReportJson,
+            job?.AcceptedBelowTargetAt);
     }
 
     /// <summary>

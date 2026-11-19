@@ -56,6 +56,18 @@ candidate still passes the configured soundtrack gate. The [closing parity
 checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
 what shipped and the limits that stay.
 
+**Recorded exception, 19 November 2026:** a person may accept a failed video encode whose only
+fault is a picture-quality (VMAF) score under the library's target (#519, from #507). This is the
+one exception to "no original is replaced until every configured gate has passed", by operator
+decision: the target is a preference, and the person looking at the file can judge a 94 against a
+95. Its limits are fixed. It is per job and always manual, with no library setting and no bulk
+action; the original is quarantined exactly as for Replace; the harmonic-mean and fifth-percentile
+targets may be overridden, but the catastrophic VMAF floor may not, because it is the signature of a
+corrupt decode; a score that could not be measured, any other failed check, audio and image scores,
+super-resolution and save-to-another-folder libraries are all excluded; and the source and output
+must still hash to the bytes that were measured. The job records `AcceptedBelowTargetAt` and keeps
+its failed report.
+
 **Recorded default, 7 November 2026:** a new library keeps each file's container ("Same as source")
 instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real
 Radarr 6.4.4 adopted the new file on its next rescan, but unmonitored the movie when its "Unmonitor
