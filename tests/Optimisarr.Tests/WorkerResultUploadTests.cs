@@ -45,12 +45,15 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         using var worker = await PairWorker("Review controlled transfer");
         await QueueAJob();
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        // Long enough for the upload to start on a slow CI runner, so the first lease check passes;
+        // the upload then waits until this moment has passed before it finishes.
+        var shortExpiry = DateTimeOffset.UtcNow.AddSeconds(5);
         if (mode is 2 or 3)
         {
             using var expiry = _api.Services.CreateScope();
             var expiryDb = expiry.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var expiryRow = await expiryDb.JobLeases.FindAsync(Guid.Parse(leaseId));
-            expiryRow!.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1);
+            expiryRow!.ExpiresAt = shortExpiry;
             await expiryDb.SaveChangesAsync();
         }
         var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
@@ -67,7 +70,7 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         context.Request.ContentType = "application/octet-stream";
         context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
         {
-            if (mode == 2) { await Task.Delay(1500); return; }
+            if (mode == 2) { await WaitUntilPast(shortExpiry); return; }
             using var change = _api.Services.CreateScope();
             var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var lease = await db.JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
@@ -81,7 +84,7 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
             else if (mode == 5) lease.Job!.ExecutionAttempt++;
             else { lease.Job!.Status = JobStatus.Cancelled; lease.State = LeaseState.Released; }
             await db.SaveChangesAsync();
-            if (mode == 3) await Task.Delay(1500);
+            if (mode == 3) await WaitUntilPast(shortExpiry);
         });
         context.Response.Body = new MemoryStream();
         await endpoint.RequestDelegate!(context);
@@ -400,6 +403,13 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         {
             await db.Replacements.Where(r => r.Id == replacement.Id).ExecuteDeleteAsync();
         }
+    }
+
+    private static async Task WaitUntilPast(DateTimeOffset moment)
+    {
+        var remaining = moment - DateTimeOffset.UtcNow;
+        if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
     }
 
     private sealed class ReviewCallbackStream(byte[] bytes, Func<Task> callback) : MemoryStream(bytes)

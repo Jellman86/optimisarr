@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop a worker upload test failing at random on slow CI runners, and update the Windows worker's hosting packages to 10.0.15. The test gave a lease one second to live before the upload began, so a slow runner could see it expire before the test renewed it. It now gives five seconds and waits until they have passed, so it still proves a lease renewed during an upload is honoured.
+
 - See the original and the optimised file side by side before you replace (#536). Pressing **Replace original** on one file now shows both, playing together, with their sizes, in the dialog that asks you to confirm. Before, the comparison only appeared in Quarantine, after the original had already been moved. **Replace all** still asks without one. Adds the read-only `GET /api/jobs/{id}/output/content`, which serves only a verified output that is waiting to replace its original. Jobs now include `mediaKind`. No migration.
 
 - Try a failed file again from where you find it (#507). A file whose last job failed is held back, so it does not fail over and over. Before, its details said "Previously failed — retry from the Queue page", and **Optimise this file…** was off, with no way back from there. Now the file's details and its plan offer **Try again**, which puts that failed job back in the queue, with a link to why it failed. The reason now reads "Failed last time, so it isn't tried again by itself". A file skipped for any other reason no longer says the library's rules skip it. The inventory and `GET /api/media/{id}/plan` now include `retryJobId`. No migration.
