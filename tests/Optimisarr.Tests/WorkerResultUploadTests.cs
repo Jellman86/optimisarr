@@ -45,8 +45,8 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         using var worker = await PairWorker("Review controlled transfer");
         await QueueAJob();
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
-        // Long enough for the upload to start on a slow CI runner, so the first lease check passes;
-        // the upload then waits until this moment has passed before it finishes.
+        // Long enough for the upload to start on a slow CI runner, so the checks made before the body
+        // is read pass; the upload then waits until this moment has passed before it finishes.
         var shortExpiry = DateTimeOffset.UtcNow.AddSeconds(5);
         if (mode is 2 or 3)
         {
@@ -68,8 +68,10 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
         context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
         context.Request.ContentType = "application/octet-stream";
+        DateTimeOffset? bodyStartedAt = null;
         context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
         {
+            bodyStartedAt = DateTimeOffset.UtcNow;
             if (mode == 2) { await WaitUntilPast(shortExpiry); return; }
             using var change = _api.Services.CreateScope();
             var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -88,6 +90,8 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         });
         context.Response.Body = new MemoryStream();
         await endpoint.RequestDelegate!(context);
+        if (mode is 2 or 3)
+            Assert.True(bodyStartedAt < shortExpiry, "The runner was too slow: the lease expired before the upload began.");
         Assert.Equal(mode == 3 ? 202 : mode == 4 ? 401 : 409, context.Response.StatusCode);
         using var read = _api.Services.CreateScope();
         var row = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
@@ -407,8 +411,7 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
 
     private static async Task WaitUntilPast(DateTimeOffset moment)
     {
-        var remaining = moment - DateTimeOffset.UtcNow;
-        if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+        while (DateTimeOffset.UtcNow <= moment) await Task.Delay(moment - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(10));
         await Task.Delay(TimeSpan.FromMilliseconds(200));
     }
 
