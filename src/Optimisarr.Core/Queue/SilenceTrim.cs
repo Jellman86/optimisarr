@@ -105,6 +105,25 @@ public static class SilenceDetectCommandBuilder
     ];
 }
 
+/// <summary>The library settings for trimming silence: their defaults and the ranges a library may save.</summary>
+public static class SilenceTrimSettings
+{
+    public const double DefaultThresholdDb = -60;
+    public const double DefaultMinimumSeconds = 2;
+    public const double MinimumThresholdDb = -90;
+    public const double MaximumThresholdDb = -30;
+    public const double ShortestMinimumSeconds = 0.5;
+    public const double LongestMinimumSeconds = 30;
+
+    public const string RangeError =
+        "Silence is quieter than a threshold between -90 and -30 dB, lasting between 0.5 and 30 seconds.";
+
+    public static bool ValidThreshold(double db) => double.IsFinite(db) && db is >= MinimumThresholdDb and <= MaximumThresholdDb;
+
+    public static bool ValidMinimum(double seconds) =>
+        double.IsFinite(seconds) && seconds is >= ShortestMinimumSeconds and <= LongestMinimumSeconds;
+}
+
 /// <summary>A planned trim, or why there is none.</summary>
 public sealed record SilenceTrimDecision(AudioTrimPlan? Plan, string Reason);
 
@@ -114,7 +133,7 @@ public sealed record SilenceTrimDecision(AudioTrimPlan? Plan, string Reason);
 /// never cut, because neither reaches an edge. A little of each trimmed silence is kept so an
 /// attack or a fading tail is not clipped by a detector that is only accurate to a few milliseconds.
 /// </summary>
-public static class SilenceTrimPlanner
+public static partial class SilenceTrimPlanner
 {
     /// <summary>Silence beginning or ending this close to an edge is that edge's silence.</summary>
     public const double EdgeToleranceSeconds = 0.05;
@@ -124,6 +143,17 @@ public static class SilenceTrimPlanner
 
     /// <summary>Less audio than this left over means the detector heard the music as silence.</summary>
     public const double MinimumKeptSeconds = 1.0;
+
+    /// <summary>
+    /// Tags whose times count from the start of the file: a cue sheet, or lyrics with
+    /// <c>[mm:ss]</c> timestamps. Cutting the start would shift every one of them.
+    /// </summary>
+    public static bool HasStartTimedTags(IReadOnlyDictionary<string, string> tags) =>
+        tags.Any(tag => tag.Key.Equals("cuesheet", StringComparison.OrdinalIgnoreCase)
+            || tag.Key.StartsWith("lyrics", StringComparison.OrdinalIgnoreCase) && TimedLyric().IsMatch(tag.Value));
+
+    [GeneratedRegex(@"\[\d{1,3}:\d{2}")]
+    private static partial Regex TimedLyric();
 
     public static EdgeSilence Edges(IReadOnlyList<SilenceInterval> intervals, double durationSeconds)
     {

@@ -31,6 +31,9 @@ public sealed record RuleOverrides
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
     public bool? NormalizeOpusChannelLayout { get; init; }
+    public bool? TrimAudioSilence { get; init; }
+    public double? AudioSilenceThresholdDb { get; init; }
+    public double? AudioSilenceMinimumSeconds { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
     public bool? ReencodeLossyAudio { get; init; }

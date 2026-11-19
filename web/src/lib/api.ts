@@ -166,6 +166,12 @@ export type LibraryRules = {
   downmixToStereo: boolean
   /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
   normalizeOpusChannelLayout: boolean
+  /** Trim silence from the very start and end of music files. Absent from servers before it existed. */
+  trimAudioSilence?: boolean
+  /** Quieter than this, in dB, counts as silence. */
+  audioSilenceThresholdDb?: number
+  /** The shortest silence, in seconds, that is trimmed from an edge. */
+  audioSilenceMinimumSeconds?: number
   /** Video jobs in this library run through the super-resolution pipeline. */
   superResolutionEnabled: boolean
   superResolutionQualityCheck: SuperResolutionQualityCheck
@@ -1210,7 +1216,7 @@ export type MediaPlan = {
   /** Null unless the file is an image. */
   image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
   /** A null codec means every kept track is copied untouched. */
-  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean } | null
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean; trimsSilence?: boolean } | null
   /** Null when the file was probed before track languages were recorded. */
   audioTracks: MediaPlanTrack[] | null
   subtitleTracks: MediaPlanTrack[] | null

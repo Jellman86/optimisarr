@@ -214,6 +214,9 @@ public sealed class ConfigPortabilityService(
             library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
             library.DeinterlaceVideo = snapshot.DeinterlaceVideo ?? false;
             library.NoiseReduction = snapshot.NoiseReduction is null ? NoiseReduction.Off : ParseEnum<NoiseReduction>(snapshot.NoiseReduction);
+            library.TrimAudioSilence = snapshot.TrimAudioSilence ?? false;
+            library.AudioSilenceThresholdDb = snapshot.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb;
+            library.AudioSilenceMinimumSeconds = snapshot.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds;
             library.AutoDedupeEnabled = snapshot.AutoDedupeEnabled ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
@@ -668,7 +671,10 @@ public sealed class ConfigPortabilityService(
         library.SuperResolutionScale,
         library.DeinterlaceVideo,
         library.NoiseReduction.ToString(),
-        library.AutoDedupeEnabled);
+        library.AutoDedupeEnabled,
+        library.TrimAudioSilence,
+        library.AudioSilenceThresholdDb,
+        library.AudioSilenceMinimumSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

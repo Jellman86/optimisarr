@@ -195,6 +195,13 @@ public sealed class Job
     /// </summary>
     public string? DetectedCrop { get; set; }
 
+    /// <summary>
+    /// The silence trim decided for a music file, as <see cref="Optimisarr.Core.Queue.AudioTrimPlan"/>
+    /// text, or <c>none</c> when it was measured and nothing is trimmed. Null means it has not been
+    /// measured. Kept for the same reason as <see cref="DetectedCrop"/>: a retry trims the same window.
+    /// </summary>
+    public string? DetectedSilenceTrim { get; set; }
+
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 

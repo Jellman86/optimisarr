@@ -227,6 +227,19 @@ public sealed class Library
     public bool NormalizeOpusChannelLayout { get; set; } = true;
 
     /// <summary>
+    /// When true, a music file's silence at its very start and very end is trimmed, keeping a
+    /// quarter of a second at each edge. Silence inside the track is never cut. Off by default:
+    /// an album with deliberate pauses between tracks would lose them.
+    /// </summary>
+    public bool TrimAudioSilence { get; set; }
+
+    /// <summary>Audio quieter than this, in dBFS, counts as silence when trimming. Defaults to -60.</summary>
+    public double AudioSilenceThresholdDb { get; set; } = -60;
+
+    /// <summary>The shortest silence, in seconds, that is trimmed from an edge. Defaults to 2.</summary>
+    public double AudioSilenceMinimumSeconds { get; set; } = 2;
+
+    /// <summary>
     /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
     /// tracks in any other language are removed from the output. Null (the default) keeps every
     /// track. Tracks with an unknown language are always kept, and when no track matches a kept

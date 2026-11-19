@@ -225,6 +225,7 @@
                 ? t(i18n.m.onePlan.sound_converted, { codec: codecName(plan.sound.codec), kbps: plan.sound.bitrateKbps ?? '' })
                 : plan.picture?.upscales ? i18n.m.onePlan.sound_copied_upscale : i18n.m.onePlan.sound_copied}
               {#if plan.sound.downmixToStereo}{' '}{i18n.m.librarySummary.audio_downmix}{/if}
+              {#if plan.sound.trimsSilence}{' '}{i18n.m.onePlan.sound_trims_silence}<span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.librarySummary.tag_shortens}</span>{/if}
               {#if plan.kind === 'Video'}
                 {#if removed(plan.audioTracks).length > 0}
                   {' '}{t(i18n.m.onePlan.tracks_removed, { tracks: trackNames(removed(plan.audioTracks)) })}

@@ -333,6 +333,38 @@ For explicitly re-encoded video audio, configure the separate soundtrack report 
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
 
+### Trim silence at the start and end
+
+In a music library, **Configure → Audio → Trim silence at the start and end** cuts silence from the
+very start and the very end of each track, as you might in Audacity. It is off by default. While it
+is on, two numbers appear:
+
+- **Silence is quieter than**: -60 dB by default, between -90 and -30 dB. -60 dB ignores quiet hiss;
+  a lower number counts only near-digital silence.
+- **Shortest silence trimmed**: 2 seconds by default, between 0.5 and 30. A shorter gap at an edge is
+  left alone.
+
+What it does and does not cut:
+
+- It keeps a quarter of a second at each trimmed edge, so the first note and a fading ending are not
+  clipped.
+- Silence inside a track is never cut, and nor is a hidden track after a long gap, because that gap
+  does not reach the end of the file.
+- A file is only trimmed when it is converted anyway. It does not make a file eligible on its own.
+- A file with more than one audio stream is left alone, because one window would apply to all of
+  them.
+- A file with synchronised lyrics or a cue sheet only loses silence at the end, because cutting the
+  start would shift their times.
+- An album with deliberate pauses between tracks would lose them, so leave it off for those
+  libraries.
+
+The silence is measured once per file and remembered on the job, so a retry trims the same window.
+Verification expects the shorter length, and a **Silence trimmed as planned** check measures the
+output again: its length must be within 0.15 seconds of the plan, and each trimmed edge may keep at
+most the quarter second plus 0.1 seconds of silence. This cannot yet be combined with **Audio
+quality**, which compares two files of the same length, so saving refuses that combination. Trimmed
+files are encoded on this server, never on a remote worker.
+
 ![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
 
 ### Collect reports or require a result

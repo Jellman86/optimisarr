@@ -89,6 +89,16 @@ public sealed class SilenceTrimTests
         Assert.True(plan.TrimsEnd);
     }
 
+    [Theory]
+    [InlineData("cuesheet", "FILE \"album.flac\" WAVE", true)]
+    [InlineData("LYRICS", "[00:12.30]First line", true)]
+    [InlineData("lyrics-eng", "Plain words, no times", false)]
+    [InlineData("title", "[01:00] in a title", false)]
+    public void Tags_timed_from_the_start_are_recognised(string key, string value, bool timed)
+    {
+        Assert.Equal(timed, SilenceTrimPlanner.HasStartTimedTags(new Dictionary<string, string> { [key] = value }));
+    }
+
     [Fact]
     public void An_unknown_length_or_sample_rate_plans_nothing()
     {

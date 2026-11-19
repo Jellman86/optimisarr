@@ -58,6 +58,7 @@ builder.Services.AddSingleton(new SourceTimestampFacts(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
+builder.Services.AddSingleton(new SilenceDetectService(transcodeFfmpeg));
 var timestampIntegrity = new TimestampIntegrityCheck(ffprobe);
 builder.Services.AddSingleton(timestampIntegrity);
 builder.Services.AddSingleton<ISourceTimelinePreflight>(
@@ -580,6 +581,9 @@ internal sealed record SaveLibraryRequest(
     bool? AdaptiveImageQuality = null,
     bool? NormalizeOpusChannelLayout = null,
     bool? AdaptiveSoundtrackQuality = null,
+    bool? TrimAudioSilence = null,
+    double? AudioSilenceThresholdDb = null,
+    double? AudioSilenceMinimumSeconds = null,
     bool? SuperResolutionEnabled = null,
     string? SuperResolutionQualityCheck = null,
     string? SuperResolutionEngine = null,
@@ -691,7 +695,10 @@ internal sealed record LibraryDto(
     string? SuperResolutionModel,
     int? SuperResolutionScale,
     bool DeinterlaceVideo,
-    string NoiseReduction)
+    string NoiseReduction,
+    bool TrimAudioSilence,
+    double AudioSilenceThresholdDb,
+    double AudioSilenceMinimumSeconds)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -785,7 +792,10 @@ internal sealed record LibraryDto(
         library.SuperResolutionModel,
         library.SuperResolutionScale,
         library.DeinterlaceVideo,
-        library.NoiseReduction.ToString());
+        library.NoiseReduction.ToString(),
+        library.TrimAudioSilence,
+        library.AudioSilenceThresholdDb,
+        library.AudioSilenceMinimumSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

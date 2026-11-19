@@ -16,6 +16,47 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void Silence_trimming_saves_its_settings_and_defaults_off()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Music" }, out var plain, out _));
+        Assert.False(plain.TrimAudioSilence);
+        Assert.Equal(-60, plain.AudioSilenceThresholdDb);
+        Assert.Equal(2, plain.AudioSilenceMinimumSeconds);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with
+        {
+            MediaType = "Music", TrimAudioSilence = true, AudioSilenceThresholdDb = -50, AudioSilenceMinimumSeconds = 1.5,
+        }, out var parsed, out _));
+        Assert.True(parsed.TrimAudioSilence);
+        Assert.Equal(-50, parsed.AudioSilenceThresholdDb);
+        Assert.Equal(1.5, parsed.AudioSilenceMinimumSeconds);
+    }
+
+    [Theory]
+    [InlineData(-95, 2)]
+    [InlineData(-20, 2)]
+    [InlineData(-60, 0.1)]
+    [InlineData(-60, 60)]
+    public void Silence_settings_out_of_range_are_refused(double db, double seconds)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with
+        {
+            MediaType = "Music", TrimAudioSilence = true, AudioSilenceThresholdDb = db, AudioSilenceMinimumSeconds = seconds,
+        }, out _, out var error));
+        Assert.Contains("-90 and -30 dB", error);
+    }
+
+    [Fact]
+    public void Silence_trimming_is_refused_with_audio_quality_measurement_which_needs_equal_lengths()
+    {
+        var request = Request() with { MediaType = "Music", TrimAudioSilence = true };
+
+        Assert.False(LibraryRequestParser.TryParse(request with { AudioQualityReportingEnabled = true }, out _, out var error));
+        Assert.Contains("audio quality measurement", error);
+        Assert.False(LibraryRequestParser.TryParse(request with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02 }, out _, out _));
+    }
+
+    [Fact]
     public void Image_quality_search_requires_an_enabled_explicit_target_and_no_resize()
     {
         var request = Request() with { MediaType = "Photo", AdaptiveImageQuality = true };

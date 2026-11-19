@@ -72,6 +72,20 @@ async function mockPlan(page: Page, overrides: Overrides = {}) {
 
 const row = (page: Page, name: string) => page.locator(`[data-plan-row="${name}"]`)
 
+test('a music plan says silence at the edges is trimmed when the library trims it', async ({ page }) => {
+  await mockPlan(page, { library: { mediaType: 'Music', trimAudioSilence: true }, plan: {
+    ...plan, kind: 'Audio', action: 'Encode', picture: null, image: null, audioTracks: null, subtitleTracks: null,
+    source: { ...source, relativePath: 'Album/01 Track.flac', videoCodec: null, width: null, height: null, audioCodecs: 'flac' },
+    sound: { codec: 'opus', bitrateKbps: 128, downmixToStereo: false, trimsSilence: true },
+    file: { container: 'opus', fileName: '01 Track.opus', renamed: true, mayBecomeMatroska: false },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  const audio = page.locator('[data-plan-row="audio"]')
+
+  await expect(audio).toContainText('Silence at the start and end is trimmed if the job finds any.')
+  await expect(audio.locator('[data-plan-tag]')).toContainText('Shortens files')
+})
+
 test('the plan says what would change, part by part, and opening it queues nothing', async ({ page }) => {
   await mockPlan(page)
   const writes: string[] = []

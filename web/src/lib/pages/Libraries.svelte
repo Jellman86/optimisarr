@@ -326,6 +326,11 @@
     }
     if (showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled && form.imageDownscaleMode !== 'None') return i18n.m.quality_first.image_no_resize
     if (showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled && form.downmixToStereo) return i18n.m.quality_first.audio_no_downmix
+    if (showAudioOptions && form.trimAudioSilence) {
+      if (form.audioQualityReportingEnabled || form.audioQualityGateEnabled || form.adaptiveAudioQuality) return i18n.m.libraryEditor.trim_silence_no_measure
+      const db = Number(form.audioSilenceThresholdDb), seconds = Number(form.audioSilenceMinimumSeconds)
+      if (!Number.isFinite(db) || db < -90 || db > -30 || !Number.isFinite(seconds) || seconds < 0.5 || seconds > 30) return i18n.m.libraryEditor.silence_range
+    }
     if (showVideoOptions && form.soundtrackQualityGateEnabled
       && (form.maximumSoundtrackQualityDistance == null || !Number.isFinite(Number(form.maximumSoundtrackQualityDistance))
         || Number(form.maximumSoundtrackQualityDistance) < 0 || Number(form.maximumSoundtrackQualityDistance) > 1)) {
@@ -1230,6 +1235,9 @@
       // A server that predates this setting never sends the field, and the conversion is on by
       // default — so an absent value means "on", not "off".
       normalizeOpusChannelLayout: library.normalizeOpusChannelLayout ?? true,
+      trimAudioSilence: library.trimAudioSilence ?? false,
+      audioSilenceThresholdDb: library.audioSilenceThresholdDb ?? -60,
+      audioSilenceMinimumSeconds: library.audioSilenceMinimumSeconds ?? 2,
       keepAudioLanguages: library.keepAudioLanguages,
       keepSubtitleLanguages: library.keepSubtitleLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
@@ -1378,6 +1386,9 @@
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       adaptiveAudioQuality: showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled,
+      trimAudioSilence: showAudioOptions && !!form.trimAudioSilence,
+      audioSilenceThresholdDb: Number(form.audioSilenceThresholdDb ?? -60),
+      audioSilenceMinimumSeconds: Number(form.audioSilenceMinimumSeconds ?? 2),
       adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
       adaptiveSoundtrackQuality: showVideoOptions && soundtrackSearchAvailable && !!form.adaptiveSoundtrackQuality && !!form.soundtrackQualityGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
@@ -2243,6 +2254,18 @@
       <SettingRow label={i18n.m.libraries.reencode_lossy_audio} sentence={i18n.m.libraries.reencode_lossy_audio_hint}>
         <Toggle bare bind:checked={form.reencodeLossyAudio} label={i18n.m.libraries.reencode_lossy_audio} />
       </SettingRow>
+      <SettingRow label={i18n.m.libraryEditor.trim_silence_label} sentence={i18n.m.libraryEditor.trim_silence_sentence} more={i18n.m.libraryEditor.trim_silence_more}
+        tags={form.trimAudioSilence ? [{ text: i18n.m.librarySummary.tag_shortens, tone: 'warn' }] : []}>
+        <Toggle bare bind:checked={form.trimAudioSilence} label={i18n.m.libraryEditor.trim_silence_label} />
+      </SettingRow>
+      {#if form.trimAudioSilence}
+        <SettingRow label={i18n.m.libraryEditor.silence_threshold_label} sentence={i18n.m.libraryEditor.silence_threshold_sentence} controlId="lib-silence-threshold">
+          <input id="lib-silence-threshold" class="input" type="number" min="-90" max="-30" step="1" bind:value={form.audioSilenceThresholdDb} />
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.silence_minimum_label} sentence={i18n.m.libraryEditor.silence_minimum_sentence} controlId="lib-silence-minimum">
+          <input id="lib-silence-minimum" class="input" type="number" min="0.5" max="30" step="0.5" bind:value={form.audioSilenceMinimumSeconds} />
+        </SettingRow>
+      {/if}
       {#if !showVideoOptions || isNoEncodeProfile}
         {@render surroundRow(false)}
         {#if musicCodec === 'opus'}{@render opusLayoutRow()}{/if}

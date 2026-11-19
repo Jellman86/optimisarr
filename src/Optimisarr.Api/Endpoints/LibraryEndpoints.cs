@@ -172,6 +172,9 @@ internal static class LibraryEndpoints
                 VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
                 DownmixToStereo = parsed.DownmixToStereo,
                 NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout,
+                TrimAudioSilence = parsed.TrimAudioSilence,
+                AudioSilenceThresholdDb = parsed.AudioSilenceThresholdDb,
+                AudioSilenceMinimumSeconds = parsed.AudioSilenceMinimumSeconds,
                 SuperResolutionEnabled = parsed.SuperResolutionEnabled,
                 SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck,
                 SuperResolutionEngine = parsed.SuperResolutionEngine,
@@ -260,7 +263,11 @@ internal static class LibraryEndpoints
                 MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore,
                 // An update that leaves the field out keeps the library's stored choice; only an
                 // explicit false turns the automatic conversion off.
-                NormalizeOpusChannelLayout = request.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout
+                NormalizeOpusChannelLayout = request.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout,
+                // A client older than silence trimming leaves these out; the library keeps its settings.
+                TrimAudioSilence = request.TrimAudioSilence ?? library.TrimAudioSilence,
+                AudioSilenceThresholdDb = request.AudioSilenceThresholdDb ?? library.AudioSilenceThresholdDb,
+                AudioSilenceMinimumSeconds = request.AudioSilenceMinimumSeconds ?? library.AudioSilenceMinimumSeconds,
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -312,6 +319,9 @@ internal static class LibraryEndpoints
             library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
             library.DownmixToStereo = parsed.DownmixToStereo;
             library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
+            library.TrimAudioSilence = parsed.TrimAudioSilence;
+            library.AudioSilenceThresholdDb = parsed.AudioSilenceThresholdDb;
+            library.AudioSilenceMinimumSeconds = parsed.AudioSilenceMinimumSeconds;
             library.SuperResolutionEnabled = parsed.SuperResolutionEnabled;
             library.SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck;
             if (parsed.SuperResolutionChoiceSent)
