@@ -2261,6 +2261,7 @@ export const zh: Messages = {
     picture_count: "没有丢帧或多帧",
     sync: "声画同步",
     picture_size: "画面尺寸符合预期",
+    picture_shape: "画面比例保持不变",
     audio_format: "音频格式符合要求",
     audio_untouched: "音频保持原样",
     audio_fidelity: "保留声音细节",

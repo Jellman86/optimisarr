@@ -86,6 +86,7 @@ public sealed partial class QueueDispatcher
             {
                 ExpectedWidth = upscaled.Width,
                 ExpectedHeight = upscaled.Height,
+                PixelShapeMustMatch = true,
                 AudioReencoded = false,
                 AudioDownmixed = false,
                 AudioFiltered = false,
@@ -149,7 +150,7 @@ public sealed partial class QueueDispatcher
 
         var encoderArguments = SuperResolutionCommandBuilder.BuildEncoder(
             work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds,
-            source.BitDepth, source.Colour!);
+            source.BitDepth, source.Colour!, source.PixelAspect);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
             "Job {JobId}: super-resolution — {Frames} pictures per batch, {Run}, noise {Noise}, device {Device}",

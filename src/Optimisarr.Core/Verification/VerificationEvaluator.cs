@@ -116,6 +116,10 @@ public static class VerificationEvaluator
                     : Fail("Picture retention", "Complete decoded picture counts are unavailable; preservation could not be verified."));
             }
             checks.Add(VideoStructurePreserved(input));
+            if (input.RequirePixelShapeRetained)
+            {
+                checks.Add(PixelShapePreserved(input));
+            }
         }
 
         // HDR preservation only matters when the original carries an HDR signal, so
@@ -751,6 +755,16 @@ public static class VerificationEvaluator
         !string.IsNullOrWhiteSpace(input.OutputVideoCodec)
             ? Pass("Video stream", $"Output has a video stream ({input.OutputVideoCodec}).")
             : Fail("Video stream", "Output has no video stream.");
+
+    private static VerificationCheck PixelShapePreserved(VerificationInput input)
+    {
+        var original = input.OriginalPixelAspect ?? new SampleAspectRatio(1, 1);
+        var output = input.OutputPixelAspect ?? new SampleAspectRatio(1, 1);
+        return SampleAspectRatio.SameShape(original, output)
+            ? Pass("Picture shape", $"Source and output pixels have the same shape ({original}).")
+            : Fail("Picture shape", $"Source pixels have shape {original}; output pixels have {output}. "
+                + "The output would display squashed or stretched.");
+    }
 
     private static VerificationCheck VideoStructurePreserved(VerificationInput input)
     {

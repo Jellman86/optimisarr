@@ -128,6 +128,20 @@ public sealed class SuperResolutionPipelinePlanTests
     }
 
     [Fact]
+    public void An_anamorphic_dvd_is_upscaled_at_its_stored_size_and_must_keep_its_pixel_shape()
+    {
+        // A PAL widescreen DVD stores 720x576 and is shown at 1024x576. The engine doubles the
+        // stored picture; the pixel shape written on the output makes it display at 2048x1152.
+        var work = VideoWork() with { SourcePicture = new PictureSize(720, 576) };
+
+        var prepared = QueueDispatcher.PrepareSuperResolutionWork(work, Options with { Scale = 2 }, SuperResolutionQualityCheck.BrokenFramesOnly);
+
+        Assert.Equal(1440, prepared.Original.ExpectedWidth);
+        Assert.Equal(1152, prepared.Original.ExpectedHeight);
+        Assert.True(prepared.Original.PixelShapeMustMatch);
+    }
+
+    [Fact]
     public void Upscaled_work_cannot_move_or_overwrite_a_destination_before_review()
     {
         var work = VideoWork() with

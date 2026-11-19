@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from acceptance.super_resolution import validate_candidate
+from acceptance.super_resolution import same_pixel_shape, validate_candidate
 
 
 class SuperResolutionAcceptanceTests(unittest.TestCase):
@@ -40,3 +40,24 @@ class SuperResolutionAcceptanceTests(unittest.TestCase):
     def test_a_different_encoder_codec_is_rejected(self):
         with self.assertRaises(AssertionError):
             validate_candidate(self.source, self.candidate, "h264_nvenc")
+
+    def test_an_anamorphic_upscale_must_keep_its_pixel_and_display_shape(self):
+        source = copy.deepcopy(self.source)
+        source["streams"][0].update(sample_aspect_ratio="64:45", display_aspect_ratio="16:9")
+        candidate = copy.deepcopy(self.candidate)
+        candidate["streams"][0].update(sample_aspect_ratio="64:45", display_aspect_ratio="16:9")
+        validate_candidate(source, candidate, "hevc_nvenc")
+        for change in ({"sample_aspect_ratio": "1:1"}, {"sample_aspect_ratio": None}, {"display_aspect_ratio": "4:3"}):
+            with self.subTest(change=change):
+                squashed = copy.deepcopy(candidate)
+                squashed["streams"][0].update(change)
+                squashed["streams"][0] = {k: v for k, v in squashed["streams"][0].items() if v is not None}
+                with self.assertRaises(AssertionError):
+                    validate_candidate(source, squashed, "hevc_nvenc")
+
+    def test_square_and_unreported_pixels_are_the_same_shape(self):
+        self.assertTrue(same_pixel_shape(None, "1:1"))
+        self.assertTrue(same_pixel_shape("0:1", None))
+        self.assertTrue(same_pixel_shape("64:45", "64:45"))
+        self.assertFalse(same_pixel_shape("64:45", "1:1"))
+        self.assertFalse(same_pixel_shape("64:45", None))

@@ -50,7 +50,6 @@ public sealed class SuperResolutionSourceTests
     [InlineData("\"pix_fmt\": \"yuv420p12le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv444p\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv422p10le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
-    [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"32:27\"", "square")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"1:1\", \"field_order\": \"tb\"", "interlaced")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"side_data_list\": [{ \"side_data_type\": \"Display Matrix\", \"rotation\": -90 }]", "rotat")]
     public void A_source_the_frames_cannot_reproduce_is_refused_with_a_reason(string video, string reason)
@@ -58,6 +57,31 @@ public sealed class SuperResolutionSourceTests
         var source = SuperResolutionSource.Parse(Probe(video: video));
         Assert.NotNull(source.Refusal);
         Assert.Contains(reason, source.Refusal, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("64:45", 64, 45)]
+    [InlineData("16:15", 16, 15)]
+    [InlineData("32:27", 32, 27)]
+    [InlineData("8:9", 8, 9)]
+    public void An_anamorphic_source_is_accepted_and_reports_its_pixel_shape(string aspect, int numerator, int denominator)
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: $"\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"{aspect}\""));
+
+        Assert.Null(source.Refusal);
+        Assert.Equal(new Optimisarr.Core.Domain.SampleAspectRatio(numerator, denominator), source.PixelAspect);
+    }
+
+    [Theory]
+    [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"1:1\"")]
+    [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"0:1\"")]
+    [InlineData("\"pix_fmt\": \"yuv420p\"")]
+    public void A_square_or_unspecified_source_reports_no_pixel_shape_to_keep(string video)
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: video));
+
+        Assert.Null(source.Refusal);
+        Assert.Null(source.PixelAspect);
     }
 
     [Fact]

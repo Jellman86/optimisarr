@@ -35,6 +35,37 @@ public sealed class SuperResolutionCommandBuilderTests
         SuperResolutionColour? colour = null) =>
         SuperResolutionCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth, colour ?? Hd);
 
+    [Fact]
+    public void An_anamorphic_source_keeps_its_pixel_shape_on_the_output()
+    {
+        // The engine writes plain pictures with no pixel shape, so the encoder must restore it or
+        // a widescreen DVD would play squashed into 4:5.
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec(), "libx265", 25, 4, "optimisarr-1", 0, 8, Hd,
+            new Optimisarr.Core.Domain.SampleAspectRatio(64, 45));
+
+        Assert.Equal("scale=out_color_matrix=bt709:out_range=tv,setsar=sar=64/45,format=yuv420p", After(args, "-vf"));
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(null, null)]
+    public void A_square_source_adds_no_pixel_shape_filter(int? numerator, int? denominator)
+    {
+        Optimisarr.Core.Domain.SampleAspectRatio? aspect = numerator is { } n ? new(n, denominator!.Value) : null;
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec(), "libx265", 25, 4, "optimisarr-1", 0, 8, Hd, aspect);
+
+        Assert.Equal("scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void Nvenc_keeps_an_anamorphic_pixel_shape_before_its_ten_bit_upload()
+    {
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec() with { Preset = "p5" }, "hevc_nvenc", 25, 4, "optimisarr-1", 0, 10, Hd,
+            new Optimisarr.Core.Domain.SampleAspectRatio(16, 15));
+
+        Assert.Equal("scale=out_color_matrix=bt709:out_range=tv,setsar=sar=16/15,format=p010le", After(args, "-vf"));
+    }
+
     [Theory]
     [InlineData("h264_nvenc", 8, "yuv420p")]
     [InlineData("hevc_nvenc", 8, "yuv420p")]

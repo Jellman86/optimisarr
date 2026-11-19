@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upscale DVDs and other video with non-square pixels instead of refusing them (#548). Super-resolution used to stop with "needs square pixels" on a widescreen DVD, which stores 720x576 and is shown at 1024x576. It now upscales the stored picture as it is (1440x1152 at 2x) and writes the original's pixel shape on the result, so it plays with the same shape. Super-resolution jobs now also pass a **Picture shape** check, which refuses a result whose pixels lost their shape, because neither the size check nor VMAF would notice it playing squashed. No migration. Reported by [Blorti](https://github.com/Blorti).
+
 - Stop a worker upload test failing at random on slow CI runners, and update the Windows worker's hosting packages to 10.0.15. The test gave a lease one second to live before the upload began, so a slow runner could see it expire before the test renewed it. It now gives five seconds and waits until they have passed, so it still proves a lease renewed during an upload is honoured.
 
 - See the original and the optimised file side by side before you replace (#536). Pressing **Replace original** on one file now shows both, playing together, with their sizes, in the dialog that asks you to confirm. Before, the comparison only appeared in Quarantine, after the original had already been moved. **Replace all** still asks without one. Adds the read-only `GET /api/jobs/{id}/output/content`, which serves only a verified output that is waiting to replace its original. Jobs now include `mediaKind`. No migration.

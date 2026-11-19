@@ -57,6 +57,8 @@ public sealed record MediaProbeResult(
     public IReadOnlyList<string?> SubtitleCodecs { get; init; } = [];
     /// <summary>Absolute stream indexes in the same subtitle-relative order, when reported.</summary>
     public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
+    /// <summary>The shape of the primary video's pixels; null when ffprobe reports none, which plays square.</summary>
+    public SampleAspectRatio? PixelAspect { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RawJson { get; init; }
 
@@ -271,6 +273,7 @@ public sealed class MediaProbeService : IMediaProbeService
         bool? isVariableFrameRate = null;
         string? videoProfile = null;
         string? fieldOrder = null;
+        SampleAspectRatio? pixelAspect = null;
         double? videoFrameRate = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
@@ -334,6 +337,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         videoFrameRate = ReadVideoFrameRate(stream);
                         videoProfile = ReadString(stream, "profile");
                         fieldOrder = ReadString(stream, "field_order");
+                        pixelAspect = SampleAspectRatio.Parse(ReadString(stream, "sample_aspect_ratio"));
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
@@ -430,7 +434,7 @@ public sealed class MediaProbeService : IMediaProbeService
             videoFrameRate,
             containerStart,
             colorRange,
-            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, RawJson = json };
+            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, PixelAspect = pixelAspect, RawJson = json };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
