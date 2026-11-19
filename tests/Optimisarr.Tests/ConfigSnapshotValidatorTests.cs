@@ -5,6 +5,18 @@ namespace Optimisarr.Tests;
 public sealed class ConfigSnapshotValidatorTests
 {
     [Fact]
+    public void An_imported_silence_trim_is_held_to_the_same_rules_as_a_saved_one()
+    {
+        var music = new LibrarySnapshot("Music", "/music", "Music", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+        { TrimAudioSilence = true, AudioSilenceThresholdDb = -60, AudioSilenceMinimumSeconds = 2 };
+
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [music] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [music with { AudioSilenceThresholdDb = 0 }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [music with { AudioQualityReportingEnabled = true }] }, AllowedKeys).IsValid);
+    }
+
+    [Fact]
     public void Quality_first_configuration_requires_explicit_targets_and_preserves_its_opt_ins_in_json()
     {
         var audio = new LibrarySnapshot("Music", "/music", "Music", "ConservativeHevc", true, 0,

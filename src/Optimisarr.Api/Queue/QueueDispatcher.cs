@@ -1551,6 +1551,11 @@ public sealed partial class QueueDispatcher(
             return RemoteWorkPlan.Refused(
                 "This library reduces noise, which runs on this server: a worker cannot clean the reference it would judge the result against.");
         }
+        if (work.Spec.SilenceTrim is not null)
+        {
+            return RemoteWorkPlan.Refused(
+                "This music file has silence trimmed from its edges, which is measured and checked on this server.");
+        }
         if (work.SuperResolution is not null)
         {
             return RemoteWorkPlan.Refused(
@@ -2046,6 +2051,13 @@ public sealed partial class QueueDispatcher(
             Deinterlace = isVideoJob && spec.VideoCodec is not null && VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, sourceFieldOrder),
             Denoise = isVideoJob && spec.VideoCodec is not null ? rules.NoiseReduction : NoiseReduction.Off,
         };
+        // The audio quality measurement compares windows at equal offsets in files of equal length, so
+        // a library that measures it is never trimmed, whatever an older save left switched on.
+        if (media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence && spec.AudioEncoder is not null
+            && library is { AudioQualityReportingEnabled: false, AudioQualityGateEnabled: false, AdaptiveAudioQuality: false })
+        {
+            spec = spec with { SilenceTrim = await PlanSilenceTrimAsync(scope, job, media, rules, cancellationToken) };
+        }
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -2188,6 +2200,7 @@ public sealed partial class QueueDispatcher(
             ExpectedWidth: spec.ExpectedSize?.Width,
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
+            SilenceTrim: spec.SilenceTrim,
             FrameRate: spec.FrameRate,
             Deinterlaced: spec.Deinterlace,
             Denoised: spec.Denoise,
@@ -3436,7 +3449,7 @@ public sealed partial class QueueDispatcher(
         {
             job.WorkOutputPath = spec.OutputPath;
             job.FfmpegArguments = string.Join(' ', arguments);
-            job.AppliedAudioFilter = audioFilter.Chain;
+            job.AppliedAudioFilter = FfmpegCommandBuilder.AudioFilterChain(spec);
             job.VideoEncoder = videoEncoder;
             job.RequestedVideoQuality = videoQuality?.Requested;
             job.EffectiveVideoQuality = videoQuality?.Effective;
@@ -3568,6 +3581,8 @@ public sealed partial class QueueDispatcher(
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.AcceptedBelowTargetAt = null;
+        // Measured again for each attempt: the file at the path may not be the one measured before.
+        job.DetectedSilenceTrim = null;
         job.FinishedAt = null;
     }
 
@@ -3864,6 +3879,39 @@ public sealed partial class QueueDispatcher(
         job.VerifiedOutputSha256 = verifiedOutput;
         job.VerifiedAt = nowUtc;
         job.UpdatedAt = nowUtc;
+    }
+
+    /// <summary>
+    /// Measures a music file's silence and remembers the decision on the job for the rest of this
+    /// attempt; a new attempt measures again, because the file at the path may have changed. Every
+    /// doubt resolves to no trim (see <see cref="SilenceTrimPlanner.Decide"/>).
+    /// </summary>
+    private async Task<AudioTrimPlan?> PlanSilenceTrimAsync(
+        AsyncServiceScope scope, Job job, MediaFile media, Optimisarr.Core.Rules.RuleSettings rules, CancellationToken cancellationToken)
+    {
+        if (job.DetectedSilenceTrim is { } decided) return AudioTrimPlan.TryParse(decided);
+
+        var probe = await scope.ServiceProvider.GetRequiredService<MediaProbeService>().ProbeAsync(media.Path, cancellationToken);
+        var source = new SilenceTrimSource(
+            probe.Success,
+            probe.DurationSeconds,
+            probe.AudioTrackCount,
+            probe.MaxAudioSampleRate,
+            StartIsTimed: probe.SubtitleTrackCount > 0
+                || SilenceTrimPlanner.HasStartTimedTags(probe.FormatTags)
+                // Audiobooks carry chapters, and a sidecar .lrc times its lines from the start.
+                || Path.GetExtension(media.Path).Equals(".m4b", StringComparison.OrdinalIgnoreCase)
+                || File.Exists(Path.ChangeExtension(media.Path, ".lrc")));
+        var measurement = source is { Probed: true, AudioStreamCount: 1 }
+            ? await scope.ServiceProvider.GetRequiredService<SilenceDetectService>().DetectAsync(
+                media.Path, rules.AudioSilenceThresholdDb, rules.AudioSilenceMinimumSeconds, cancellationToken)
+            : null;
+        var decision = SilenceTrimPlanner.Decide(source, measurement, rules.AudioSilenceThresholdDb);
+
+        var stored = decision.Plan?.ToString() ?? "none";
+        await WithJobAsync(job.Id, tracked => tracked.DetectedSilenceTrim = stored, cancellationToken);
+        logger.LogInformation("Job {JobId}: {Decision}", job.Id, decision.Reason);
+        return decision.Plan;
     }
 
     internal static VerificationClip? BuildVerificationClip(

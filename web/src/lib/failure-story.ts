@@ -15,7 +15,7 @@ export type FailureCause =
 type Check = { name: string; outcome: string }
 
 const SOURCE = ['Source video timeline']
-const BROKEN = ['Decode health', 'Output readable', 'Video stream', 'Video structure', 'Timestamp integrity', 'Tail integrity', 'Duration']
+const BROKEN = ['Decode health', 'Output readable', 'Video stream', 'Video structure', 'Timestamp integrity', 'Tail integrity', 'Duration', 'Silence trimmed']
 const LOST = [
   'Audio tracks', 'Subtitle tracks', 'Audio languages', 'Subtitle languages', 'Audio fidelity', 'Audio codec',
   'Audio codecs unchanged', 'Audio metadata and artwork', 'Colour metadata', 'HDR signal', 'A/V sync', 'Dimensions', 'Picture shape',

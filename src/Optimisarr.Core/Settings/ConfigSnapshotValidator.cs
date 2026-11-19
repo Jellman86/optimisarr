@@ -89,6 +89,12 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (library.AudioSilenceThresholdDb is { } silenceDb && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidThreshold(silenceDb)
+                || library.AudioSilenceMinimumSeconds is { } silenceSeconds && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidMinimum(silenceSeconds))
+                errors.Add($"{where} silence trimming: {Optimisarr.Core.Queue.SilenceTrimSettings.RangeError}");
+            if (library.TrimAudioSilence == true
+                && (library.AudioQualityReportingEnabled == true || library.AudioQualityGateEnabled == true || library.AdaptiveAudioQuality == true))
+                errors.Add($"{where} trims silence, which cannot be combined with audio quality measurement yet.");
             if (library.NoiseReduction is not null)
             {
                 RequireEnum<Optimisarr.Core.Queue.NoiseReduction>(library.NoiseReduction, $"{where} noise reduction", errors);

@@ -1162,6 +1162,30 @@ for (const width of [375, 1440]) {
   }
 }
 
+test('trimming silence is off by default, shows its two numbers when on, and saves them', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/audio')
+  const trim = page.getByRole('checkbox', { name: 'Trim silence at the start and end', exact: true })
+  await expect(trim).not.toBeChecked()
+  await expect(page.locator('#lib-silence-threshold')).toHaveCount(0)
+
+  await trim.check()
+  await expect(page.locator('#lib-silence-threshold')).toHaveValue('-60')
+  await expect(page.locator('#lib-silence-minimum')).toHaveValue('2')
+  await page.locator('#lib-silence-minimum').fill('1.5')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ trimAudioSilence: true, audioSilenceThresholdDb: -60, audioSilenceMinimumSeconds: 1.5 })
+})
+
+test('trimming silence with the audio check on says why it cannot be saved', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music', audioQualityReportingEnabled: true })
+  await page.goto('/#/libraries/1/configure/audio')
+  await page.getByRole('checkbox', { name: 'Trim silence at the start and end', exact: true }).check()
+
+  await expect(page.getByText('Trimming silence cannot be combined with audio quality measurement yet.').first()).toBeVisible()
+})
+
 test('a library saved with the audio check required but not reported keeps exactly that until the choice is changed', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Music', audioQualityGateEnabled: true, audioQualityReportingEnabled: false, maximumAudioQualityDistance: 0.005 })
   await page.goto('/#/libraries/1/configure/audio')

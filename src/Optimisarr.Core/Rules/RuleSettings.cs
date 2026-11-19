@@ -184,6 +184,18 @@ public sealed record RuleSettings
     public bool NormalizeOpusChannelLayout { get; init; } = true;
 
     /// <summary>
+    /// When <c>true</c>, a music file's silence at its very start and end is measured and trimmed.
+    /// Off by default; see <see cref="Queue.SilenceTrimPlanner"/> for what is and is not cut.
+    /// </summary>
+    public bool TrimAudioSilence { get; init; }
+
+    /// <summary>Audio quieter than this, in dBFS, counts as silence when trimming.</summary>
+    public double AudioSilenceThresholdDb { get; init; } = SilenceTrimSettings.DefaultThresholdDb;
+
+    /// <summary>The shortest silence, in seconds, that is trimmed from an edge.</summary>
+    public double AudioSilenceMinimumSeconds { get; init; } = SilenceTrimSettings.DefaultMinimumSeconds;
+
+    /// <summary>
     /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other
     /// language are removed from the output. Empty (the default) keeps every track. Tracks
     /// whose language is unknown are always kept, and when no track matches a kept language

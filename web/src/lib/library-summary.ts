@@ -279,6 +279,10 @@ function audioLine(library: SaveLibrary, { m, locale, preset }: SummaryContext):
       ? fill(s.music_target, { codec })
       : fill(s.music_convert, { codec, kbps: library.audioBitrateKbps ?? preset?.audioBitrateKbps ?? 128 }))
     sentences.push(library.reencodeLossyAudio ? s.music_lossy_too : s.music_lossy_left)
+    if (library.trimAudioSilence) {
+      sentences.push(s.music_trims_silence)
+      tags.push({ tone: 'warn', text: s.tag_shortens })
+    }
     if ((!video || !encodesVideo(library)) && library.downmixToStereo) sentences.push(s.audio_downmix)
     // FLAC to M4A, Opus or MP3 is a new extension, so Lidarr and playlists see a different file.
     sentences.push(s.renames_converted)

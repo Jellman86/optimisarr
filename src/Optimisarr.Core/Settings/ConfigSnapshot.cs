@@ -118,7 +118,11 @@ public sealed record LibrarySnapshot(
     // Null on an older snapshot means off, as those libraries never reduced noise.
     string? NoiseReduction = null,
     // Null on an older snapshot means off, as those libraries never cleaned duplicates on a schedule.
-    bool? AutoDedupeEnabled = null);
+    bool? AutoDedupeEnabled = null,
+    // Null on an older snapshot means off with the default threshold and length.
+    bool? TrimAudioSilence = null,
+    double? AudioSilenceThresholdDb = null,
+    double? AudioSilenceMinimumSeconds = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

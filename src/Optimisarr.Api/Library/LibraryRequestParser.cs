@@ -99,7 +99,10 @@ internal readonly record struct ParsedLibrary(
     bool SuperResolutionChoiceSent = false,
     bool DeinterlaceVideo = false,
     // Null when the request named none, so an update keeps what is saved.
-    NoiseReduction? NoiseReduction = null);
+    NoiseReduction? NoiseReduction = null,
+    bool TrimAudioSilence = false,
+    double AudioSilenceThresholdDb = SilenceTrimSettings.DefaultThresholdDb,
+    double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -149,6 +152,21 @@ internal static class LibraryRequestParser
             || (request.ImagePerceptualGateEnabled == true && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)))
         {
             error = "Perceptual image quality requires a photo or mixed library and an explicit gate score between 0 and 100.";
+            return false;
+        }
+
+        if (request.AudioSilenceThresholdDb is { } threshold && !SilenceTrimSettings.ValidThreshold(threshold)
+            || request.AudioSilenceMinimumSeconds is { } seconds && !SilenceTrimSettings.ValidMinimum(seconds))
+        {
+            error = SilenceTrimSettings.RangeError;
+            return false;
+        }
+        // The audio quality measurement compares windows at the same offsets in two files of the
+        // same length, so it cannot judge a file that is shorter on purpose yet.
+        if (request.TrimAudioSilence == true && (request.AudioQualityReportingEnabled == true
+            || request.AudioQualityGateEnabled == true || request.AdaptiveAudioQuality == true))
+        {
+            error = "Trimming silence cannot be combined with audio quality measurement yet. Turn one of them off.";
             return false;
         }
 
@@ -689,7 +707,10 @@ internal static class LibraryRequestParser
             request.SuperResolutionScale,
             superResolutionChoiceSent,
             request.DeinterlaceVideo ?? false,
-            noiseReduction);
+            noiseReduction,
+            request.TrimAudioSilence ?? false,
+            request.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb,
+            request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds);
         error = null;
         return true;
     }

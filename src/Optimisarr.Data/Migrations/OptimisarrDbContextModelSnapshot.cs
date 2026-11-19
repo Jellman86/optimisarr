@@ -730,6 +730,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("DetectedCrop")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DetectedSilenceTrim")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EffectiveVideoQuality")
                         .HasColumnType("INTEGER");
 
@@ -1075,6 +1078,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("AudioQualityReportingEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("AudioSilenceMinimumSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("AudioSilenceThresholdDb")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("AudioTargetCodec")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -1340,6 +1349,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("TargetVideoCodec")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("TrimAudioSilence")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");

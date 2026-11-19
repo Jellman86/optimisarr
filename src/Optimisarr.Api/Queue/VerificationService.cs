@@ -57,7 +57,10 @@ public sealed record OriginalSnapshot(
     // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
     string? VmafModel = null,
     // The output must keep the source's pixel shape. Set for super-resolution, whose engine drops it.
-    bool PixelShapeMustMatch = false);
+    bool PixelShapeMustMatch = false,
+    // The silence the encode trimmed from a music file's start and end, with the level that counted
+    // as silence, so verification expects the shorter length and checks where the cut fell.
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -108,7 +111,8 @@ public sealed class VerificationService(
     VmafShadowService? shadow = null,
     AudioQualityObservationService? audioQuality = null,
     SoundtrackQualityObservationService? soundtrackQuality = null,
-    ImagePerceptualObservationService? imagePerceptualQuality = null)
+    ImagePerceptualObservationService? imagePerceptualQuality = null,
+    SilenceDetectService? silence = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -340,6 +344,14 @@ public sealed class VerificationService(
                 ? "ebur128 produced no true-peak reading."
                 : loudnessError;
 
+            var outputDuration = reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
+                : OutputDurationForVerification(outputProbe, reference.Kind, timestampResult);
+            // Trimmed jobs never go to a worker, so this always measures the file here.
+            var outputEdgeSilence = reference.SilenceTrim is { } trim && silence is not null && remoteEvidence is null
+                ? await silence.MeasureEdgesAsync(outputPath, trim.ThresholdDb, cancellationToken)
+                : null;
+
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
                 DecodeError: decodeResult.Error,
@@ -350,12 +362,7 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: referenceVideoDuration,
-                OutputDurationSeconds: reference.Kind == MediaKind.Audio && remoteEvidence is not null
-                    ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
-                    : OutputDurationForVerification(
-                    outputProbe,
-                    reference.Kind,
-                    timestampResult),
+                OutputDurationSeconds: outputDuration,
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
                 OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
@@ -414,6 +421,8 @@ public sealed class VerificationService(
                 OutputHeight: outputProbe.Height,
                 ExpectedWidth: reference.ExpectedWidth,
                 ExpectedHeight: reference.ExpectedHeight,
+                SilenceTrim: reference.SilenceTrim,
+                OutputEdgeSilence: outputEdgeSilence,
                 RequirePixelShapeRetained: reference.PixelShapeMustMatch,
                 OriginalPixelAspect: originalProbe.PixelAspect,
                 OutputPixelAspect: outputProbe.PixelAspect,

@@ -27,6 +27,7 @@ const exact: Record<string, keyof Labels> = {
   'A/V sync': 'sync',
   Dimensions: 'picture_size',
   'Picture shape': 'picture_shape',
+  'Silence trimmed': 'silence_trimmed',
   'Audio codec': 'audio_format',
   'Audio codecs unchanged': 'audio_untouched',
   'Audio fidelity': 'audio_fidelity',

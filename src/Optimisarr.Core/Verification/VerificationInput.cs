@@ -135,4 +135,8 @@ public sealed record VerificationInput(
     int? OriginalDecodedFrameCount = null,
     int? OutputDecodedFrameCount = null,
     bool OriginalTruePeakIsSilent = false,
-    bool OutputTruePeakIsSilent = false);
+    bool OutputTruePeakIsSilent = false,
+    // A music file trimmed of silence at its start and end: the length to expect, and the silence
+    // the output was measured to start and end with. Null when nothing was trimmed.
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
+    Optimisarr.Core.Queue.TrimmedEdges? OutputEdgeSilence = null);

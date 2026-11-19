@@ -27,8 +27,11 @@ public sealed record PlannedPicture(
 /// already a compressed image, so it loses quality a second time.</summary>
 public sealed record PlannedImage(string Format, int Quality, ImageDownscaleMode ResizeMode, int ResizeValue, bool RecompressesLossy);
 
-/// <summary>What happens to the sound. A null codec means every kept track is copied untouched.</summary>
-public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo);
+/// <summary>
+/// What happens to the sound. A null codec means every kept track is copied untouched.
+/// <see cref="TrimsSilence"/> is a rule, not a finding: the job measures whether there is any.
+/// </summary>
+public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo, bool TrimsSilence = false);
 
 /// <summary>One audio or subtitle track of the source, in stream order, and whether the new file keeps it.</summary>
 public sealed record PlannedTrack(int Index, string? Language, bool Kept);
@@ -119,7 +122,9 @@ public static class OptimisationPlanner
                 media.Kind,
                 Audio,
                 null,
-                new PlannedSound(rules.TargetAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo),
+                // Only a file that is converted is trimmed, so a copied one says nothing about silence.
+                new PlannedSound(rules.TargetAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo,
+                    rules.TrimAudioSilence && spec.AudioEncoder is not null),
                 null,
                 null,
                 file);
