@@ -148,9 +148,14 @@ public sealed partial class QueueDispatcher
                 "free-space reserve for even a small batch of pictures. Free some space on the work volume and retry.");
         }
 
+        var workspace = WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid());
+        // Matroska attachments are added by a copy after the encode; see BuildAttachmentRemux.
+        var videoPass = !work.Spec.VideoOnly && source.AttachmentCount > 0 && !IsMp4Family(work.Spec.OutputPath)
+            ? SuperResolutionCommandBuilder.VideoPassPath(workspace, work.Spec.OutputPath)
+            : null;
         var encoderArguments = SuperResolutionCommandBuilder.BuildEncoder(
             work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds,
-            source.BitDepth, source.Colour!, source.PixelAspect);
+            source.BitDepth, source.Colour!, source.PixelAspect, videoPass);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
             "Job {JobId}: super-resolution — {Frames} pictures per batch, {Run}, noise {Noise}, device {Device}",
@@ -163,13 +168,19 @@ public sealed partial class QueueDispatcher
             SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!, work.Spec.Deinterlace, work.Spec.Denoise),
             encoderArguments,
             (input, output) => options.Engine.BuildArguments(input, output, detection.ModelsRoot, options),
-            WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),
+            workspace,
             upscaled,
             work.FrameCount,
             frames,
             frames * SuperResolutionBatchPlan.WorstCaseBytesPerFrame(sourcePicture, options.Scale),
             queue.MinFreeDiskBytes,
-            SuperResolutionStallLimit);
+            SuperResolutionStallLimit)
+        {
+            Finish = videoPass is null ? null : new SuperResolutionFinish(
+                SuperResolutionCommandBuilder.BuildAttachmentRemux(videoPass, work.Spec.InputPath, work.Spec.OutputPath),
+                work.Spec.OutputPath,
+                SuperResolutionFinish.AllowanceFor(new FileInfo(work.Spec.InputPath).Length)),
+        };
         var hooks = new SuperResolutionRunHooks(
             () => WorkPaths.TryGetAvailableFreeSpace(_workRoot),
             () => pauseManager.IsPaused,

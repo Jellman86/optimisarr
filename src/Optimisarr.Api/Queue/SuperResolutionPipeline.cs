@@ -19,7 +19,24 @@ internal sealed record SuperResolutionRunRequest(
     int FramesPerBatch,
     long WorstCaseBatchBytes,
     long ReserveBytes,
-    TimeSpan StallLimit);
+    TimeSpan StallLimit)
+{
+    /// <summary>The copy that adds the source's attachments once the encode succeeds.</summary>
+    public SuperResolutionFinish? Finish { get; init; }
+}
+
+/// <summary>
+/// A stream copy into the candidate that adds what the encode cannot carry without mistiming the
+/// audio: the source's attachments. FFmpeg reads the whole source before it writes the candidate,
+/// so the copy may run silent for <see cref="ReadAllowance"/> on top of the stall limit.
+/// </summary>
+internal sealed record SuperResolutionFinish(IReadOnlyList<string> Arguments, string CandidatePath, TimeSpan ReadAllowance)
+{
+    /// <summary>A pessimistic read rate for a busy pool, a USB disk or a network share.</summary>
+    public const long SlowReadBytesPerSecond = 20L * 1024 * 1024;
+
+    public static TimeSpan AllowanceFor(long sourceBytes) => TimeSpan.FromSeconds((double)Math.Max(0, sourceBytes) / SlowReadBytesPerSecond);
+}
 
 /// <summary>The queue's hooks: free space, pause state, process registration and progress.</summary>
 internal sealed record SuperResolutionRunHooks(
@@ -127,9 +144,25 @@ internal static class SuperResolutionPipeline
                 return Failed($"Frame decoding failed with exit code {decoder.ExitCode}.", processes);
             }
             await encoder.WaitAsync(token);
-            return encoder.ExitCode == 0
-                ? new QueueDispatcher.FfmpegRun(0, null, Logs(processes))
-                : Failed($"Encoding the upscaled pictures failed with exit code {encoder.ExitCode}.", processes);
+            if (encoder.ExitCode != 0)
+            {
+                return Failed($"Encoding the upscaled pictures failed with exit code {encoder.ExitCode}.", processes);
+            }
+            if (request.Finish is { } finish)
+            {
+                // Both have exited; disposing them now releases a hardware encoder's slot for the
+                // copy, and their logs stay readable.
+                await decoder.DisposeAsync();
+                await encoder.DisposeAsync();
+                var copy = Start(processes, request.FfmpegPath, finish.Arguments, hooks, readStdout: false, writeStdin: false);
+                await WaitForCopyAsync(copy, finish, clock, token);
+                if (copy.ExitCode != 0)
+                {
+                    TryDeleteFile(finish.CandidatePath);
+                    return Failed($"Adding the source's attachments, such as subtitle fonts, failed with exit code {copy.ExitCode}.", processes);
+                }
+            }
+            return new QueueDispatcher.FfmpegRun(0, null, Logs(processes));
         }
         catch (OperationCanceledException) when (stalled.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -186,6 +219,35 @@ internal static class SuperResolutionPipeline
         await engine.DisposeAsync();
         return engine.ExitCode == 0 ? null
             : new QueueDispatcher.FfmpegRun(engine.ExitCode, $"The super-resolution engine exited with code {engine.ExitCode}.", engine.Log);
+    }
+
+    /// <summary>
+    /// A copy has no pictures to count. It reads the whole source before writing, so it counts as
+    /// progressing for its read allowance; after that, a growing candidate is its sign of progress.
+    /// </summary>
+    private static async Task WaitForCopyAsync(OwnedProcess process, SuperResolutionFinish finish, ProgressClock clock, CancellationToken token)
+    {
+        var started = Stopwatch.StartNew();
+        var length = 0L;
+        clock.Touch();
+        while (!process.HasExited)
+        {
+            await Task.WhenAny(process.WaitAsync(token), Task.Delay(WatchdogInterval, token));
+            token.ThrowIfCancellationRequested();
+            var now = File.Exists(finish.CandidatePath) ? new FileInfo(finish.CandidatePath).Length : 0;
+            if (now > length || started.Elapsed < finish.ReadAllowance)
+            {
+                length = Math.Max(length, now);
+                clock.Touch();
+            }
+        }
+        await process.WaitAsync(token);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     private static OwnedProcess Start(List<OwnedProcess> processes, string path, IReadOnlyList<string> arguments,
@@ -328,8 +390,13 @@ internal sealed class OwnedProcess : IAsyncDisposable
 
     public Task WaitAsync(CancellationToken token) => _process.WaitForExitAsync(token);
 
+    private bool _disposed;
+
     public async ValueTask DisposeAsync()
     {
+        // A finished process may be disposed early, before the pipeline's final sweep.
+        if (_disposed) return;
+        _disposed = true;
         try
         {
             if (!_process.HasExited)

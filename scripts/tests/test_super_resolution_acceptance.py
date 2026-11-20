@@ -55,6 +55,14 @@ class SuperResolutionAcceptanceTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     validate_candidate(source, squashed, "hevc_nvenc")
 
+    def test_a_square_upscale_whose_encoder_leaves_the_shape_unset_still_displays_the_same(self):
+        # libx265 writes no pixel shape for square pictures, so ffprobe reports N/A for both ratios.
+        source = copy.deepcopy(self.source)
+        source["streams"][0].update(sample_aspect_ratio="1:1", display_aspect_ratio="16:9")
+        candidate = copy.deepcopy(self.candidate)
+        candidate["streams"][0].update(sample_aspect_ratio="N/A", display_aspect_ratio="N/A")
+        validate_candidate(source, candidate, "libx265")
+
     def test_square_and_unreported_pixels_are_the_same_shape(self):
         self.assertTrue(same_pixel_shape(None, "1:1"))
         self.assertTrue(same_pixel_shape("0:1", None))

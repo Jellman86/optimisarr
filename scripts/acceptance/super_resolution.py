@@ -33,8 +33,11 @@ def validate_candidate(source, candidate, encoder):
     require(same_pixel_shape(original_video.get("sample_aspect_ratio"), video.get("sample_aspect_ratio")),
             f"Upscale changed the pixel shape from {original_video.get('sample_aspect_ratio')} "
             f"to {video.get('sample_aspect_ratio')}, so it would display squashed or stretched")
-    if original_video.get("display_aspect_ratio") not in (None, "0:1"):
-        require(video.get("display_aspect_ratio") == original_video["display_aspect_ratio"],
+    # Exact 2x and the same pixel shape already fix how it displays. A reported display ratio must
+    # still agree, but libx265 writes no shape for square pictures, which ffprobe reports as N/A.
+    unreported = (None, "0:1", "N/A")
+    if original_video.get("display_aspect_ratio") not in unreported and video.get("display_aspect_ratio") not in unreported:
+        require(video["display_aspect_ratio"] == original_video["display_aspect_ratio"],
                 "Upscale changed the display aspect ratio")
     require(int(video["nb_read_frames"]) == int(original_video["nb_read_frames"]), "Upscale lost or duplicated pictures")
     require(video["pix_fmt"] == original_video["pix_fmt"], "Upscale changed the bit depth or chroma layout")
