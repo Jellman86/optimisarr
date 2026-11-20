@@ -62,7 +62,8 @@ public static class SuperResolutionCommandBuilder
         double videoStartSeconds,
         int sourceBitDepth,
         SuperResolutionColour colour,
-        Domain.SampleAspectRatio? pixelAspect = null)
+        Domain.SampleAspectRatio? pixelAspect = null,
+        string? encodeTo = null)
     {
         var args = new List<string>
         {
@@ -129,19 +130,35 @@ public static class SuperResolutionCommandBuilder
                 args.AddRange(["-map", $"-1:s:{index}"]);
             }
             // Audio and subtitles are copied verbatim: super-resolution replaces the picture only.
-            // A library's audio re-encode rules do not apply to a super-resolution job.
+            // A library's audio re-encode rules do not apply to a super-resolution job. Attachments
+            // are not copied here: with one beside the piped pictures, FFmpeg 7 stops pacing the
+            // source's audio against them and writes nearly all of it before the first picture.
+            // BuildAttachmentRemux adds them once the encode is done.
             args.AddRange(["-c:a", "copy", "-c:s", IsMp4Family(spec.OutputPath) ? "mov_text" : "copy"]);
-            if (!IsMp4Family(spec.OutputPath))
-            {
-                // Fonts and other attachments are part of how Matroska subtitles render.
-                args.AddRange(["-map", "1:t?", "-c:t", "copy"]);
-            }
         }
 
         AppendMarker(args, spec.OutputPath, optimisedMarker);
-        args.Add(spec.OutputPath);
+        args.Add(encodeTo ?? spec.OutputPath);
         return args;
     }
+
+    /// <summary>Where the encode writes when attachments are added afterwards: the attempt's own
+    /// scratch, which is removed with it, in the candidate's container.</summary>
+    public static string VideoPassPath(string workspace, string outputPath) =>
+        Path.Combine(workspace, "video" + Path.GetExtension(outputPath).ToLowerInvariant());
+
+    /// <summary>
+    /// Copies the finished video pass into the candidate with the source's attachments, such as
+    /// subtitle fonts, which are part of how Matroska subtitles render. Both inputs are files read
+    /// at disk speed, so the streams interleave as they should.
+    /// </summary>
+    public static IReadOnlyList<string> BuildAttachmentRemux(string videoPassPath, string sourcePath, string outputPath) =>
+    [
+        "-hide_banner", "-nostdin", "-y",
+        "-i", videoPassPath, "-i", sourcePath,
+        "-map", "0", "-map", "1:t?", "-map_metadata", "0", "-map_chapters", "0",
+        "-c", "copy", outputPath,
+    ];
 
     private static void AppendMarker(List<string> args, string outputPath, string? optimisedMarker)
     {

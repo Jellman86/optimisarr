@@ -46,8 +46,17 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         var script = TestPython.Shebang + PngHelpers + $$"""
 
         args = sys.argv[1:]
+        mode = {{(decoderMode is null ? "None" : "'" + decoderMode + "'")}}
+        if '-map_chapters' in args and '-' not in args:
+            # The finishing copy: the video pass plus the source's attachments.
+            if mode == 'finish-fail':
+                sys.stderr.write('attachment copy failed\n'); sys.exit(9)
+            with open(args[args.index('-i') + 1]) as f:
+                video = f.read()
+            with open(args[-1], 'w') as f:
+                f.write(video + '+attachments')
+            sys.exit(0)
         if args[-1] == '-':
-            mode = {{(decoderMode is null ? "None" : "'" + decoderMode + "'")}}
             for i in range({{frames}}):
                 if mode == 'crash' and i == 3:
                     sys.stderr.write('decoder crashed\n'); sys.exit(7)
@@ -100,14 +109,16 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         return path;
     }
 
-    private (SuperResolutionRunRequest Request, string Output) Request(string ffmpeg, string engine, int batch = 8, TimeSpan? stall = null)
+    private (SuperResolutionRunRequest Request, string Output) Request(string ffmpeg, string engine, int batch = 8, TimeSpan? stall = null,
+        bool addsAttachments = false)
     {
         var output = Path.Combine(_root, "candidate.mkv");
         var workspace = Path.Combine(_root, "work", "super-resolution", "1-a");
+        var videoPass = Path.Combine(workspace, "video.mkv");
         return (new SuperResolutionRunRequest(
             ffmpeg, engine,
             DecoderArguments: ["-i", "source.mkv", "-f", "image2pipe", "-"],
-            EncoderArguments: ["-f", "image2pipe", "-i", "-", output],
+            EncoderArguments: ["-f", "image2pipe", "-i", "-", addsAttachments ? videoPass : output],
             EngineArguments: (input, outputDir) => ["-i", input, "-o", outputDir, "-s", "2"],
             workspace,
             ExpectedUpscaled: new PictureSize(128, 72),
@@ -115,7 +126,12 @@ public sealed class SuperResolutionPipelineTests : IDisposable
             FramesPerBatch: batch,
             WorstCaseBatchBytes: 1024,
             ReserveBytes: 0,
-            StallLimit: stall ?? TimeSpan.FromMinutes(5)), output);
+            StallLimit: stall ?? TimeSpan.FromMinutes(5))
+        {
+            FinishingArguments = addsAttachments
+                ? ["-i", videoPass, "-i", "source.mkv", "-map", "0", "-map", "1:t?", "-map_chapters", "0", output]
+                : null,
+        }, output);
     }
 
     private static readonly List<int> Started = [];
@@ -163,6 +179,32 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         Assert.Equal(3, others);
         Assert.Equal(0, registry.Count);
         Assert.False(registry.AnyHardware);
+    }
+
+    [PosixFact]
+    public async Task Attachments_are_copied_in_after_the_encode_and_the_video_pass_leaves_with_the_scratch()
+    {
+        var (request, output) = Request(FakeFfmpeg(16), FakeEngine(), batch: 8, addsAttachments: true);
+
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("16+attachments", await File.ReadAllTextAsync(output));
+        Assert.False(Directory.Exists(request.Workspace));
+    }
+
+    [PosixFact]
+    public async Task A_failed_attachment_copy_fails_the_attempt_and_leaves_no_video_pass_behind()
+    {
+        var (request, output) = Request(FakeFfmpeg(16, "finish-fail"), FakeEngine(), batch: 8, addsAttachments: true);
+
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.NotEqual(0, run.ExitCode);
+        Assert.Contains("attachments", run.Error);
+        Assert.Contains("attachment copy failed", run.Log);
+        Assert.False(File.Exists(output));
+        Assert.False(Directory.Exists(request.Workspace));
     }
 
     [PosixFact]

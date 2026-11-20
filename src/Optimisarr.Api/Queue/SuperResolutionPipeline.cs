@@ -19,7 +19,12 @@ internal sealed record SuperResolutionRunRequest(
     int FramesPerBatch,
     long WorstCaseBatchBytes,
     long ReserveBytes,
-    TimeSpan StallLimit);
+    TimeSpan StallLimit)
+{
+    /// <summary>A stream copy run once the encode succeeds, whose last argument is the candidate:
+    /// it adds the source's attachments, which the encode cannot carry without mistiming the audio.</summary>
+    public IReadOnlyList<string>? FinishingArguments { get; init; }
+}
 
 /// <summary>The queue's hooks: free space, pause state, process registration and progress.</summary>
 internal sealed record SuperResolutionRunHooks(
@@ -127,9 +132,21 @@ internal static class SuperResolutionPipeline
                 return Failed($"Frame decoding failed with exit code {decoder.ExitCode}.", processes);
             }
             await encoder.WaitAsync(token);
-            return encoder.ExitCode == 0
-                ? new QueueDispatcher.FfmpegRun(0, null, Logs(processes))
-                : Failed($"Encoding the upscaled pictures failed with exit code {encoder.ExitCode}.", processes);
+            if (encoder.ExitCode != 0)
+            {
+                return Failed($"Encoding the upscaled pictures failed with exit code {encoder.ExitCode}.", processes);
+            }
+            if (request.FinishingArguments is { } finishing)
+            {
+                var copy = Start(processes, request.FfmpegPath, finishing, hooks, readStdout: false, writeStdin: false);
+                await WaitWhileGrowingAsync(copy, finishing[^1], clock, token);
+                if (copy.ExitCode != 0)
+                {
+                    TryDeleteFile(finishing[^1]);
+                    return Failed($"Adding the source's attachments, such as subtitle fonts, failed with exit code {copy.ExitCode}.", processes);
+                }
+            }
+            return new QueueDispatcher.FfmpegRun(0, null, Logs(processes));
         }
         catch (OperationCanceledException) when (stalled.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -186,6 +203,31 @@ internal static class SuperResolutionPipeline
         await engine.DisposeAsync();
         return engine.ExitCode == 0 ? null
             : new QueueDispatcher.FfmpegRun(engine.ExitCode, $"The super-resolution engine exited with code {engine.ExitCode}.", engine.Log);
+    }
+
+    /// <summary>A copy has no pictures to count, so a growing output is its sign of progress.</summary>
+    private static async Task WaitWhileGrowingAsync(OwnedProcess process, string output, ProgressClock clock, CancellationToken token)
+    {
+        clock.Touch();
+        var length = 0L;
+        while (!process.HasExited)
+        {
+            await Task.WhenAny(process.WaitAsync(token), Task.Delay(WatchdogInterval, token));
+            token.ThrowIfCancellationRequested();
+            var now = File.Exists(output) ? new FileInfo(output).Length : 0;
+            if (now > length)
+            {
+                length = now;
+                clock.Touch();
+            }
+        }
+        await process.WaitAsync(token);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     private static OwnedProcess Start(List<OwnedProcess> processes, string path, IReadOnlyList<string> arguments,
