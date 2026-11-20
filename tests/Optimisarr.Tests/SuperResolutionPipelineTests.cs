@@ -50,7 +50,12 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         if '-map_chapters' in args and '-' not in args:
             # The finishing copy: the video pass plus the source's attachments.
             if mode == 'finish-fail':
+                with open(args[-1], 'w') as f:
+                    f.write('partial')
                 sys.stderr.write('attachment copy failed\n'); sys.exit(9)
+            if mode == 'finish-silent':
+                # FFmpeg reads the whole source before it writes the candidate.
+                time.sleep(4)
             with open(args[args.index('-i') + 1]) as f:
                 video = f.read()
             with open(args[-1], 'w') as f:
@@ -110,7 +115,7 @@ public sealed class SuperResolutionPipelineTests : IDisposable
     }
 
     private (SuperResolutionRunRequest Request, string Output) Request(string ffmpeg, string engine, int batch = 8, TimeSpan? stall = null,
-        bool addsAttachments = false)
+        bool addsAttachments = false, TimeSpan? readAllowance = null)
     {
         var output = Path.Combine(_root, "candidate.mkv");
         var workspace = Path.Combine(_root, "work", "super-resolution", "1-a");
@@ -128,8 +133,9 @@ public sealed class SuperResolutionPipelineTests : IDisposable
             ReserveBytes: 0,
             StallLimit: stall ?? TimeSpan.FromMinutes(5))
         {
-            FinishingArguments = addsAttachments
-                ? ["-i", videoPass, "-i", "source.mkv", "-map", "0", "-map", "1:t?", "-map_chapters", "0", output]
+            Finish = addsAttachments
+                ? new SuperResolutionFinish(["-i", videoPass, "-i", "source.mkv", "-map", "0", "-map", "1:t?", "-map_chapters", "0", output],
+                    output, readAllowance ?? TimeSpan.Zero)
                 : null,
         }, output);
     }
@@ -205,6 +211,39 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         Assert.Contains("attachment copy failed", run.Log);
         Assert.False(File.Exists(output));
         Assert.False(Directory.Exists(request.Workspace));
+    }
+
+    [PosixFact]
+    public async Task An_attachment_copy_reading_a_large_source_in_silence_is_given_its_read_allowance()
+    {
+        var (request, output) = Request(FakeFfmpeg(4, "finish-silent"), FakeEngine(), batch: 4,
+            stall: TimeSpan.FromSeconds(2), addsAttachments: true, readAllowance: TimeSpan.FromSeconds(30));
+
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("4+attachments", await File.ReadAllTextAsync(output));
+    }
+
+    [PosixFact]
+    public async Task An_attachment_copy_silent_past_its_allowance_is_stopped_as_a_stall()
+    {
+        var (request, _) = Request(FakeFfmpeg(4, "finish-silent"), FakeEngine(), batch: 4,
+            stall: TimeSpan.FromSeconds(2), addsAttachments: true, readAllowance: TimeSpan.Zero);
+
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.NotEqual(0, run.ExitCode);
+        Assert.Contains("no progress", run.Error);
+        Assert.False(Directory.Exists(request.Workspace));
+    }
+
+    [Fact]
+    public void The_read_allowance_assumes_a_slow_disk()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(34), TimeSpan.FromMinutes(Math.Round(
+            SuperResolutionFinish.AllowanceFor(40L * 1024 * 1024 * 1024).TotalMinutes)));
+        Assert.Equal(TimeSpan.Zero, SuperResolutionFinish.AllowanceFor(0));
     }
 
     [PosixFact]

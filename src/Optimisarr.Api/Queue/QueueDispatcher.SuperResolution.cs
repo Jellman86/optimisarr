@@ -176,8 +176,10 @@ public sealed partial class QueueDispatcher
             queue.MinFreeDiskBytes,
             SuperResolutionStallLimit)
         {
-            FinishingArguments = videoPass is null ? null
-                : SuperResolutionCommandBuilder.BuildAttachmentRemux(videoPass, work.Spec.InputPath, work.Spec.OutputPath),
+            Finish = videoPass is null ? null : new SuperResolutionFinish(
+                SuperResolutionCommandBuilder.BuildAttachmentRemux(videoPass, work.Spec.InputPath, work.Spec.OutputPath),
+                work.Spec.OutputPath,
+                SuperResolutionFinish.AllowanceFor(new FileInfo(work.Spec.InputPath).Length)),
         };
         var hooks = new SuperResolutionRunHooks(
             () => WorkPaths.TryGetAvailableFreeSpace(_workRoot),

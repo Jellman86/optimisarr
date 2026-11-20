@@ -47,9 +47,9 @@ public static class SuperResolutionCommandBuilder
 
     /// <summary>
     /// Encodes the upscaled pictures arriving on stdin, with the original as the second input so
-    /// audio, subtitles, chapters, metadata and (for Matroska) attachments such as subtitle fonts
-    /// are copied exactly as the source carries them, minus the kept-language removals the spec
-    /// resolved. The pictures are placed at the source video's start so audio stays in sync. The
+    /// audio, subtitles, chapters and metadata are copied exactly as the source carries them, minus
+    /// the kept-language removals the spec resolved. For Matroska attachments the encode writes to
+    /// <paramref name="encodeTo"/>, and <see cref="BuildAttachmentRemux"/> then adds them. The pictures are placed at the source video's start so audio stays in sync. The
     /// engine writes pictures with no pixel shape, so a non-square source's shape is set again here;
     /// without it a widescreen DVD would play squashed.
     /// </summary>
@@ -117,8 +117,8 @@ public static class SuperResolutionCommandBuilder
 
         if (copiesSource)
         {
-            // A video may carry no audio, subtitles or attachments; optional maps keep the
-            // candidate buildable either way.
+            // A video may carry no audio or subtitles; optional maps keep the candidate buildable
+            // either way.
             args.AddRange(["-map", "1:a?"]);
             foreach (var index in spec.RemoveAudioStreamIndexes ?? [])
             {
