@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.26 - 2026-11-20
 
 - Trim silence from the start and end of music files (#535). A music library can now turn on **Trim silence at the start and end** under **Configure → Audio**, with a silence level (-60 dB by default) and a shortest silence to trim (2 seconds by default). Before encoding, the server measures the file's silence and cuts only what touches the very start or end, keeping a quarter of a second at each edge; silence inside a track, and a hidden track after a long gap, are never cut. A file with more than one audio stream, or whose audio is not the length its container says, is left alone, and a file with synchronised lyrics, a cue sheet, chapters or a sidecar `.lrc` file only loses silence at the end. The silence is measured at the start of every attempt. Verification expects the shorter length, and a new **Silence trimmed as planned** check measures the output again: the length must match the plan, and each trimmed edge must keep its quarter second of silence, neither more nor less. It is off by default, applies only to files that are converted anyway, cannot yet be combined with the audio quality measurement, and keeps trimmed files off remote workers. The one-file plan and the library summary say when a library trims silence. Migration: adds `Libraries.TrimAudioSilence`, `Libraries.AudioSilenceThresholdDb`, `Libraries.AudioSilenceMinimumSeconds` and `Jobs.DetectedSilenceTrim`. Suggested by [Blorti](https://github.com/Blorti).
 
