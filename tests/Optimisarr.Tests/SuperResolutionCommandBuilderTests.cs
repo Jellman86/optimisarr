@@ -88,7 +88,6 @@ public sealed class SuperResolutionCommandBuilderTests
         Assert.Equal("0.042", After(args, "-itsoffset"));
         Assert.Equal("copy", After(args, "-c:a"));
         Assert.Equal("copy", After(args, "-c:s"));
-        Assert.Contains("1:t?", args);
     }
 
     [Theory]
@@ -216,11 +215,48 @@ public sealed class SuperResolutionCommandBuilderTests
     }
 
     [Fact]
-    public void A_matroska_candidate_keeps_the_sources_attachments_such_as_subtitle_fonts()
+    public void The_upscaled_encode_copies_no_attachments_because_they_unpace_the_audio_from_the_piped_video()
     {
+        // FFmpeg 7 stops pacing the source's audio against the slow piped pictures when an
+        // attachment is copied alongside, and writes nearly all of it before the first picture.
         var args = Encoder(Spec());
-        Assert.Contains("1:t?", args);
-        Assert.Equal(new[] { "-c:t", "copy" }, Pair(args, "-c:t"));
+
+        Assert.DoesNotContain("1:t?", args);
+        Assert.DoesNotContain("-c:t", args);
+    }
+
+    [Fact]
+    public void The_upscaled_encode_can_write_to_a_video_pass_file_instead_of_the_candidate()
+    {
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec(), "libx265", 25, 4, "optimisarr-1", 0, 8, Hd,
+            encodeTo: "/work/super-resolution/1-a/video.mkv");
+
+        Assert.Equal("/work/super-resolution/1-a/video.mkv", args[^1]);
+        Assert.DoesNotContain("/work/1/candidate.mkv", args);
+        Assert.Equal("optimisarr=optimisarr-1", After(args, "-metadata"));
+    }
+
+    [Fact]
+    public void The_attachments_are_added_back_by_a_copy_of_the_video_pass_beside_the_source()
+    {
+        var args = SuperResolutionCommandBuilder.BuildAttachmentRemux(
+            "/work/super-resolution/1-a/video.mkv", "/media/source.mkv", "/work/1/candidate.mkv");
+
+        Assert.Equal(new[]
+        {
+            "-hide_banner", "-nostdin", "-y",
+            "-i", "/work/super-resolution/1-a/video.mkv", "-i", "/media/source.mkv",
+            // Everything, metadata and chapters come from the video pass; only attachments from the source.
+            "-map", "0", "-map", "1:t?", "-map_metadata", "0", "-map_chapters", "0",
+            "-c", "copy", "/work/1/candidate.mkv",
+        }, args);
+    }
+
+    [Fact]
+    public void The_video_pass_is_written_in_the_attempts_workspace_with_the_candidates_container()
+    {
+        Assert.Equal(Path.Combine("/work/super-resolution/1-a", "video.mkv"),
+            SuperResolutionCommandBuilder.VideoPassPath("/work/super-resolution/1-a", "/work/1/candidate.MKV"));
     }
 
     [Fact]

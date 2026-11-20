@@ -127,7 +127,9 @@ says, so a worker can never deliver an ordinary source-sized encode in place of 
    reserve) however long the video is.
 3. Encodes the upscaled frames with the selected software or NVIDIA NVENC encoder and quality, and copies the
    source's audio, subtitles, chapters and metadata. For Matroska it also keeps attachments such
-   as subtitle fonts; a candidate missing any of them is not accepted. Audio is copied even if
+   as subtitle fonts; a candidate missing any of them is not accepted. They are copied in once the
+   encode has finished, which keeps the audio in step with the picture, so a source with
+   attachments briefly needs room for two copies of the upscaled file. Audio is copied even if
    the library normally converts it to AAC or Opus. Container selection follows that copied
    audio, falling back to Matroska when needed, including the Matroska ALAC safeguard.
 4. Hands the candidate to the normal verification. The size-saving gates are off, because
