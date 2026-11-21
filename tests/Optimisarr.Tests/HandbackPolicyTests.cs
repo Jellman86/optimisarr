@@ -78,4 +78,45 @@ public class HandbackPolicyTests
             "different workers", HandbackPolicy.Explain(null, HandbackPolicy.MaxRefusingWorkers, Now));
         Assert.Contains("handed it back", HandbackPolicy.Explain(Now.AddMinutes(-2), 1, Now));
     }
+
+    [Theory]
+    [InlineData(1, 10)]
+    [InlineData(2, 20)]
+    [InlineData(3, 40)]
+    [InlineData(4, 80)]
+    [InlineData(6, 320)]
+    [InlineData(7, 360)]
+    [InlineData(40, 360)]
+    public void Each_refusal_from_the_same_worker_doubles_its_wait_up_to_six_hours(int refusals, int minutes)
+    {
+        Assert.Equal(TimeSpan.FromMinutes(minutes), HandbackPolicy.CooldownAfter(refusals));
+        Assert.False(HandbackPolicy.MayOffer(Now.AddMinutes(-minutes).AddSeconds(1), 1, Now, refusals));
+        Assert.True(HandbackPolicy.MayOffer(Now.AddMinutes(-minutes), 1, Now, refusals));
+    }
+
+    [Fact]
+    public void A_worker_that_fails_a_job_the_same_way_all_night_tries_a_handful_of_times_not_twenty()
+    {
+        // 2026-11-09: Boothby failed two Pokémon episodes at the same frame every 13 minutes from
+        // 02:03 to 08:09, 20 times each, downloading 800 MB of source each time. A fixed ten-minute
+        // pause allowed that. Doubling it leaves room for a sleeping laptop but not for that.
+        var start = Now;
+        var handedBack = new List<DateTimeOffset> { start };
+        for (var minute = 1; minute <= 6 * 60; minute++)
+        {
+            var now = start.AddMinutes(minute);
+            if (HandbackPolicy.MayOffer(handedBack[^1], 1, now, handedBack.Count))
+            {
+                handedBack.Add(now.AddMinutes(3));
+            }
+        }
+
+        Assert.InRange(handedBack.Count, 4, 6);
+    }
+
+    [Fact]
+    public void The_reason_gives_the_longer_wait_after_repeated_refusals()
+    {
+        Assert.Contains("hours", HandbackPolicy.Explain(Now.AddMinutes(-5), 1, Now, refusalsByThisWorker: 6));
+    }
 }

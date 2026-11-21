@@ -45,12 +45,15 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         using var worker = await PairWorker("Review controlled transfer");
         await QueueAJob();
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        // Long enough for the upload to start on a slow CI runner, so the checks made before the body
+        // is read pass; the upload then waits until this moment has passed before it finishes.
+        var shortExpiry = DateTimeOffset.UtcNow.AddSeconds(5);
         if (mode is 2 or 3)
         {
             using var expiry = _api.Services.CreateScope();
             var expiryDb = expiry.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var expiryRow = await expiryDb.JobLeases.FindAsync(Guid.Parse(leaseId));
-            expiryRow!.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1);
+            expiryRow!.ExpiresAt = shortExpiry;
             await expiryDb.SaveChangesAsync();
         }
         var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
@@ -65,9 +68,11 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
         context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
         context.Request.ContentType = "application/octet-stream";
+        DateTimeOffset? bodyStartedAt = null;
         context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
         {
-            if (mode == 2) { await Task.Delay(1500); return; }
+            bodyStartedAt = DateTimeOffset.UtcNow;
+            if (mode == 2) { await WaitUntilPast(shortExpiry); return; }
             using var change = _api.Services.CreateScope();
             var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var lease = await db.JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
@@ -81,10 +86,12 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
             else if (mode == 5) lease.Job!.ExecutionAttempt++;
             else { lease.Job!.Status = JobStatus.Cancelled; lease.State = LeaseState.Released; }
             await db.SaveChangesAsync();
-            if (mode == 3) await Task.Delay(1500);
+            if (mode == 3) await WaitUntilPast(shortExpiry);
         });
         context.Response.Body = new MemoryStream();
         await endpoint.RequestDelegate!(context);
+        if (mode is 2 or 3)
+            Assert.True(bodyStartedAt < shortExpiry, "The runner was too slow: the lease expired before the upload began.");
         Assert.Equal(mode == 3 ? 202 : mode == 4 ? 401 : 409, context.Response.StatusCode);
         using var read = _api.Services.CreateScope();
         var row = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
@@ -400,6 +407,12 @@ public sealed partial class WorkerResultUploadTests : IAsyncLifetime
         {
             await db.Replacements.Where(r => r.Id == replacement.Id).ExecuteDeleteAsync();
         }
+    }
+
+    private static async Task WaitUntilPast(DateTimeOffset moment)
+    {
+        while (DateTimeOffset.UtcNow <= moment) await Task.Delay(moment - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(10));
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
     }
 
     private sealed class ReviewCallbackStream(byte[] bytes, Func<Task> callback) : MemoryStream(bytes)

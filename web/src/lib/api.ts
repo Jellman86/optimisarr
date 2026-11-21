@@ -90,7 +90,7 @@ export type SetupReadiness = {
 export type SetupRecommendation = {
   encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
   hardwareDecode: boolean
-  vmafTier: 'Off' | 'Balanced'
+  vmafTier: 'Off' | 'Balanced' | 'Keep'
   scheduleStart: string
   scheduleEnd: string
   encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
@@ -130,6 +130,8 @@ export type HardwareCapability = {
 }
 
 export type WorkPlacement = 'Anywhere' | 'LocalOnly' | 'PreferWorker' | 'WorkerOnly'
+/** How a library judges upscaled results: VMAF measures closeness to the original, which upscaling changes on purpose. */
+export type SuperResolutionQualityCheck = 'BrokenFramesOnly' | 'FullGate' | 'Off'
 
 export type LibraryRules = {
   priority: number
@@ -144,6 +146,10 @@ export type LibraryRules = {
   targetContainer: string | null
   hdrHandling: string | null
   optimiseDolbyVision: boolean
+  /** Deinterlace sources reported as interlaced instead of leaving them untouched. */
+  deinterlaceVideo: boolean
+  /** How strongly video re-encodes reduce noise, such as tape grain. */
+  noiseReduction: NoiseReduction
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -160,6 +166,19 @@ export type LibraryRules = {
   downmixToStereo: boolean
   /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
   normalizeOpusChannelLayout: boolean
+  /** Trim silence from the very start and end of music files. Absent from servers before it existed. */
+  trimAudioSilence?: boolean
+  /** Quieter than this, in dB, counts as silence. */
+  audioSilenceThresholdDb?: number
+  /** The shortest silence, in seconds, that is trimmed from an edge. */
+  audioSilenceMinimumSeconds?: number
+  /** Video jobs in this library run through the super-resolution pipeline. */
+  superResolutionEnabled: boolean
+  superResolutionQualityCheck: SuperResolutionQualityCheck
+  /** All null means Real-CUGAN with the server's settings. */
+  superResolutionEngine: SuperResolutionEngine | null
+  superResolutionModel: string | null
+  superResolutionScale: number | null
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -229,6 +248,16 @@ export type LibraryAccess = {
   atomicWithQuarantine: boolean | null
 }
 
+/** The server's answer about a folder for "save optimised files in another folder". */
+export type TargetFolderCheck = {
+  path: string
+  allowed: boolean
+  reason: 'none' | 'insideLibrary' | 'workFolder' | 'quarantine' | 'missing' | 'unwritable'
+  libraryName: string | null
+  message: string
+  availableBytes: number | null
+}
+
 export type Library = LibraryRules & {
   id: number
   name: string
@@ -250,90 +279,7 @@ export type SaveLibrary = LibraryRules & {
   enabled: boolean
 }
 
-export function newLibraryDefaults(): SaveLibrary {
-  return {
-    name: '',
-    path: '',
-    mediaType: 'Film',
-    ruleProfile: 'ConservativeHevc',
-    enabled: true,
-    priority: 0,
-    minFileSizeBytes: null,
-    maxHeight: null,
-    videoDownscaleHeight: null,
-    maxFrameRate: null,
-    cropBlackBars: false,
-    reencodeSameCodecAboveBytes: null,
-    skipEfficientSources: true,
-    targetVideoCodec: null,
-    targetContainer: null,
-    hdrHandling: null,
-    optimiseDolbyVision: false,
-    excludePaths: null,
-    excludeHardLinkedFiles: false,
-    skipSourceCodecs: null,
-    contentTune: 'None',
-    maxBitrateKbps: null,
-    minBitrateKbps: null,
-    strongerAdaptiveQuantisation: false,
-    qualityCrf: null,
-    encoderPreset: null,
-    audioTargetCodec: null,
-    audioBitrateKbps: null,
-    videoAudioCodec: null,
-    videoAudioBitrateKbps: null,
-    downmixToStereo: false,
-    normalizeOpusChannelLayout: true,
-    keepAudioLanguages: null,
-    keepSubtitleLanguages: null,
-    reencodeLossyAudio: false,
-    targetImageFormat: null,
-    imageQuality: null,
-    reencodeLossyImages: false,
-    imageDownscaleMode: 'None',
-    imageDownscaleValue: 0,
-    moveOnComplete: false,
-    targetFolder: null,
-    moveOverwrite: false,
-    minVmafHarmonicMean: 93,
-    minVmafMin: 80,
-    vmafQualityGateEnabled: true,
-    minVmafCatastrophicMin: 50,
-    clipVmafEnabled: true,
-    vmafFrameSubsample: 1,
-    durationTolerancePercent: 1,
-    requireAudioRetained: true,
-    requireSubtitlesRetained: false,
-    requireSizeReduction: true,
-    minimumSizeSavingPercent: null,
-    maximumSizeSavingPercent: null,
-    audioLoudnessGateEnabled: false,
-    maxLoudnessDriftLufs: 1,
-    adaptiveAudioQuality: false,
-    adaptiveImageQuality: false,
-    adaptiveSoundtrackQuality: false,
-    imagePerceptualReportingEnabled: false,
-    imagePerceptualGateEnabled: false,
-    minimumImagePerceptualScore: null,
-    soundtrackQualityReportingEnabled: false,
-    soundtrackQualityGateEnabled: false,
-    maximumSoundtrackQualityDistance: null,
-    audioQualityReportingEnabled: false,
-    audioQualityGateEnabled: false,
-    maximumAudioQualityDistance: null,
-    audioClippingGateEnabled: false,
-    maxTruePeakDbtp: 0,
-    imageQualityGateEnabled: true,
-    minimumImageSsim: 0.95,
-    imageMetadataGateEnabled: true,
-    videoQualityStrategy: 'AdaptiveVmaf',
-    workPlacement: 'Anywhere',
-    autoEnqueueEnabled: false,
-    autoEnqueueWindowStart: '00:00',
-    autoEnqueueWindowEnd: '00:00',
-    autoReplace: false,
-  }
-}
+export { newLibraryDefaults } from './library-defaults'
 
 export type RuleProfileSpec = {
   profile: string
@@ -358,6 +304,56 @@ export type LibraryOptions = {
   encoderPresets: string[]
   legacyEncoderPresets: string[]
   imageFormats: string[]
+  hardwareQualityHeadroom: number
+}
+
+/** The Real-CUGAN super-resolution engine section. The engine itself is fixed — these
+ * fields configure it: the preset names the engine's model directory (mixed → models-se, the
+ * upstream default set; pro → models-pro; nose → models-nose), the scale is the upscale factor,
+ * the noise level is the engine's denoise level (-1 conservative, 0 none, 1-3 strength), and the
+ * device is 'auto', 'cpu', or 'gpu:<index>' for a verified Vulkan device. Paths point at the
+ * engine executable and its model directory; empty resolves the binary on PATH and the models
+ * beside it. */
+export type SuperResolutionSettings = {
+  enabled: boolean
+  preset: 'mixed' | 'pro' | 'nose'
+  scale: number
+  noiseLevel: number
+  device: string
+  binaryPath: string
+  modelsPath: string
+  realEsrganBinaryPath: string
+  realEsrganModelsPath: string
+}
+
+export type SuperResolutionEngine = 'realcugan' | 'realesrgan'
+
+export type SuperResolutionReadiness = 'NotInstalled' | 'Misconfigured' | 'VulkanUnavailable' | 'Ready'
+
+export type SuperResolutionStatus = {
+  engine: string
+  readiness: SuperResolutionReadiness
+  binaryFound: boolean
+  binaryPath: string | null
+  modelsFound: boolean
+  modelsRoot: string | null
+  modelDirectory: string | null
+  missingModelFile: string | null
+  vulkanLoaderAvailable: boolean
+  enabled: boolean
+  preset: string
+  scale: number
+  noiseLevel: number
+  device: string
+  problems: string[]
+}
+
+export type SuperResolutionProbe = {
+  success: boolean
+  exitCode: number | null
+  error: string | null
+  outputTail: string | null
+  deviceUsed: string | null
 }
 
 export type Settings = {
@@ -382,6 +378,7 @@ export type Settings = {
   evidenceValidationSlots: number
   automaticNonVideoSlots: number
   automaticEvidenceValidationSlots: number
+  superResolution: SuperResolutionSettings
 }
 
 export type WorkloadLaneStatus = {
@@ -392,6 +389,53 @@ export type WorkloadLaneStatus = {
   reason: string | null
 }
 
+export type QuarantinedCopy = { path: string; quarantinePath: string; sizeBytes: number }
+
+/** Spare copies from one duplicate group, and the copies kept in their place. */
+export type QuarantinedDuplicates = {
+  id: string
+  state: 'Quarantined' | 'Purging' | 'NeedsAttention'
+  heldSince: string
+  attentionReason: string | null
+  keptPaths: string[]
+  copies: QuarantinedCopy[]
+}
+
+export type DuplicateCleanupRefusal = 'ManagerUnavailable' | 'Ignored' | 'LibraryType' | 'PossiblyTracked' | 'NamesDiffer' | 'SeparateLibraries' | 'SharedExtra' | 'NothingToMove'
+
+export type DuplicateCleanupPreview = {
+  ready: boolean
+  groups: number
+  copies: number
+  bytesToFree: number
+  leftAlone: Partial<Record<DuplicateCleanupRefusal, number>>
+}
+
+export type AutoDuplicateCleanupOutcome = 'Cleaned' | 'NothingToClean' | 'DryRun' | 'TooManyFiles' | 'ScanFailed' | 'PartlyCleaned' | 'CleanupFailed' | 'ManagerUnavailable' | 'Stopped'
+
+export type AutoDuplicateCleanup = {
+  libraryId: number
+  enabled: boolean
+  supported: boolean
+  dryRun: boolean
+  lastRunAt: string | null
+  lastOutcome: AutoDuplicateCleanupOutcome | null
+  lastMoved: number
+  lastBytes: number
+  nextRunAfter: string | null
+}
+
+export type DuplicateCleanupStatus = {
+  libraryId: number
+  running: boolean
+  total: number
+  done: number
+  moved: number
+  bytesHeld: number
+  failures: { path: string; reason: string }[]
+  interrupted?: boolean
+}
+
 export type TimedCleanupPreview = {
   retentionDays: number
   dryRunMode: boolean
@@ -399,6 +443,8 @@ export type TimedCleanupPreview = {
   failedOutputBytes: number
   quarantinedOriginalCount: number
   quarantinedOriginalBytes: number
+  quarantinedCopyCount: number
+  quarantinedCopyBytes: number
   planToken: string
   totalCount: number
   totalBytes: number
@@ -635,6 +681,8 @@ export type PreviewComparison = {
   clipDurationSeconds: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
+  skippedQualitySearches?: string[]
+  sourceInterlaced?: boolean
 }
 
 export type CalibrationSource = {
@@ -764,9 +812,13 @@ export type Job = {
   effectiveVideoQuality: number | null
   videoQualityMode: string | null
   qualityRetryCount: number
+  /** The engine, model and scale that produced this candidate. */
+  superResolutionRun?: string | null
   /** The original's size when the job started; null for jobs that predate the record. */
   sourceSizeBytes: number | null
   outputSizeBytes: number | null
+  /** Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer. */
+  mediaKind?: string | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
   perceptualSearchJson?: string | null
@@ -790,6 +842,19 @@ export type Job = {
   sidecarVerification?: boolean
   /** The verified output is currently being safely moved into place by the container. */
   finalizing?: boolean
+  /** When a person accepted this output although its picture-quality score missed the target. */
+  acceptedBelowTargetAt?: string | null
+  /** For a failed job whose only miss is picture quality: whether it may be accepted, and by how much it fell short. */
+  belowTarget?: BelowTarget | null
+}
+
+export type BelowTargetShortfall = { target: 'HarmonicMean' | 'FifthPercentile'; score: number; minimum: number }
+
+export type BelowTarget = {
+  eligible: boolean
+  /** Why it cannot be accepted; 'None' when it can. */
+  refusal: 'None' | 'NotVideo' | 'SuperResolution' | 'SavesToAnotherFolder' | 'NoVerifiedIdentity' | string
+  shortfalls: BelowTargetShortfall[]
 }
 
 /** One row of a bulk action that could not be completed, with the reason it was refused. */
@@ -888,6 +953,7 @@ export type ReplacementDetail = Replacement & {
   mediaKind: string
   verificationPassed: boolean | null
   verificationReportJson: string | null
+  acceptedBelowTargetAt?: string | null
 }
 
 export type ActivityWatcherType = 'Plex' | 'Jellyfin' | 'Emby'
@@ -944,6 +1010,8 @@ export type NotificationTestResult = {
   ok: boolean
   error: string | null
 }
+
+export type NoiseReduction = 'Off' | 'Light' | 'Strong'
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 
@@ -1026,8 +1094,19 @@ export type ArrConnection = {
   baseUrl: string
   hasApiKey: boolean
   enabled: boolean
+  rescanAfterChanges: boolean
   createdAt: string
   updatedAt: string
+}
+
+export type ArrTracking = {
+  id: number
+  name: string
+  reachable: boolean
+  trackedFiles: number
+  foundInLibraries: number
+  unclear: number
+  notFound: number
 }
 
 export type SaveArrConnection = {
@@ -1036,6 +1115,7 @@ export type SaveArrConnection = {
   baseUrl: string
   apiKey: string
   enabled: boolean
+  rescanAfterChanges: boolean
 }
 
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
@@ -1090,10 +1170,78 @@ export type CandidateSummary = {
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
 
+/** What queueing one file would do, by its library's settings as they are now. */
+export type MediaPlan = {
+  mediaFileId: number
+  libraryId: number | null
+  eligible: boolean
+  reason: string
+  /** The failed job to try again, when an earlier failure is what holds this file back. */
+  retryJobId: number | null
+  kind: string
+  action: 'Encode' | 'Remux' | 'TrackCleanup' | 'Audio' | 'Image'
+  source: {
+    relativePath: string
+    sizeBytes: number
+    container: string | null
+    videoCodec: string | null
+    width: number | null
+    height: number | null
+    durationSeconds: number | null
+    isHdr: boolean
+    isDolbyVision: boolean
+    interlaced: boolean
+    audioCodecs: string | null
+    maxAudioChannels: number
+    audioTrackCount: number | null
+    subtitleTrackCount: number | null
+  }
+  /** Null unless the video is re-encoded. A null size or cap means it is left as it is. */
+  picture: {
+    codec: string
+    crf: number | null
+    width: number | null
+    height: number | null
+    /** The height limit the new size is worked out from; the exact size is null while black bars are still to be measured. */
+    shrinkToHeight: number | null
+    /** A rule, not a finding: it only changes a file that runs above it. */
+    frameRateCap: number | null
+    tonemapToSdr: boolean
+    deinterlace: boolean
+    cropBlackBars: boolean
+    noiseReduction: NoiseReduction
+    /** The job would run through AI upscaling, which copies its sound. */
+    upscales: boolean
+  } | null
+  /** Null unless the file is an image. */
+  image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
+  /** A null codec means every kept track is copied untouched. */
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean; trimsSilence?: boolean } | null
+  /** Null when the file was probed before track languages were recorded. */
+  audioTracks: MediaPlanTrack[] | null
+  subtitleTracks: MediaPlanTrack[] | null
+  file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+}
+export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
+
+/** What turning dry-run off would start without anyone pressing anything further. */
+export type DryRunUnlockEffects = {
+  retentionDays: number
+  originalsToDelete: number
+  originalBytes: number
+  duplicatesToDelete: number
+  duplicateBytes: number
+  librariesCleaningDuplicatesDaily: number
+  jobsToReplace: number
+  needsConfirmation: boolean
+}
+
 export type InventoryRow = {
   file: MediaFile
   eligible: boolean | null
   reason: string | null
+  /** The failed job to try again, when an earlier failure is what holds this file back. */
+  retryJobId?: number | null
 }
 
 export type InventoryCounts = {
@@ -1222,6 +1370,11 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'library.validation': return i18n.m.common.api_library_invalid
     case 'library.pathConflict': return t(i18n.m.common.api_library_conflict, args)
     case 'library.pathMissing': return t(i18n.m.common.api_library_path_missing, args)
+    case 'library.targetFolder.insideLibrary': return t(i18n.m.filesChoice.folder_inside_library, args)
+    case 'library.targetFolder.workFolder': return i18n.m.filesChoice.folder_work
+    case 'library.targetFolder.quarantine': return i18n.m.filesChoice.folder_quarantine
+    case 'library.targetFolder.missing': return i18n.m.filesChoice.folder_missing
+    case 'library.targetFolder.unwritable': return i18n.m.filesChoice.folder_unwritable
     case 'media.notFound': return t(i18n.m.common.api_media_not_found, args)
     case 'media.previewUnavailable': return t(i18n.m.common.api_preview_unavailable, args)
     case 'media.status.invalid': return t(i18n.m.common.api_media_status_invalid, args)
@@ -1230,6 +1383,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
     case 'job.remove.active': return i18n.m.common.api_job_remove_active
     case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
+    case 'job.retry.alreadyActive': return i18n.m.common.api_job_retry_active
     case 'job.workCleanupFailed': return i18n.m.common.api_job_work_cleanup_failed
     case 'job.status.invalid': return t(i18n.m.common.api_job_status_invalid, args)
     case 'job.failureCategory.invalid': return t(i18n.m.common.api_failure_category_invalid, args)
@@ -1270,6 +1424,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
     case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.tools.required': return t(i18n.m.wizard.tools_refused, args)
     case 'setup.library.required': return i18n.m.setup.library_required_error
     case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
@@ -1362,6 +1517,8 @@ export const api = {
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),
   libraryAccess: (id: number) => request<LibraryAccess>(`/api/libraries/${id}/access`),
+  checkTargetFolder: (body: { path: string; libraryId?: number | null; libraryName?: string; libraryPath?: string }) =>
+    request<TargetFolderCheck>('/api/libraries/target-folder-check', { method: 'POST', body: JSON.stringify(body) }),
   createLibrary: (body: SaveLibrary) =>
     request<Library>('/api/libraries', { method: 'POST', body: JSON.stringify(body) }),
   updateLibrary: (id: number, body: SaveLibrary) =>
@@ -1386,6 +1543,8 @@ export const api = {
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
   mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
   previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+  /** A verified output that is waiting to replace its original. */
+  jobOutputContentUrl: (jobId: number) => `/api/jobs/${jobId}/output/content`,
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
@@ -1428,6 +1587,9 @@ export const api = {
   removeExclusion: (id: number) => request<void>(`/api/exclusions/${id}`, { method: 'DELETE' }),
 
   settings: () => request<Settings>('/api/settings'),
+  superResolutionStatus: (engine: SuperResolutionEngine) => request<SuperResolutionStatus>(`/api/system/super-resolution/${engine}`),
+  probeSuperResolution: (engine: SuperResolutionEngine) => request<SuperResolutionProbe>(`/api/system/super-resolution/${engine}/probe`, { method: 'POST' }),
+  dryRunUnlockEffects: () => request<DryRunUnlockEffects>('/api/settings/dry-run-unlock'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),
@@ -1477,6 +1639,7 @@ export const api = {
     request<void>('/api/workers/pairing-code', { method: 'DELETE' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
+  arrTracking: () => request<ArrTracking[]>('/api/arr-connections/tracking'),
   createArrConnection: (body: SaveArrConnection) =>
     request<ArrConnection>('/api/arr-connections', { method: 'POST', body: JSON.stringify(body) }),
   updateArrConnection: (id: number, body: SaveArrConnection) =>
@@ -1544,12 +1707,17 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  mediaPlan: (id: number) => request<MediaPlan>(`/api/media/${id}/plan`),
+  enqueueFile: (id: number) =>
+    request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceReadyJobs: () =>
     request<BulkReplacementResult>('/api/jobs/replace-ready', { method: 'POST' }),
   replaceFromJob: (id: number) =>
     request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
+  acceptJobBelowTarget: (id: number, executionAttempt: number) =>
+    request<Replacement>(`/api/jobs/${id}/accept-below-target`, { method: 'POST', body: JSON.stringify({ executionAttempt }) }),
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
@@ -1562,6 +1730,16 @@ export const api = {
   approveReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
   clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
+  quarantinedDuplicates: () => request<QuarantinedDuplicates[]>('/api/quarantine/duplicates'),
+  restoreQuarantinedDuplicates: (id: string) => request<void>(`/api/quarantine/duplicates/${id}/restore`, { method: 'POST' }),
+  deleteQuarantinedDuplicates: (id: string) => request<void>(`/api/quarantine/duplicates/${id}`, { method: 'DELETE' }),
+  duplicateCleanupPreview: (id: number) => request<DuplicateCleanupPreview>(`/api/libraries/${id}/duplicates/cleanup/preview`),
+  duplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`),
+  autoDuplicateCleanup: (id: number) => request<AutoDuplicateCleanup>(`/api/libraries/${id}/duplicates/schedule`),
+  setAutoDuplicateCleanup: (id: number, enabled: boolean) =>
+    request<AutoDuplicateCleanup>(`/api/libraries/${id}/duplicates/schedule`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  startDuplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'POST' }),
+  cancelDuplicateCleanup: (id: number) => request<void>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'DELETE' }),
   stats: () => request<Stats>('/api/stats'),
   results: (take = 12) => request<OptimisationResult[]>(`/api/results?take=${take}`),
   // The browser's own offset, so a file finished after local midnight counts on the right day.

@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { OptimisationResult } from '../api'
-  import { formatRelative, formatSize, mediaTitle, savedPercent } from '../format'
+  import { formatRelative, formatSize, mediaTitle, sizeBarShares, sizeChangeStatus } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
+  import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
   let { results }: { results: OptimisationResult[] | null } = $props()
@@ -34,7 +35,7 @@
         <span role="columnheader">{i18n.m.dashboard.col_title}</span>
         <span role="columnheader" class="col-library">{i18n.m.dashboard.col_library}</span>
         <span role="columnheader">{i18n.m.dashboard.col_sizes}</span>
-        <span role="columnheader">{i18n.m.dashboard.col_saved}</span>
+        <span role="columnheader">{i18n.m.dashboard.col_size_change}</span>
         <span role="columnheader" class="col-vmaf">{i18n.m.dashboard.col_vmaf}</span>
         <span role="columnheader" class="col-encoder">{i18n.m.dashboard.col_encoder}</span>
         <span role="columnheader" class="col-where">{i18n.m.dashboard.col_where}</span>
@@ -42,7 +43,8 @@
       </div>
       {#each results as result (result.jobId)}
         {@const title = mediaTitle(result.relativePath)}
-        {@const kept = result.sourceSizeBytes > 0 ? Math.min(100, (result.outputSizeBytes / result.sourceSizeBytes) * 100) : 100}
+        {@const status = sizeChangeStatus(result.sourceSizeBytes, result.outputSizeBytes)}
+        {@const shares = sizeBarShares(result.sourceSizeBytes, result.outputSizeBytes)}
         <div class="results-row" role="row">
           <span role="cell" class="flex min-w-0 items-center gap-3">
             <Thumbnail mediaFileId={result.mediaFileId} size="md" />
@@ -56,9 +58,23 @@
           <span role="cell" class="col-library truncate text-sm text-ink-2">{result.libraryName ?? '—'}</span>
           <span role="cell" class="flex min-w-0 flex-col gap-1.5">
             <span class="truncate text-xs tabular-nums text-ink-2">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
-            <span class="block h-1.5 overflow-hidden rounded-full bg-[var(--raised)]" aria-hidden="true"><span class="block h-full rounded-full bg-accent" style="width: {kept}%"></span></span>
+            <!-- The bar is measured against whichever of the two files is the larger one, so a
+                 file that grew shows the part that overflows the source instead of a full bar
+                 that reads as a saving. -->
+            <span class="block h-1.5 overflow-hidden rounded-full bg-[var(--raised)]" aria-hidden="true">
+              {#if shares !== null && status === 'grew'}
+                <span class="flex h-full">
+                  <span class="block h-full rounded-l-full bg-ink-4" style="width: {shares.source}%"></span>
+                  <span class="block h-full rounded-r-full bg-warn" style="width: {shares.output - shares.source}%"></span>
+                </span>
+              {:else if shares !== null}
+                <span class="block h-full rounded-full {status === 'saved' ? 'bg-ok' : 'bg-ink-4'}" style="width: {shares.output}%"></span>
+              {/if}
+            </span>
           </span>
-          <span role="cell" class="text-sm font-semibold tabular-nums text-ok">−{savedPercent(result.sourceSizeBytes, result.outputSizeBytes)}%</span>
+          <span role="cell" class="text-sm font-semibold tabular-nums">
+            <SizeChange sourceSizeBytes={result.sourceSizeBytes} outputSizeBytes={result.outputSizeBytes} />
+          </span>
           <span role="cell" class="col-vmaf text-sm tabular-nums text-ink-2">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</span>
           <span role="cell" class="col-encoder truncate font-mono text-xs text-ink-2">{result.videoEncoder ?? '—'}</span>
           <span role="cell" class="col-where truncate text-sm text-ink-3">{result.workerName ?? i18n.m.dashboard.this_server}</span>

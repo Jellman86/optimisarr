@@ -616,6 +616,26 @@ public sealed class TimedCleanupServiceTests : IDisposable
         return await service.PurgeExpiredAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task The_unlock_preview_counts_what_dry_run_is_holding_back_and_deletes_nothing()
+    {
+        await SetRetentionDaysAsync(7);
+        await SetDryRunModeAsync(true);
+        var (id, quarantinePath) = await SeedQuarantinedAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await SeedQuarantinedAsync(DateTimeOffset.UtcNow.AddDays(-2));
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new TimedCleanupService(db, new SettingsStore(db), _workDir, NullLogger<TimedCleanupService>.Instance);
+
+        var locked = await service.PreviewExpiredAsync(CancellationToken.None);
+        var unlocked = await service.PreviewWithoutDryRunAsync(CancellationToken.None);
+
+        Assert.Equal(0, locked.QuarantinedOriginalCount);
+        Assert.Equal(1, unlocked.QuarantinedOriginalCount);
+        Assert.Equal(new FileInfo(quarantinePath).Length, unlocked.QuarantinedOriginalBytes);
+        Assert.True(File.Exists(quarantinePath));
+        Assert.Equal(ReplacementStatus.Replaced, await StatusOfAsync(id));
+    }
+
     private async Task<TimedCleanupPreview> PreviewAsync()
     {
         await using var db = new OptimisarrDbContext(_options);

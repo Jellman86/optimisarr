@@ -99,10 +99,13 @@
   --info-soft: rgba(118, 118, 128, 0.13);
   --info-line: rgba(118, 118, 128, 0.32);
 
-  /* The one focus ring, and the tooltip surface. */
+  /* The one focus ring, and the tooltip surface. The tip surface is also the dark slab a
+     busy toolbar sits on, so it carries its own inks: one that reads on it, and one red
+     that still reads as a warning on it. */
   --focus: rgba(0, 102, 214, 0.6);
   --tip: #2c2c2e;
   --tip-ink: #f5f5f7;
+  --tip-bad: #ff8fae;
 
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI',
     system-ui, sans-serif;
@@ -174,6 +177,7 @@ html.dark,
   --focus: rgba(78, 161, 255, 0.75);
   --tip: #3a3a3e;
   --tip-ink: #f5f5f7;
+  --tip-bad: #ff8fae;
 }
 
 /* The tokens as Tailwind colours, so `text-ink-3`, `bg-panel`, `border-line`,

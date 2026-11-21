@@ -55,8 +55,8 @@ assignments. Pair and inspect machines under **Settings → Remote workers**. If
 remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override
 in the container environment and restart through their normal deployment process.
 
-Choose placement separately for each library under **Libraries → open a library → Choose files →
-Advanced eligibility → Where this library's work may run**. Select **Only on workers** to keep
+Choose placement separately for each library under **Libraries → open a library → Schedule &
+replace → Where this library's work may run**. Select **Only on workers** to keep
 eligible video and audio re-encodes off the server, and enable strict verification to keep their media
 verification there too. Worker placement applies to video and audio re-encodes; remuxes and image
 jobs remain server work. The server still schedules jobs, transfers and hashes files, evaluates

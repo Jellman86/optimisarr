@@ -129,6 +129,12 @@ public sealed class JobLease
     /// </summary>
     public LeaseEndReason? EndReason { get; set; }
 
+    /// <summary>
+    /// What the worker said went wrong when it handed the job back, such as FFmpeg's error. Older
+    /// workers say nothing. Kept so a repeated failure is visible and can be recognised.
+    /// </summary>
+    public string? HandbackFailure { get; set; }
+
     /// <summary>The source hash the worker says it measured against.</summary>
     public string? QualitySourceSha256 { get; set; }
 

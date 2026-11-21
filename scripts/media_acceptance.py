@@ -55,7 +55,9 @@ def main():
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
-    parser.add_argument("--regression", choices=("house-corpus", "interactive-samples", "interactive-lifecycle", "subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy", "audio", "soundtrack-quality", "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp", "quality-first-metadata", "quality-first-retry", "quality-first-ownership"), help="Run a focused real-media regression matrix")
+    parser.add_argument("--regression", choices=("house-corpus", "interactive-samples", "interactive-lifecycle", "subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy", "audio", "soundtrack-quality", "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp", "quality-first-metadata", "quality-first-retry", "quality-first-ownership", "super-resolution"), help="Run a focused real-media regression matrix")
+    parser.add_argument("--super-resolution-binary", help="Real-ESRGAN executable on the test server; empty uses its bundled engine")
+    parser.add_argument("--super-resolution-models", help="Real-ESRGAN root containing models on the test server")
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
@@ -69,7 +71,7 @@ def main():
     worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
     parser.add_argument("--worker-encoder", action="append", default=[], help="Limit disposable worker discovery to these encoders")
     parser.add_argument("--local-encoder", action="append", default=[], help="Limit local encoding matrix (otherwise every available encoder)")
-    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit", "fractional", "uneven", "dts-only", "dts-only-no-subtitles"))
+    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit", "fractional", "uneven", "dts-only", "dts-only-no-subtitles", "anamorphic"))
     parser.add_argument("--soak-cycles", type=int, default=0, help="Repeat encode/verify/rollback on every selected worker on the same server")
     parser.add_argument("--fixture-seconds", type=int, default=8, help="Generated source duration, 8 to 600 seconds")
     parser.add_argument("--pairing-wait", type=int, default=0, help="Seconds to allow TEST sidecars to pair before starting")
@@ -83,6 +85,8 @@ def main():
     args = parser.parse_args()
     if args.regression == "house-corpus" and not args.corpus:
         parser.error("--regression house-corpus requires --corpus")
+    if "anamorphic" in (args.fixture_variant or []) and args.regression != "super-resolution":
+        parser.error("--fixture-variant anamorphic is only built by --regression super-resolution")
     if args.worker_name and (not re.fullmatch(r"[a-zA-Z0-9_-]+", args.worker_name)
                             or len(args.worker_encoder) != 1 or not (args.worker_command or args.worker_image)):
         parser.error("--worker-name requires a safe unique name, one --worker-encoder and a worker launcher")
@@ -222,6 +226,7 @@ def main():
         harness = Harness(api, tools, root, report, timeout=args.timeout, restart=restart)
         harness.observers = workers.observers if workers else {}
         harness.vmaf_shadow = args.vmaf_shadow
+        harness.super_resolution_paths = (args.super_resolution_binary, args.super_resolution_models)
         exit_code = harness.run(tier=args.tier,
                            strict_worker_verification=strict_worker_verification_for_run(args.tier, args.server_verification),
                            corpus=corpus, expected_workers=args.expected_worker,

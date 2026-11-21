@@ -71,6 +71,53 @@ public sealed class JobClearingTests
     }
 
     [Fact]
+    public void A_qsv_attempt_stopped_on_timestamps_is_archived_and_the_job_queued_to_avoid_qsv()
+    {
+        var started = new DateTimeOffset(2026, 11, 9, 8, 44, 21, TimeSpan.Zero);
+        var job = new Job
+        {
+            Status = JobStatus.Transcoding,
+            ExecutionAttempt = 21,
+            VideoEncoder = "hevc_qsv",
+            FfmpegArguments = "-c:v:0 hevc_qsv",
+            WorkOutputPath = "/work/7718/S20E35.mp4",
+            StartedAt = started,
+        };
+
+        JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null,
+            "Non-monotonic DTS; Error submitting a packet to the muxer", started.AddMinutes(1));
+
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.True(job.AvoidIntelQsv);
+        Assert.False(job.PreferSoftwareDecode);
+        Assert.Equal("AvoidIntelQsv", job.RetryReason);
+        Assert.Null(job.VideoEncoder);
+        Assert.Null(job.WorkOutputPath);
+        Assert.Null(job.ProcessLog);
+        Assert.Null(job.ErrorMessage);
+        var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+        Assert.Equal("IntelQsvTimestamps", attempt.Reason);
+        Assert.Equal("Failed", attempt.Outcome);
+        Assert.Equal("hevc_qsv", attempt.VideoEncoder);
+        Assert.Contains("Non-monotonic DTS", attempt.ProcessLog);
+    }
+
+    [Fact]
+    public void A_calibration_clip_queued_again_without_qsv_keeps_the_quality_it_is_testing()
+    {
+        var job = new Job
+        {
+            Type = JobType.Calibration, Status = JobStatus.Transcoding, ExecutionAttempt = 1,
+            VideoEncoder = "hevc_qsv", RequestedVideoQuality = 26,
+        };
+
+        JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, "Non-monotonic DTS", DateTimeOffset.UtcNow);
+
+        Assert.True(job.AvoidIntelQsv);
+        Assert.Equal(26, job.RequestedVideoQuality);
+    }
+
+    [Fact]
     public void A_rejected_remote_candidate_is_archived_before_its_active_result_is_cleared()
     {
         var verified = new DateTimeOffset(2026, 9, 20, 22, 20, 0, TimeSpan.Zero);

@@ -42,7 +42,9 @@ additionally confirms that the database, FFmpeg/ffprobe, and required writable
 paths are available; wait for it to succeed before using the queue.
 
 Keep media, work, and quarantine below one container mount boundary when possible so replacement
-can use atomic moves. Separate bind mounts require the verified cross-filesystem replacement option.
+can use atomic moves. Separate bind mounts work too: replacement then uses a slower verified copy,
+which needs room for a temporary second copy of each file and deletes the source only after the copy
+is proved identical. This is on by default, under **Settings → Files & safety**.
 The setup wizard reports the effective relationship rather than inferring it from host path names.
 Ensure `PUID` and `PGID` can write every configured path.
 
@@ -55,7 +57,8 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 
 1. Enable **Dry-run mode** in **Settings → Files & safety → Replacement and cleanup**.
 2. Add a library below `/data/media` and select its media type and rule profile.
-3. Scan it; newly found files are probed in the background.
+3. Scan it, if you added it after first-run setup, which scans for you. Newly found files are probed
+   in the background.
 4. Review the explicit eligibility reason in **Inventory**.
 5. Use **Preview** on one representative file to compare the original with the encoded result.
    Long video previews use a 60-second middle sample and label the verification report as

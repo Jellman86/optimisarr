@@ -5,10 +5,9 @@ This is the first safety foundation for D3. Manual exact-copy quarantine and res
 unavailable. There is no dedupe mutation endpoint, confirmation button, automatic cleanup or
 new filesystem move implementation in this slice.
 
-Further dedupe implementation remains deferred behind the
-[audio/image parity work](adaptive-audio-image-parity.md) in #332/#415, resumed on 15 October. Then continue the
-remaining D3 ownership, preflight and recovery gates tracked in #397. This pause does not enable
-any file action or change the guarantees of the existing foundation.
+The [audio/image parity work](adaptive-audio-image-parity.md) this was deferred behind has closed, so
+the remaining D3 ownership, preflight and recovery gates tracked in #397 are active again. No file
+action is enabled until they pass.
 
 ## Durable intent
 
@@ -448,11 +447,36 @@ was relaxed. Windows workspace/process behavior remains unqualified by this deli
 
 These markers and captured metadata are bounded runtime cleanup evidence, **not** a
 complete durable action/recovery journal or proof against unmanaged external writers.
-Restart does not adopt a leftover marker as fresh action authority. Later startup and
+Restart does not adopt a leftover marker as fresh action authority. When startup recovery
+handles an interrupted normal job, it reclaims that job's own workspaces under its media work
+root: the folder name must carry the job id and a 32-hex nonce, the marker must hold the same
+nonce, and the folder may contain only plain files. Other jobs' workspaces, unmarked or
+mismatched folders, nested folders, links and anything overlapping a library or retained path
+are kept. Before this, every restart during a search left that attempt's samples behind. Later startup and
 panel cleanup still use their own existing reservation/reference fences. Remaining metric
 and source-window helpers, retained-tree ownership, exhaustive aliases, import/manager
 coordination, persistent execution lifetime and recorded completion moves still require
 qualification. D3 file actions remain disabled; quality-based keeper ranking remains planned.
+
+## D3 action preflight rule
+
+`DedupeActionPreflight` (Core, pure) is the last gate before an exact copy may move. Given the
+prepared plan, a fresh observation of every planned file and the library/server context, it
+refuses when the plan is invalid; the library is connected to a media manager; storage is not
+qualified; the plan breaks the journal's path rules; any file has active work, is missing,
+unobserved, a link, hard linked or not classified by the observer as a standalone file (bundle
+members and anything unclassifiable), changed in
+identity, size or modification time, was not read in full now, or no longer matches the reviewed
+hash; two paths are one physical file; or a copy's folder is not writable, its quarantine
+destination is occupied, a link or file stands in its path, or the move cannot be shown to stay
+on one filesystem. Equal volume identifiers are evidence, not proof: separate bind mounts of one
+filesystem share a device yet refuse rename, so the eventual move must be rename-only. Keepers never
+move, so only content and identity are judged for them. Every refusal is reported together.
+
+The rule has no filesystem access and enables nothing: no endpoint or mover calls it yet. Links,
+hard links, bundles and manager-connected libraries are refused rather than given adapters, and
+Windows needs its own observer and link/identity qualification before any action is enabled
+there; it is out of scope because the server ships as a Linux container.
 
 ## Remaining D3 work, in dependency order
 
@@ -462,14 +486,29 @@ qualification. D3 file actions remain disabled; quality-based keeper ranking rem
    cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent
    directories for absent destinations. Capture every physical alias and all affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
-2. Add an action preflight using current scope/generations, permissions, supported independent
-   assets, qualified writable storage and fresh full reads of all selected keepers and copies.
+2. `DedupeFileObserver` gathers the fresh observations the preflight rule judges (link counts,
+   identity, volume, write access, full reads and standalone-file classification) and only reads.
+   A hash is reported only when the same file was unchanged, by its change time, across the whole
+   read, and the file was last changed more than two seconds earlier. A process writing through an
+   already dirtied writable memory mapping can change bytes without moving that time, which no
+   metadata check can see. This is a recorded limit, not a gate: it needs such a writer active on a
+   media file during the read, and the action only renames a copy into quarantine, where it stays
+   restorable and is never purged automatically. Disc structures are refused by
+   folder and extension anywhere in the full path; a sidecar beside a copy is left in place and
+   restored paths are unaffected. Scope and generation checks, and calling the rule before
+   any move, come with the mover.
    Block connected-manager paths, unknown/read-only storage and unsupported bundles. Qualify
    Windows identity and link probing before enabling Windows actions.
-3. Record per-file move/restore intent and progress before implementing a no-overwrite atomic
-   same-filesystem move. Refuse cross-filesystem fallback. Recheck identity and content around
-   each move. Test cancellation, retries, path swaps, keeper loss and process exit at every
-   journal boundary; reconcile ambiguous files without discarding their journal or claims.
+3. `DedupeQuarantineService` implements the no-overwrite same-filesystem move and restore behind no
+   endpoint. The journal records intent before any move; progress per file is read back from the
+   files themselves rather than stored, because a stored step could disagree with the disk. A full
+   preflight read precedes the action; keepers are rechecked by identity, size, modification time and
+   the change time from that read before each move and after the last, redirected folders are refused
+   on both sides of each move, and restore re-reads the file and proves its hash. Any failure or
+   cancellation returns what moved. Unmanaged writers racing a check remain out of scope, as above.
+   Any enabled media-manager connection refuses the action, because connections are not
+   scoped to a library. Tests cover refusal, keeper loss, an occupied restore path and stopping at
+   each move; ambiguous files keep their journal and claims.
 4. Add concrete media-rich preview and separate confirmation to the current library review:
    keepers, selected copies, destinations, retained bytes and restore rules. Add conflict-safe
    restore and journal attention states. Exercise keyboard, both themes, mobile/wide layouts,

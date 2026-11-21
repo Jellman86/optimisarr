@@ -1,3 +1,5 @@
+using Optimisarr.Core.Library;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
@@ -86,7 +88,21 @@ internal readonly record struct ParsedLibrary(
     bool AdaptiveImageQuality = false,
     // The automatic surround-layout conversion is on unless the request turns it off.
     bool NormalizeOpusChannelLayout = true,
-    bool AdaptiveSoundtrackQuality = false);
+    bool AdaptiveSoundtrackQuality = false,
+    bool SuperResolutionEnabled = false,
+    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly,
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
+    // False when the request named no choice, as a client older than the choice does, so an update
+    // keeps what is saved rather than quietly returning the library to Real-CUGAN.
+    bool SuperResolutionChoiceSent = false,
+    bool DeinterlaceVideo = false,
+    // Null when the request named none, so an update keeps what is saved.
+    NoiseReduction? NoiseReduction = null,
+    bool TrimAudioSilence = false,
+    double AudioSilenceThresholdDb = SilenceTrimSettings.DefaultThresholdDb,
+    double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -139,6 +155,21 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (request.AudioSilenceThresholdDb is { } threshold && !SilenceTrimSettings.ValidThreshold(threshold)
+            || request.AudioSilenceMinimumSeconds is { } seconds && !SilenceTrimSettings.ValidMinimum(seconds))
+        {
+            error = SilenceTrimSettings.RangeError;
+            return false;
+        }
+        // The audio quality measurement compares windows at the same offsets in two files of the
+        // same length, so it cannot judge a file that is shorter on purpose yet.
+        if (request.TrimAudioSilence == true && (request.AudioQualityReportingEnabled == true
+            || request.AudioQualityGateEnabled == true || request.AdaptiveAudioQuality == true))
+        {
+            error = "Trimming silence cannot be combined with audio quality measurement yet. Turn one of them off.";
+            return false;
+        }
+
         if (request.AdaptiveAudioQuality == true && (mediaType is not (MediaType.Music or MediaType.Other)
             || request.AudioQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumAudioQualityDistance) || request.DownmixToStereo == true))
         {
@@ -182,6 +213,45 @@ internal static class LibraryRequestParser
             error =
                 $"Unknown work placement: {request.WorkPlacement}. " +
                 $"Expected one of {string.Join(", ", Enum.GetNames<WorkPlacement>())}.";
+            return false;
+        }
+
+        NoiseReduction? noiseReduction = null;
+        if (!string.IsNullOrWhiteSpace(request.NoiseReduction))
+        {
+            if (!Enum.TryParse<NoiseReduction>(request.NoiseReduction, ignoreCase: true, out var parsedNoise) || !Enum.IsDefined(parsedNoise)
+                || int.TryParse(request.NoiseReduction, out _))
+            {
+                error = $"Unknown noise reduction: {request.NoiseReduction}. Expected one of {string.Join(", ", Enum.GetNames<NoiseReduction>())}.";
+                return false;
+            }
+            noiseReduction = parsedNoise;
+        }
+
+        // Omitted means the recommended check, which catches broken upscales without refusing the
+        // intended changes a fidelity gate would.
+        var superResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly;
+        if (!string.IsNullOrWhiteSpace(request.SuperResolutionQualityCheck)
+            && (!Enum.TryParse(request.SuperResolutionQualityCheck, ignoreCase: true, out superResolutionQualityCheck)
+                || !Enum.IsDefined(superResolutionQualityCheck)))
+        {
+            error =
+                $"Unknown super-resolution quality check: {request.SuperResolutionQualityCheck}. " +
+                $"Expected one of {string.Join(", ", Enum.GetNames<SuperResolutionQualityCheck>())}.";
+            return false;
+        }
+
+        var superResolutionEngine = Trim(request.SuperResolutionEngine);
+        var superResolutionModel = Trim(request.SuperResolutionModel);
+        var superResolutionChoiceSent = superResolutionEngine is not null || superResolutionModel is not null || request.SuperResolutionScale is not null;
+        // Naming Real-CUGAN alone is how a client asks to go back to the server's settings.
+        if (superResolutionEngine == RealCuganEngine.Instance.Name && superResolutionModel is null && request.SuperResolutionScale is null)
+        {
+            superResolutionEngine = null;
+        }
+        if (SuperResolutionModelChoice.Validate(superResolutionEngine, superResolutionModel, request.SuperResolutionScale) is { } modelProblem)
+        {
+            error = modelProblem;
             return false;
         }
 
@@ -524,19 +594,18 @@ internal static class LibraryRequestParser
 
         var moveOnComplete = request.MoveOnComplete ?? false;
         var targetFolder = Trim(request.TargetFolder);
-        if (moveOnComplete)
+        // Which folders may be used depends on the other libraries, so the endpoint judges that
+        // (see TargetFolderGuard); here only that one was named.
+        if (moveOnComplete && targetFolder is null)
         {
-            if (targetFolder is null)
-            {
-                error = "A target folder is required when 'move output on complete' is enabled.";
-                return false;
-            }
+            error = "A target folder is required when 'move output on complete' is enabled.";
+            return false;
+        }
 
-            if (!Directory.Exists(targetFolder))
-            {
-                error = $"Target folder does not exist: {targetFolder}";
-                return false;
-            }
+        if (targetFolder is not null && !TargetFolderRule.IsUsablePath(targetFolder))
+        {
+            error = "The target folder must be a full path this server can use, such as /data/optimised.";
+            return false;
         }
 
         if (request.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
@@ -621,14 +690,27 @@ internal static class LibraryRequestParser
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
-            request.AutoReplace ?? false,
+            // Saving elsewhere never replaces an original, so "replace automatically" beside it
+            // could only mislead. The dispatcher already lets the folder win; store what happens.
+            !moveOnComplete && (request.AutoReplace ?? false),
             request.ImagePerceptualReportingEnabled ?? false,
             request.ImagePerceptualGateEnabled ?? false,
             request.MinimumImagePerceptualScore,
             request.AdaptiveAudioQuality ?? false,
             request.AdaptiveImageQuality ?? false,
             request.NormalizeOpusChannelLayout ?? true,
-            request.AdaptiveSoundtrackQuality ?? false);
+            request.AdaptiveSoundtrackQuality ?? false,
+            request.SuperResolutionEnabled ?? false,
+            superResolutionQualityCheck,
+            superResolutionEngine,
+            superResolutionModel,
+            request.SuperResolutionScale,
+            superResolutionChoiceSent,
+            request.DeinterlaceVideo ?? false,
+            noiseReduction,
+            request.TrimAudioSilence ?? false,
+            request.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb,
+            request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds);
         error = null;
         return true;
     }

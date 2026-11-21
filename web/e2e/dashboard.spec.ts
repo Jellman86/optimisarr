@@ -884,6 +884,40 @@ test('recent results show each file before and after, with what it saved', async
   await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('img')).toHaveAccessibleName('Last 2 days: 871 MB saved')
 })
 
+test('a file that grew says so, and never claims a saving', async ({ page }) => {
+  await mockDashboard(page, {
+    results: [{
+      jobId: 42, mediaFileId: 8, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E08 - The Quiet Hour WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000, vmafHarmonicMean: 88.02,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }, {
+      jobId: 43, mediaFileId: 9, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E09 - Low Tide WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_000_000_000, vmafHarmonicMean: 90.11,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }, {
+      // A change finer than one percent, where an old rounding could read as no change at all.
+      jobId: 44, mediaFileId: 10, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E10 - Salt Water WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 999_000_000, vmafHarmonicMean: 91.4,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }],
+  })
+  await page.goto('/#/')
+
+  const results = page.getByRole('region', { name: 'Recent results' })
+  // The figure is signed by what happened: a larger output reads "+20%", an unchanged one "0%".
+  await expect(results.getByText('+20%')).toBeVisible()
+  await expect(results.getByText('0%', { exact: true })).toBeVisible()
+  await expect(results.getByText('−20%')).toHaveCount(0)
+  // The growth is drawn in the warning tone, and a figure with nothing to say in neutral ink.
+  await expect(results.getByText('+20%')).toHaveClass(/text-warn/)
+  await expect(results.getByText('0%', { exact: true })).toHaveClass(/text-ink-2/)
+  // A saving finer than a percent still reads as a saving, at a tenth of a percent.
+  await expect(results.getByText('−0.1%')).toHaveClass(/text-ok/)
+})
+
 test('an idle in-flight panel shows the last finished title instead of an empty box', async ({ page }) => {
   await mockDashboard(page, {
     results: [{
@@ -900,6 +934,22 @@ test('an idle in-flight panel shows the last finished title instead of an empty 
   await expect(last).toContainText('S02E07 · The Long Tide')
   await expect(last).toContainText('1.2 GB → 352 MB −71%')
   await expect(last).toContainText('TV · Mac Studio · 3 hours ago')
+})
+
+test('the idle in-flight panel reads a grown file the same way the results table does', async ({ page }) => {
+  await mockDashboard(page, {
+    results: [{
+      jobId: 45, mediaFileId: 11, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E11 - The Ferry WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000, vmafHarmonicMean: 89.9,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }],
+  })
+  await page.goto('/#/')
+
+  const last = page.getByRole('region', { name: 'Last finished' })
+  await expect(last).toContainText('954 MB → 1.1 GB +20%')
+  await expect(page.getByRole('region', { name: 'Recent results' }).getByText('+20%')).toBeVisible()
 })
 
 test('an idle in-flight panel with no history says so and nothing more', async ({ page }) => {

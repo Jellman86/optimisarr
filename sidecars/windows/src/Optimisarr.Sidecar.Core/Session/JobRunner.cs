@@ -175,7 +175,8 @@ public sealed class JobRunner(
 
             if (!result.Succeeded)
             {
-                await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                await client.ReleaseAfterFailureAsync(pairing, assignment.LeaseId,
+                    $"FFmpeg exited with code {result.ExitCode}.\n{result.ErrorTail}", CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false,
                     $"FFmpeg exited with code {result.ExitCode}. {FirstLine(result.ErrorTail)}");
             }
@@ -541,7 +542,26 @@ public sealed class JobRunner(
         report?.Invoke($"Job {assignment.JobId}: {candidateFrames?.ToString() ?? "unknown"} candidate frames, "
             + $"{sourceFrames?.ToString() ?? "unknown"} source frames; pairing "
             + (paired ? "frames by number" : "by timestamp"));
-        return paired ? framePaired : assignment.Quality.Commands;
+        if (!paired)
+        {
+            return assignment.Quality.Commands;
+        }
+
+        // The server placed these windows at the rate the source reports, before anyone counted it.
+        // A variable-frame-rate source holds fewer pictures than that, and a window past its last
+        // frame scores nothing, so such a window is measured by timestamp instead.
+        var chosen = framePaired
+            .Select((command, index) => FramePairing.FitsWithin(command, sourceFrames!.Value)
+                ? command
+                : assignment.Quality.Commands[index])
+            .ToList();
+        var outside = chosen.Where((command, index) => !ReferenceEquals(command, framePaired[index])).Count();
+        if (outside > 0)
+        {
+            report?.Invoke($"Job {assignment.JobId}: {outside} frame window(s) reach past the source's "
+                + $"{sourceFrames} frames; measuring them by timestamp");
+        }
+        return chosen;
     }
 
     private async Task<int?> CountFramesAsync(string file, CancellationToken cancellationToken)

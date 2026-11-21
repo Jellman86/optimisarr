@@ -6,6 +6,15 @@ namespace Optimisarr.Tests;
 
 public sealed class AutoReplacePolicyTests
 {
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    // An older saved row can have both on. Saving elsewhere wins: nothing is replaced.
+    [InlineData(true, true, false)]
+    public void A_library_that_saves_elsewhere_never_replaces_automatically(bool autoReplace, bool moveOnComplete, bool replaces) =>
+        Assert.Equal(replaces, AutoReplacePolicy.ReplacesAutomatically(autoReplace, moveOnComplete));
+
     [Fact]
     public void Reconciles_a_verified_ready_job_when_the_library_auto_replaces()
     {
@@ -14,6 +23,18 @@ public sealed class AutoReplacePolicyTests
             verificationPassed: true,
             libraryAutoReplace: true,
             dryRunMode: false));
+    }
+
+    [Fact]
+    public void An_upscaled_result_always_waits_for_review_even_when_the_library_auto_replaces()
+    {
+        // No metric can prove an AI upscale looks better than the original, so a person approves it.
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: false,
+            superResolutionApplied: true));
     }
 
     [Fact]

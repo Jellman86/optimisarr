@@ -1,21 +1,40 @@
 <script lang="ts">
-  import type { InventoryRow } from '../api'
+  import { api, type InventoryRow } from '../api'
   import { containerLabel, formatDuration, formatSize, languageList } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { modal } from '../modal'
   import Thumbnail from './Thumbnail.svelte'
   import Icon from './Icon.svelte'
 
-  let { row, libraryName, probing, error, onclose, onprobe, onpreview }: {
+  let { row, libraryName, probing, error, onclose, onprobe, onpreview, onretried }: {
     row: InventoryRow; libraryName: string; probing: boolean; error: string | null
-    onclose: () => void; onprobe: () => void; onpreview: () => void
+    onclose: () => void; onprobe: () => void; onpreview: () => void; onretried: () => void
   } = $props()
+  let retrying = $state(false)
+  let retried = $state(false)
+  let retryError = $state<string | null>(null)
+
+  // A file held back by its last failure is offered that job again here, where the user found it.
+  async function tryAgain(jobId: number) {
+    if (retrying) return
+    retrying = true
+    retryError = null
+    try {
+      await api.retryJob(jobId)
+      retried = true
+      onretried()
+    } catch (err) {
+      retryError = err instanceof Error ? err.message : i18n.m.inventory.error_queue
+    } finally {
+      retrying = false
+    }
+  }
   let file = $derived(row.file)
   let title = $derived((file.relativePath.split(/[\\/]/).pop() ?? file.relativePath).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '))
   let artworkFailed = $state(false)
   let artworkLoaded = $state(false)
   let container = $derived(containerLabel(file.container, file.relativePath))
-  let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped)
+  let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.onePlan.yes : i18n.m.onePlan.no)
 </script>
 
 <dialog class="app-modal inventory-dialog" use:modal={onclose} aria-labelledby="inventory-detail-title">
@@ -36,11 +55,21 @@
   </header>
 
   <div class="detail-body">
-    <section class="detail-verdict" aria-label={i18n.m.inventory.rule_verdict}>
-      <div class="flex flex-wrap items-center justify-between gap-2"><h3>{i18n.m.inventory.rule_verdict}</h3><span class="badge {row.eligible ? 'tone-ok' : 'tone-muted'}">{verdict}</span></div>
-      <p>{row.reason ?? i18n.m.inventory.verdict_probe_hint}</p>
+    <section class="detail-verdict" aria-label={i18n.m.onePlan.can_it}>
+      <div class="flex flex-wrap items-center justify-between gap-2"><h3>{i18n.m.onePlan.can_it}</h3><span class="badge {row.eligible ? 'tone-ok' : 'tone-muted'}">{verdict}</span></div>
+      <p id="inventory-detail-verdict">{row.reason ?? i18n.m.inventory.verdict_probe_hint}</p>
+      {#if row.eligible === false && file.libraryId && row.retryJobId == null}
+        <p>{t(i18n.m.onePlan.skipped_where, { library: libraryName })} <a class="focus-ring font-medium text-accent underline" href={`#/libraries/${file.libraryId}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a></p>
+      {/if}
     </section>
     {#if error}<p class="callout tone-bad mb-4" role="alert">{error}</p>{/if}
+    {#if retryError}<p class="callout tone-bad mb-4" role="alert">{retryError}</p>{/if}
+    {#if retried}
+      <p class="callout tone-ok mb-4" role="status" data-inventory-retried>
+        {i18n.m.inventory.queue_added}
+        <a class="focus-ring font-medium underline" href="#/queue">{i18n.m.onePlan.open_queue}</a>
+      </p>
+    {/if}
     {#if file.probeError}<p class="callout tone-bad mb-4">{t(i18n.m.inventory.probe_failed, { error: file.probeError })}</p>{/if}
     <dl class="detail-specs">
       <div><dt>{i18n.m.inventory.detail_status}</dt><dd>{file.status}</dd></div>
@@ -57,7 +86,18 @@
   </div>
   <footer class="detail-actions">
     <button class="btn" onclick={onprobe} disabled={probing}><Icon name="search" />{probing ? i18n.m.inventory.probing : file.status === 'Discovered' ? i18n.m.inventory.probe : i18n.m.inventory.reprobe}</button>
-    {#if row.eligible}<button class="btn btn-primary" onclick={onpreview} disabled={probing}><Icon name="play" />{i18n.m.inventory.preview}</button>{/if}
+    {#if row.eligible}<button class="btn" onclick={onpreview} disabled={probing}><Icon name="play" />{i18n.m.inventory.preview}</button>{/if}
+    <!-- A file the rules skip keeps the button, off, and the reason is the verdict above it. -->
+    {#if row.eligible}
+      <a class="btn btn-primary" href={`#/inventory/optimise/${file.id}`}>{i18n.m.onePlan.open}</a>
+    {:else if row.retryJobId != null && !retried}
+      {@const retryJobId = row.retryJobId}
+      <button class="btn btn-primary" onclick={() => void tryAgain(retryJobId)} disabled={retrying} aria-describedby="inventory-detail-verdict" data-inventory-try-again>
+        <Icon name="retry" />{retrying ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
+      </button>
+    {:else}
+      <button class="btn btn-primary" disabled aria-describedby="inventory-detail-verdict">{i18n.m.onePlan.open}</button>
+    {/if}
   </footer>
 </dialog>
 
@@ -81,7 +121,7 @@
   .detail-specs > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .875rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }
   dt { color: var(--ink-3); } dd { text-align: right; color: var(--ink-2); overflow-wrap: anywhere; min-width: 0; } dd span { display: block; color: var(--ink-3); font-size: .75rem; margin-top: .25rem; }
   .detail-path { margin-top: 1.5rem; }.detail-path p { margin-top: .5rem; color: var(--ink-3); font: .6875rem/1.8 var(--font-mono); overflow-wrap: anywhere; }
-  .detail-actions { display: flex; justify-content: flex-end; gap: .75rem; padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.detail-actions .btn { min-height: 2.75rem; }
+  .detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .75rem; padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.detail-actions .btn { min-height: 2.75rem; }
   @media (max-width: 639px) { .detail-hero { gap: 1rem; padding: 1.5rem 1rem 1rem; }.detail-poster :global([data-thumbnail]) { width: 5rem; height: 7.5rem; }.detail-poster :global([data-thumbnail][data-shape='square']) { height: 5rem; }.detail-heading { padding-right: 1.5rem; }.detail-library { margin-bottom: .5rem; }.detail-meta { margin-top: .5rem; font-size: .6875rem; }.detail-body { padding: 1rem; }.detail-specs { grid-template-columns: 1fr; }.detail-actions { padding: .875rem 1rem; }.detail-actions .btn { flex: 1; }.detail-close { right: .4rem; top: .4rem; } }
   @media (max-height: 540px) { .detail-hero { padding: 1rem; gap: 1rem; }.detail-poster :global([data-thumbnail]) { width: 3rem; height: 4.5rem; }.detail-poster :global([data-thumbnail][data-shape='square']) { height: 3rem; } h2 { -webkit-line-clamp: 1; line-clamp: 1; font-size: 1.125rem; }.detail-meta { margin-top: .25rem; }.detail-library { margin-bottom: .25rem; }.detail-actions { padding-block: .5rem; } }
 </style>

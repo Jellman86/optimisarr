@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
@@ -35,7 +36,11 @@ public sealed record PreviewComparison(
     int? ClipDurationSeconds,
     bool? VerificationPassed,
     string? VerificationReportJson,
-    string? OriginalUrl = null);
+    string? OriginalUrl = null,
+    // The quality searches a real job would run that this preview left out, once it has started.
+    IReadOnlyList<string>? SkippedQualitySearches = null,
+    // A real job would refuse this source, so the preview shows an encode that will not be run.
+    bool SourceInterlaced = false);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -98,6 +103,7 @@ public sealed class PreviewService(
         var job = await db.Jobs
             .AsNoTracking()
             .Include(j => j.MediaFile)
+            .ThenInclude(file => file!.Library)
             .FirstOrDefaultAsync(j => j.Id == jobId && j.Type == JobType.Preview, cancellationToken);
         if (job?.MediaFile is null)
         {
@@ -146,7 +152,10 @@ public sealed class PreviewService(
             workerSample?.Probe.DurationSeconds is > 0 ? (int)Math.Ceiling(workerSample.Probe.DurationSeconds.Value) : clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
             job.VerificationReportJson,
-            workerSample is not null ? $"/api/preview/{jobId}/reference" : null);
+            workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
+            PreviewQualitySearch.Names(job.SkippedQualitySearches),
+            VideoFieldOrder.IsInterlaced(media.FieldOrder)
+                && LibraryRuleResolution.Resolve(media.Library) is { TargetVideoCodec: not null, DeinterlaceVideo: false });
     }
 
     /// <summary>
@@ -165,12 +174,12 @@ public sealed class PreviewService(
 
         await db.Entry(job).ReloadAsync(cancellationToken);
         if (db.Entry(job).State == EntityState.Detached || job.Type != JobType.Preview) return false;
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+        var dir = WorkOutputRoot.ForPreview(_workRoot, jobId);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken, dir)
             ?? throw new FileCleanupDeferredException();
 
         dispatcher.RequestCancel(jobId);
 
-        var dir = WorkOutputRoot.ForPreview(_workRoot, jobId);
         var scratchRemoved = false;
         try
         {

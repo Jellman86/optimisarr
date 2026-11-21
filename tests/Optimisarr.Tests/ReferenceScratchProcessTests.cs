@@ -15,7 +15,7 @@ public sealed class ReferenceScratchProcessTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var tool = Path.Combine(_root, "fake media tool");
-        File.WriteAllText(tool, "#!/usr/bin/python3\n" + """
+        File.WriteAllText(tool, TestPython.Shebang + """
             import os,sys,time,pathlib,json
             root=pathlib.Path(__ROOT__)
             if '--hang' in sys.argv:
@@ -41,10 +41,7 @@ public sealed class ReferenceScratchProcessTests : IDisposable
         var service = Service();
         using var cancellation = new CancellationTokenSource();
         var run = service.RunReferenceClipAsync(["--hang"], cancellation.Token);
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!File.Exists(Pid) && DateTime.UtcNow < deadline) await Task.Delay(20);
-        Assert.True(File.Exists(Pid));
-        var pid = int.Parse(await File.ReadAllTextAsync(Pid));
+        var pid = await TestPidFile.WaitAsync(Pid, TimeSpan.FromSeconds(10));
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
         AssertExited(pid);
@@ -129,11 +126,11 @@ public sealed class ReferenceScratchProcessTests : IDisposable
 
     public void Dispose()
     {
-        if (File.Exists(Pid))
+        if (TestPidFile.TryRead(Pid) is { } pid)
         {
             try
             {
-                using var process = Process.GetProcessById(int.Parse(File.ReadAllText(Pid)));
+                using var process = Process.GetProcessById(pid);
                 if (!process.HasExited) { process.Kill(true); process.WaitForExit(5000); }
             }
             catch (ArgumentException) { }

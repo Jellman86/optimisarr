@@ -1,7 +1,6 @@
 <script lang="ts">
   import { i18n, t } from '../i18n/i18n.svelte'
   import { audioEncodingPresets, type AudioEncodingMode } from '../audio-encoding-presets'
-  import InfoTip from './InfoTip.svelte'
 
   let { id, codec, bitrate, defaultBitrate, mode, video = false, onselect }: {
     id: string
@@ -26,19 +25,15 @@
   const selected = $derived(stops.findIndex(stop => stop.mode === mode))
   const budget = $derived(t(i18n.m.audio_encoding.budget, { codec: codec.toUpperCase(), bitrate: bitrate ?? defaultBitrate }))
   const savedDefaultBudget = $derived(mode === 'default' && bitrate != null)
-  const background = $derived([i18n.m.audio_encoding.hint, ...(video ? [i18n.m.audio_encoding.video_note] : [])].join(' '))
 </script>
 
-<div class="mt-4 min-w-0" data-audio-encoding-preset>
-  <label class="label" for={id}>{i18n.m.audio_encoding.title}
-    <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.audio_encoding.title })} text={background} />
-  </label>
+<div class="min-w-0" data-audio-encoding-preset>
   <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
     <div class="mx-[8.333%]">
       <input {id} type="range" min="0" max={stops.length - 1} step="1" value={selected}
         class="block h-11 w-full cursor-pointer accent-accent-fill"
         aria-label={i18n.m.audio_encoding.title} aria-valuetext={`${stops[selected].label} · ${budget}`}
-        aria-describedby={`${id}-hint${savedDefaultBudget ? ` ${id}-saved` : ''}`}
+        aria-describedby={savedDefaultBudget ? `${id}-saved` : undefined}
         oninput={event => onselect(stops[Number(event.currentTarget.value)].mode)} />
     </div>
     <div class="grid grid-cols-6">
@@ -58,10 +53,7 @@
     <span class="badge tone-neutral max-w-full whitespace-normal break-words">{budget}</span>
     {#if !video}<span class="text-xs text-ink-3">{t(i18n.m.audio_encoding.format, { container: codec === 'aac' ? 'm4a' : codec })}</span>{/if}
   </div>
-  <!-- Standing background lives in the tooltip; only notes about the current choice stay on screen. -->
-  <p id={`${id}-hint`} class="sr-only">{background}</p>
   {#if savedDefaultBudget}<p id={`${id}-saved`} class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.saved_budget}</p>{/if}
   <!-- What the bitrate means for surround and downmix decides the value, so it stays beside the badge. -->
   <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.channel_note}</p>
-  {#if mode === 'custom'}<p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.custom_note}</p>{/if}
 </div>

@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
@@ -86,6 +87,294 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     /// <summary>Pairs a worker that can actually satisfy a job, and returns its credential.</summary>
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
+
+    [Fact]
+    public async Task A_worker_preview_records_that_it_left_out_the_per_title_video_search()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Preview search");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FindAsync(id);
+            job!.Type = JobType.Preview;
+            job.RequestedVideoQuality = 24;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await ClaimWhenReady(worker);
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(id);
+        Assert.Equal(SkippedQualitySearch.VideoQuality, saved!.SkippedQualitySearches);
+    }
+
+    [Fact]
+    public async Task A_file_probed_before_field_order_was_captured_is_refused_when_it_reaches_the_queue()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlace check");
+        var id = await QueueAJob(fileName: "interlaced tape.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        using var again = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Contains("Interlaced", job.ErrorMessage);
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_job_whose_save_folder_is_refused_is_failed_before_a_worker_encodes_it()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Save folder check");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = await db.Libraries.SingleAsync(l => db.Jobs.Any(j => j.Id == id && j.LibraryId == l.Id));
+            // Saved before the rule existed: a folder inside the library itself.
+            library.MoveOnComplete = true;
+            library.TargetFolder = Path.Combine(library.Path, "optimised");
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var checkDb = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await checkDb.Jobs.AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.StartsWith("Not encoded.", job.ErrorMessage);
+        Assert.Equal(0, await checkDb.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Theory]
+    [InlineData(MediaFileStatus.Probed)]
+    [InlineData(MediaFileStatus.Discovered)]
+    [InlineData(MediaFileStatus.ProbeFailed)]
+    public async Task A_known_interlaced_file_never_gets_a_lease_whatever_its_inventory_says(MediaFileStatus status)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Known interlace " + status);
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id);
+            job.MediaFile!.FieldOrder = "tt";
+            job.MediaFile.Status = status;
+            await db.SaveChangesAsync();
+        }
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        }
+
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Cancelled, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_preview_of_a_file_probed_before_field_order_was_captured_still_runs_and_warns()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlaced preview");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced preview.mkv");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(job => job.Id == id);
+            job.Type = JobType.Preview;
+            job.RequestedVideoQuality = 24;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await ClaimWhenReady(worker);
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var admin = Admin();
+        var preview = await admin.GetFromJsonAsync<JsonElement>($"/api/preview/{id}");
+        Assert.True(preview.GetProperty("sourceInterlaced").GetBoolean());
+    }
+
+    private async Task OptIntoDeinterlacing(int jobId)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == jobId);
+        job.MediaFile!.Library!.DeinterlaceVideo = true;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_video_whose_library_reduces_noise_stays_on_the_server_and_stays_queued()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Noise reduction");
+        var id = await QueueAJob(fileName: "grainy tape.mkv");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            job.MediaFile!.Library!.NoiseReduction = Optimisarr.Core.Queue.NoiseReduction.Light;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Queued, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_denoised_video_in_a_worker_only_library_never_says_it_is_waiting_for_a_worker()
+    {
+        await EnableRemoteWorkers();
+        await PairCapableWorker("Noise label");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "grainy label.mkv");
+        Assert.True((await JobRow(id)).GetProperty("waitingForWorker").GetBoolean());
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            job.MediaFile!.Library!.NoiseReduction = Optimisarr.Core.Queue.NoiseReduction.Light;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.False((await JobRow(id)).GetProperty("waitingForWorker").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_source_that_will_be_deinterlaced_stays_on_the_server_and_stays_queued()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Deinterlace known");
+        var id = await QueueAJob(fileName: "interlaced known.mkv");
+        await OptIntoDeinterlacing(id);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder = "tt";
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Queued, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_file_probed_before_field_order_was_captured_is_kept_on_the_server_once_the_probe_answers()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Deinterlace legacy");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced legacy.mkv");
+        await OptIntoDeinterlacing(id);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await result.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_stale_progressive_row_is_corrected_so_a_deinterlaced_job_moves_to_the_server()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Deinterlace stale");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced stale.mkv");
+        await OptIntoDeinterlacing(id);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder = "progressive";
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await result.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_diagnostic_capture_records_a_job_skipped_at_claim()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Captured skip");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced capture.mkv");
+        using var admin = Admin();
+        using var started = await admin.PostAsJsonAsync("/api/diagnostics/capture", new { durationHours = 1, scopedJobId = id, includePaths = false });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var captureId = (await started.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        try
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+
+            using var scope = _api.Services.CreateScope();
+            var entry = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().DiagnosticEvents.AsNoTracking()
+                .SingleAsync(e => e.JobId == id && e.ReasonCode == "Job.StatusChanged");
+            Assert.Equal("Cancelled", entry.CurrentStatus);
+        }
+        finally
+        {
+            (await admin.PostAsync($"/api/diagnostics/capture/{captureId}/stop", null)).EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
+    public async Task A_failed_field_order_probe_does_not_produce_an_assignment()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Failing probe");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "probe-fails.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+        Assert.Null((await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder);
+    }
 
     [Theory]
     [InlineData(JobType.Preview, false)]
@@ -797,6 +1086,197 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_worker_handback_with_a_qsv_timestamp_failure_is_recorded_and_avoids_qsv_next_time()
+    {
+        // Boothby failed this way 20 times on 2026-11-09 and the server never knew why: a release
+        // carried no reason. Now the worker says, the attempt is kept on the job, and the next
+        // assignment avoids QSV instead of failing at the same frame again.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Boothby", 1, ["hevc_qsv", "hevc_vaapi", "libx265"], ["qsv", "vaapi"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var assignment = await claimed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("hevc_qsv", assignment.GetProperty("videoEncoder").GetString());
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        const string failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x5626] Non-monotonic DTS; previous: 16507520, "
+            + "current: 16444160; Error submitting a packet to the muxer: Invalid argument\nConversion failed!";
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { failure });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, job.Status);
+            Assert.True(job.AvoidIntelQsv);
+            Assert.Equal("AvoidIntelQsv", job.RetryReason);
+            var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+            Assert.Equal("Boothby", attempt.WorkerName);
+            Assert.Equal("IntelQsvTimestamps", attempt.Reason);
+            Assert.Contains("Non-monotonic DTS", attempt.ProcessLog);
+            var lease = await db.JobLeases.AsNoTracking().SingleAsync(l => l.JobId == jobId);
+            Assert.Contains("Non-monotonic DTS", lease.HandbackFailure);
+        }
+    }
+
+    [Fact]
+    public async Task A_second_refusal_of_the_same_job_makes_the_same_worker_wait_twice_as_long()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Repeating");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // One earlier refusal by this worker, and its latest one 15 minutes ago: past the first
+            // ten-minute wait, inside the twenty that a second refusal earns.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "Repeating")).Id;
+            var now = DateTimeOffset.UtcNow;
+            foreach (var endedAt in new[] { now.AddMinutes(-60), now.AddMinutes(-15) })
+            {
+                db.JobLeases.Add(new JobLease
+                {
+                    Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId, State = LeaseState.Released,
+                    AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_capacity_return_does_not_restart_the_long_wait_old_refusals_earned()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("CapacityReturner");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // Seven refusals long enough ago that even their six-hour wait is over, then a capacity
+            // return 15 minutes ago: that earns only the ordinary ten-minute pause.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "CapacityReturner")).Id;
+            var now = DateTimeOffset.UtcNow;
+            for (var refusal = 0; refusal < 7; refusal++)
+            {
+                var endedAt = now.AddHours(-20 + refusal);
+                db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                    State = LeaseState.Released, AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt });
+            }
+            db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                State = LeaseState.Released, EndReason = LeaseEndReason.CapacityUnavailable,
+                AcquiredAt = now.AddMinutes(-16), ExpiresAt = now.AddMinutes(-15), EndedAt = now.AddMinutes(-15) });
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_late_repeat_of_an_old_release_leaves_the_job_with_the_worker_that_claimed_it_since()
+    {
+        await EnableRemoteWorkers();
+        var first = await PairCapableWorker("Earlier");
+        var second = await PairCapableWorker("Later");
+        var jobId = await QueueAJob();
+        using var claimed = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var oldLease = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var released = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release", new { }))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        }
+        using var reclaimed = await second.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, reclaimed.StatusCode);
+
+        using var repeated = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release",
+            new { failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x1] Non-monotonic DTS; Error submitting a packet to the muxer" });
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Leased, job.Status);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.AttemptHistoryJson);
+        Assert.Single(await db.JobLeases.AsNoTracking().Where(l => l.JobId == jobId && l.State == LeaseState.Held).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_report_in_an_unreadable_charset_is_a_plain_release()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Odd");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var content = new StringContent("{}");
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=bogus");
+
+        using var released = await worker.PostAsync($"/api/workers/leases/{leaseId}/release", content);
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.AttemptHistoryJson);
+    }
+
+    [Fact]
+    public async Task A_failure_reported_for_a_job_cancelled_meanwhile_is_not_recorded()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Late");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 255.\nExiting normally, received signal 15." });
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var after = _api.Services.CreateScope();
+        var stored = await after.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, stored.Status);
+        Assert.Null(stored.AttemptHistoryJson);
+    }
+
+    [Fact]
+    public async Task A_worker_handback_that_names_another_failure_is_kept_without_changing_the_encoder()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Plain");
+        var jobId = await QueueAJob();
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 1.\nNo space left on device" });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.RetryReason);
+        var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+        Assert.Equal("WorkerHandback", attempt.Reason);
+        Assert.Contains("No space left", attempt.ProcessLog);
+    }
+
+    [Fact]
     public async Task Another_worker_may_still_take_a_job_one_worker_handed_back()
     {
         // The pause is per worker. A job one machine cannot encode may be exactly what another can,
@@ -1169,6 +1649,47 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_job_intel_qsv_stopped_on_is_given_to_a_worker_with_another_encoder()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Intel", 1, ["hevc_qsv", "hevc_vaapi", "libx265"], ["qsv", "vaapi"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.AvoidIntelQsv = true;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("hevc_vaapi", assignment.GetProperty("videoEncoder").GetString());
+        Assert.DoesNotContain(assignment.GetProperty("arguments").EnumerateArray(), a => a.GetString()!.Contains("qsv", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_worker_with_only_intel_qsv_is_not_offered_a_job_qsv_stopped_on()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("QsvOnly", 1, ["hevc_qsv"], ["qsv"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.AvoidIntelQsv = true;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
     public async Task A_job_without_a_quality_gate_asks_the_worker_to_measure_nothing()
     {
         await EnableRemoteWorkers();
@@ -1528,7 +2049,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     private async Task<(HttpClient Worker, int JobId, string LeaseId, int Quality, int Windows)> ClaimASizeGatedSearch(
-        string workerName, double minimumVmaf)
+        string workerName, double minimumVmaf, int qualityRetryCount = 0)
     {
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker(workerName);
@@ -1543,6 +2064,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             library.MinVmafHarmonicMean = minimumVmaf;
             library.MinVmafMin = 90;
             library.MinVmafCatastrophicMin = 90;
+            job.QualityRetryCount = qualityRetryCount;
             await db.SaveChangesAsync();
         }
 
@@ -1585,7 +2107,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             failed.Status = JobStatus.Cancelled;
             await db.SaveChangesAsync();
         }
-        await dispatcher.RejectPredictedSizeAsync(jobId, 22, new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "libx265", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
         using var last = _api.Services.CreateScope();
         Assert.Equal(JobStatus.Cancelled, (await last.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId)).Status);
     }
@@ -1663,6 +2185,151 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         Assert.Equal(jobId, (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("jobId").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_quality_selected_on_another_encoder_is_searched_again_on_this_worker()
+    {
+        // A recovered or higher-quality retry can be claimed by a machine with a different
+        // encoder. The recorded value is on the other encoder's scale, so it must not be reused.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Different encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "hevc_videotoolbox", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Object, assignment.GetProperty("search").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_quality_selected_on_the_same_encoder_is_reused_one_retry_step_higher()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Same encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "libx265", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, assignment.GetProperty("search").ValueKind);
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal("17", arguments[arguments.IndexOf("-crf") + 1]);
+    }
+
+    [Fact]
+    public async Task A_completed_worker_search_records_the_encoder_that_selected_the_quality()
+    {
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Recorder", 90);
+
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            var direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.NotNull(job.AdaptiveVideoQuality);
+        Assert.Equal("libx265", job.AdaptiveVideoQualityEncoder);
+    }
+
+    private async Task RecordAdaptiveQuality(int jobId, int quality, string encoder, int qualityRetryCount)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+        job.RecordAdaptiveVideoQuality(quality, encoder);
+        job.QualityRetryCount = qualityRetryCount;
+        await db.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(23)]
+    [InlineData(20)]
+    public void A_size_rejection_records_its_quality_with_the_encoder_and_retry_that_rejected_it(int rejected)
+    {
+        // Even when the number matches the stored one, a different encoder and retry produced it.
+        var job = new Job();
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, rejected, "Size saving prediction: too large.", DateTimeOffset.UtcNow, rejectedOn: "hevc_qsv");
+        Assert.Equal((rejected, "hevc_qsv", 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public void Converting_an_older_held_review_keeps_its_recorded_provenance()
+    {
+        var job = new Job();
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, job.AdaptiveVideoQuality, "held", DateTimeOffset.UtcNow);
+        Assert.Equal((20, "hevc_videotoolbox", 0), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public async Task A_local_size_rejection_records_the_encoder_whose_samples_rejected_it()
+    {
+        var jobId = await QueueAJob();
+        var dispatcher = _api.Services.GetRequiredService<Optimisarr.Api.Queue.QueueDispatcher>();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Probing;
+            job.VideoEncoder = null;
+            await db.SaveChangesAsync();
+        }
+
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "hevc_qsv", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+
+        using var check = _api.Services.CreateScope();
+        var rejected = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, rejected.Status);
+        Assert.Equal((22, "hevc_qsv"), (rejected.AdaptiveVideoQuality!.Value, rejected.AdaptiveVideoQualityEncoder));
+    }
+
+    [Fact]
+    public async Task A_worker_search_during_a_retry_encodes_at_the_quality_it_selected()
+    {
+        // A retry claimed by another encoder searches again. The quality those samples selected is
+        // the one size preflight checked, so the full encode must use it, not one step beyond it.
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Retry search", 90, qualityRetryCount: 1);
+        JsonElement direction = default;
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        var selected = direction.GetProperty("selectedQuality").GetInt32();
+        var arguments = direction.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal(selected.ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[arguments.IndexOf("-crf") + 1]);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal((selected, 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityRetry!.Value));
     }
 
     [Fact]

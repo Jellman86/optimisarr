@@ -142,12 +142,43 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// The encoder whose samples selected <see cref="AdaptiveVideoQuality"/>. The value is on that
+    /// encoder's own scale, so an attempt claimed by any other encoder searches again.
+    /// </summary>
+    public string? AdaptiveVideoQualityEncoder { get; set; }
+
+    /// <summary>
+    /// The quality retry count when <see cref="AdaptiveVideoQuality"/> was selected. Only later
+    /// retries step the value toward quality; the selecting attempt encodes at it unchanged.
+    /// </summary>
+    public int? AdaptiveVideoQualityRetry { get; set; }
+
+    /// <summary>Records a per-title quality together with the encoder and retry that selected it.</summary>
+    public void RecordAdaptiveVideoQuality(int quality, string? encoder)
+    {
+        AdaptiveVideoQuality = quality;
+        AdaptiveVideoQualityEncoder = encoder;
+        AdaptiveVideoQualityRetry = QualityRetryCount;
+    }
+
+    /// <summary>Forgets the per-title quality so the next attempt searches again.</summary>
+    public void ClearAdaptiveVideoQuality()
+    {
+        AdaptiveVideoQuality = null;
+        AdaptiveVideoQualityEncoder = null;
+        AdaptiveVideoQualityRetry = null;
+    }
+
     public int? AdaptiveAudioBitrateKbps { get; set; }
     public int? AdaptiveImageQuality { get; set; }
     public string? PerceptualSearchJson { get; set; }
 
     /// <summary>Per-soundtrack bitrate search evidence for a video re-encode (a SoundtrackSearchSummary).</summary>
     public string? SoundtrackSearchJson { get; set; }
+
+    /// <summary>For a preview: the quality searches a real job would run that this preview left out.</summary>
+    public SkippedQualitySearch? SkippedQualitySearches { get; set; }
 
     /// <summary>
     /// The operator approved a full encode despite a sample-based size warning. The final size
@@ -164,11 +195,27 @@ public sealed class Job
     /// </summary>
     public string? DetectedCrop { get; set; }
 
+    /// <summary>
+    /// The silence trim decided for a music file, as <see cref="Optimisarr.Core.Queue.AudioTrimPlan"/>
+    /// text, or <c>none</c> when it was measured and nothing is trimmed. Null means it has not been
+    /// measured. Kept for the same reason as <see cref="DetectedCrop"/>: a retry trims the same window.
+    /// </summary>
+    public string? DetectedSilenceTrim { get; set; }
+
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 
     /// <summary>The measurement model frozen when this execution was prepared, preserved across automatic retries.</summary>
     public string? VmafModel { get; set; }
+
+    /// <summary>
+    /// This job's candidate was upscaled by AI super-resolution. Such a result always waits for a
+    /// person to approve its replacement, whatever the library's automatic-replacement setting.
+    /// </summary>
+    public bool SuperResolutionApplied { get; set; }
+
+    /// <summary>The engine, model and scale of the attempt that produced this candidate.</summary>
+    public string? SuperResolutionRun { get; set; }
 
     /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
     public int QualityRetryCount { get; set; }
@@ -223,7 +270,10 @@ public sealed class Job
     /// </summary>
     public string? SourceSha256 { get; set; }
 
-    /// <summary>Exact bytes that earned the current verification verdict; absent on historical jobs.</summary>
+    /// <summary>
+    /// Exact bytes that earned the current verification verdict, passed or failed; absent on
+    /// historical jobs. Replacement re-hashes both files against these before anything moves.
+    /// </summary>
     public string? VerifiedSourceSha256 { get; set; }
     public string? VerifiedOutputSha256 { get; set; }
 
@@ -244,11 +294,25 @@ public sealed class Job
     public DateTimeOffset? VerifiedAt { get; set; }
 
     /// <summary>
+    /// When a person accepted this job's output although its picture-quality score missed the
+    /// library's target. The report keeps <see cref="VerificationPassed"/> false and the scores,
+    /// so the history says plainly that this file was accepted by hand, below target.
+    /// </summary>
+    public DateTimeOffset? AcceptedBelowTargetAt { get; set; }
+
+    /// <summary>
     /// Set when a hardware-decoded candidate for this job failed verification with the signature
     /// of decoder corruption, so the next attempt — here or on a worker — decodes in software. The
     /// local path retries within one run; a remote job cannot, so the fact is kept on the job.
     /// </summary>
     public bool PreferSoftwareDecode { get; set; }
+
+    /// <summary>
+    /// Set when an Intel QSV encode of this job stopped because the source's picture times jump
+    /// (see IntelQsvTimestampFallback), so every later attempt, here or on a worker, uses another
+    /// encoder. Kept on the job for the same reason as <see cref="PreferSoftwareDecode"/>.
+    /// </summary>
+    public bool AvoidIntelQsv { get; set; }
 
     public DateTimeOffset EnqueuedAt { get; set; } = DateTimeOffset.UtcNow;
 

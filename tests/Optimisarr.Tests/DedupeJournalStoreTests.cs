@@ -51,6 +51,26 @@ public sealed class DedupeJournalStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Cancelling_an_action_that_is_already_moving_is_refused_and_keeps_its_claims()
+    {
+        var plan = Plan();
+        await Store.TryPrepareAsync(plan, default);
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.DedupeActions.SingleAsync()).State = DedupeActionState.Quarantining;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.False(await Store.CancelPreparedAsync(plan.Id, default));
+
+        await using var check = _services.CreateAsyncScope();
+        var database = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(DedupeActionState.Quarantining, (await database.DedupeActions.AsNoTracking().SingleAsync()).State);
+        Assert.True(await database.DedupeFileClaims.AnyAsync());
+    }
+
+    [Fact]
     public async Task Retry_is_idempotent_but_a_reused_action_id_cannot_change_its_plan()
     {
         var plan = Plan();

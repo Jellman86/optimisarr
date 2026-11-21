@@ -48,15 +48,45 @@ and zoom-equivalent layouts, and refreshed screenshots in `dev`. Subsequent
 Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
 alignment and zero-capacity investigations remain separate from those fixes.
 
-**Active feature priority remains [#332](https://github.com/Jellman86/optimisarr/issues/332).**
-Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
-encodes, including supported stereo-downmix references. The search runs on the server; the final
-candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-retry/reconnect, history/export and package-lifetime qualification remain open.
-The [current parity
-checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026) separates
-delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
-exact-copy file actions.
+**[#332](https://github.com/Jellman86/optimisarr/issues/332) is closed, so the active feature
+priority moves to exact-copy cleanup in [#397](https://github.com/Jellman86/optimisarr/issues/397).**
+Opt-in per-soundtrack bitrate selection for local and compatible worker video encodes shipped in
+0.2.25, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. The [closing parity
+checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
+what shipped and the limits that stay.
+
+**Recorded exception, 19 November 2026:** a person may accept a failed video encode whose only
+fault is a picture-quality (VMAF) score under the library's target (#519, from #507). This is the
+one exception to "no original is replaced until every configured gate has passed", by operator
+decision: the target is a preference, and the person looking at the file can judge a 94 against a
+95. Its limits are fixed. It is per job and always manual, with no library setting and no bulk
+action; the original is quarantined exactly as for Replace; the harmonic-mean and fifth-percentile
+targets may be overridden, but the catastrophic VMAF floor may not, because it is the signature of a
+corrupt decode; a score that could not be measured, any other failed check, audio and image scores,
+super-resolution and save-to-another-folder libraries are all excluded; and the source and output
+must still hash to the bytes that were measured. The job records `AcceptedBelowTargetAt` and keeps
+its failed report. Lost or repeated frames surface only as a lower VMAF score, so a score above the
+floor can still hide them; the guide says so rather than adding a separate gate.
+
+**Recorded default, 7 November 2026:** a new library keeps each file's container ("Same as source")
+instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real
+Radarr 6.4.4 adopted the new file on its next rescan, but unmonitored the movie when its "Unmonitor
+Deleted Movies" setting was on, and re-labelled a test file's quality from WEBDL-480p to SDTV, which
+can prompt an upgrade search that undoes the saving. Keeping the container keeps the path for
+Matroska and MP4 files, keeps the Matroska streams the profile copies, such as image subtitles and
+attachments, and costs a little compatibility on players that cannot open Matroska. A profile that
+re-encodes audio still re-encodes it. M4V and MOV become MP4, other containers become Matroska, and
+an MP4 file still moves to Matroska when its image subtitles or copied audio need it, so those files
+change path. Existing libraries are unchanged; MP4 remains a choice.
+
+**Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
+by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,
+and refusing them would stop replacement on those installs without protecting anything: the copy is
+proved identical by SHA-256 before the source is deleted, and the quarantined original and installed
+file are hashed again afterwards. The cost is time and room for a temporary second copy. Turning the
+setting off now refuses such replacements; before this release the check could not detect these mounts
+and never fired, so existing saved values are migrated to on, which is what those installs were doing.
 
 **The 21 October operator decision still applies:** crash and restart recovery is
 the home-lab worker qualification bar. Power-loss durability is a recorded limit,
@@ -405,11 +435,18 @@ The release check closes that gap:
      deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
-   - **Five stable, task-oriented steps: done.** One heading and primary action drive:
-     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
-     number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
-     safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
-     skippable sub-step, so Plex/Jellyfin/Sonarr/Radarr availability can never block first use. A
+   - **Five stable, task-oriented steps: done, reshaped in the UI redesign (#519).** One heading
+     and primary action drive: (1) this machine: readiness in plain sentences, with the tested
+     encoder pre-selected; (2) your library: name, kind, folder and one preset, summarised from the
+     values about to be saved, and read as soon as it is saved; (3) your other apps: Sonarr, Radarr
+     and media servers, optional and skippable; (4) your files: replace after you press Replace or
+     save elsewhere, how long originals are kept, and the dry-run lock; (5) try one file: suggested
+     files that open a read-only plan, and a list of what was set up with a Change per line. The
+     earlier shape was welcome, readiness, libraries, safety, review; the bullets below describe that
+     first version where they mention the embedded rules editor, the VMAF and schedule
+     recommendations, the representative preview and the review receipt, all of which the redesign
+     removed. Setup now reads a library when it is saved, which scans but changes nothing, and the
+     server refuses to finish while FFmpeg or ffprobe is missing. A
      stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
      separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
      recommends this pattern for linear processes with three or more high-level sections.
@@ -424,7 +461,7 @@ The release check closes that gap:
      carries free/total capacity plus filesystem, mount, type, and boundary evidence; configured
      libraries state whether work and quarantine moves are atomic. Missing, unreadable, unwritable,
      and low-space states produce exact local, Compose, Unraid, and TrueNAS recovery steps. A
-     loading/announced **Re-test system** action reruns the real probes and clears resolved advice.
+     loading/announced **Test again** action (first shipped as **Re-test system**) reruns the real probes and clears resolved advice.
      The container never pretends it can create a host bind mount or change host permissions. Docker
      documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
@@ -1212,7 +1249,7 @@ The release check closes that gap:
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: experimental standalone workflows released in 0.2.24; full parity remains active and incomplete, 2026-10-28.**
+14. **Perceptual quality for audio and still images: experimental workflows released in 0.2.24 and 0.2.25; complete for the supported domain with recorded limits, 2026-11-05.**
     Optional quality evidence complements structural, timing, loudness/clipping,
     SSIM and metadata checks. Reporting can be used without enabling a gate.
     An opt-in Zimtohrli gate uses an explicit operator-selected maximum distance, with
@@ -1243,16 +1280,16 @@ The release check closes that gap:
       settings and never choose a quality gate limit. A bounded sample search for a suitable
       bitrate is released for standalone audio, with measured candidates,
       bounded execution, source/size checks and independent final verification. Implemented on
-      dev: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
+      0.2.25: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
       including supported stereo-downmix references. The search runs on the server; the final
-      candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-      retry/reconnect, history/export and package-lifetime qualification remain open. See the
-      remaining [parity qualification](development/adaptive-audio-image-parity.md).
+      candidate still passes the configured soundtrack gate. See the
+      [closing checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026)
+      for the limits that stay.
     - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
       accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
       Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
       same-identity replay. The selected 0.2.24 installed-package workflows are qualified;
-      broader restart and reboot/remount qualification remain open. See the
+      broader restart and reboot/remount behaviour stays unqualified. See the
       [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
     - **Video soundtracks:** opt-in reporting and a separate explicit gate support up to eight
       retained re-encoded tracks, with up to 90 seconds of assessed coverage each. Frozen removals
@@ -1293,14 +1330,12 @@ The release check closes that gap:
     shared replacement/rollback claims; it enables no file action. D3b fencing since then —
     most recently owned verification scratch in
     [#414](https://github.com/Jellman86/optimisarr/pull/414) (merged 2026-10-18) — hardens
-    cleanup ownership without enabling any file action, and further D3 work stays deferred
-    behind #332. The
+    cleanup ownership without enabling any file action. #332 has closed, so D3 work is active
+    again. The
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
-    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
-    the operator's 13 October priority and 14 October pause. Existing read-only review and
-    qualified ownership foundations remain available; no cleanup action is enabled by this work.
+    The preflight rule and read-only file observer are in place; no cleanup action is enabled yet.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.
@@ -1330,6 +1365,29 @@ The release check closes that gap:
       parity and cancellation/recovery tests on available hosts; no unintended removal in
       changed-file, linked-file, cross-filesystem or concurrent encode/replace cases. Models
       run locally, with pinned tools, audited licences and explicit RAM/storage budgets.
+
+16. **Run AI super-resolution on workers (planned).** Experimental super-resolution (#465) runs
+    on the server only. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p measured
+    about 6 seconds per frame, so practical use needs a fast GPU. Workers often have one, for
+    example a desktop NVIDIA card.
+    - **Protocol:** a super-resolution assignment kind (protocol 15) carrying the frozen engine
+      options and expected upscaled size. Workers advertise the capability only after a real
+      sample run proves the engine, models and Vulkan device. Older workers never receive these
+      jobs, and a worker-only library waits rather than falling back silently.
+    - **Execution:** move the bounded batch pipeline (decode, engine batches, encode, attachment
+      checks, owned processes, pause-aware watchdog, per-attempt scratch) into the shared worker
+      core, so the Linux container and the Windows sidecar use the same tested code. The Linux
+      worker image bundles the engine as the server image does. The Windows installer ships the
+      pinned Windows release and its licences. The Mac sidecar needs a Swift implementation and
+      the macOS (MoltenVK) release; it follows once Windows and Linux are proven.
+    - **Safety:** unchanged. The server verifies every candidate and owns replacement and
+      quarantine. The size-saving gates stay off for upscaled candidates and every other gate
+      applies. Results are larger (4K candidates), so upload limits and scratch budgets are sized
+      for them.
+    - **Evidence to call it complete:** TDD coverage for the assignment, capability proof and
+      pipeline in the shared core; a physical run on an NVIDIA Windows worker and a Linux worker
+      with measured speed; cancellation, crash recovery and server-restart reconnection; and
+      mixed-version fleets. Additional models are tracked in #491.
 
 ## Guiding principles
 

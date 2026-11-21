@@ -170,6 +170,8 @@ internal sealed class BlindCalibrationService(
                 && file.Status == MediaFileStatus.Probed
                 && (file.MediaKind == MediaKind.Video
                     && !file.IsDolbyVision
+                    // A real job would refuse it, so a comparison would judge an encode never run.
+                    && (file.FieldOrder == null || file.Library!.DeinterlaceVideo || !VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder))
                     && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4
                     || file.MediaKind == MediaKind.Audio
                     && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4
@@ -229,6 +231,15 @@ internal sealed class BlindCalibrationService(
             {
                 throw new InvalidOperationException(
                     $"Could not freshly probe the selected video before calibration: {sourceProbe.Error ?? "no detail available"}");
+            }
+
+            // A real job would refuse this source, so a comparison would judge an encode never run.
+            var fieldOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : sourceProbe.FieldOrder ?? media.FieldOrder;
+            media.FieldOrder = fieldOrder;
+            if (!media.Library.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(fieldOrder))
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                throw new InvalidOperationException(VideoFieldOrder.RefusalFor(fieldOrder!));
             }
 
             duration = MediaTimelineDuration.Resolve(
@@ -590,7 +601,7 @@ internal sealed class BlindCalibrationService(
             library.RuleProfile = session.RecommendedSetting.VideoProfile!.Value;
             var preset = RuleProfileDefaults.For(library.RuleProfile);
             library.TargetVideoCodec = null;
-            library.TargetContainer = null;
+            library.TargetContainer = OutputContainer.AfterPresetChange(library.TargetContainer);
             library.HdrHandling = preset.Hdr;
             library.VideoAudioCodec = preset.VideoAudioCodec ?? "copy";
             library.VideoAudioBitrateKbps = preset.VideoAudioBitrateKbps;
@@ -688,7 +699,8 @@ internal sealed class BlindCalibrationService(
         await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         // Another deletion may have completed while this request waited for the writer.
         if (!_sessions.ContainsKey(id)) return false;
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+        var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken, root)
             ?? throw new FileCleanupDeferredException();
         var jobs = await db.Jobs
             .Where(job => job.CalibrationSessionId == id)
@@ -698,7 +710,6 @@ internal sealed class BlindCalibrationService(
             dispatcher.RequestCancel(job.Id);
         }
 
-        var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
         var scratchRemoved = false;
         try
         {

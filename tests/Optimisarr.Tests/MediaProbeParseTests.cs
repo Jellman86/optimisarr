@@ -22,6 +22,26 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "subrip", "subrip" }, result.SubtitleCodecs);
     }
 
+    [Theory]
+    [InlineData("\"sample_aspect_ratio\":\"64:45\",", 64, 45)]
+    [InlineData("\"sample_aspect_ratio\":\"1:1\",", 1, 1)]
+    public void Parse_records_the_primary_videos_pixel_shape(string field, int numerator, int denominator)
+    {
+        var result = MediaProbeService.Parse($$"""
+            {"streams":[{"index":0,"codec_type":"video",{{field}}"codec_name":"h264","width":720,"height":576}]}
+            """);
+        Assert.Equal(new SampleAspectRatio(numerator, denominator), result.PixelAspect);
+    }
+
+    [Fact]
+    public void A_video_with_no_reported_pixel_shape_records_none()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[{"index":0,"codec_type":"video","codec_name":"h264","sample_aspect_ratio":"0:1"}]}
+            """);
+        Assert.Null(result.PixelAspect);
+    }
+
     [Fact]
     public void An_unknown_subtitle_stream_index_is_not_guessed_from_its_relative_position()
     {
@@ -805,5 +825,30 @@ public sealed class MediaProbeParseTests
 
         Assert.True(result.IsHdr);
         Assert.False(result.IsDolbyVision);
+    }
+
+    [Theory]
+    [InlineData("tt")]
+    [InlineData("progressive")]
+    public void Parse_reads_the_primary_videos_field_order(string fieldOrder)
+    {
+        var result = MediaProbeService.Parse($$"""
+            { "streams": [
+                { "codec_type": "video", "codec_name": "mpeg2video", "field_order": "{{fieldOrder}}" },
+                { "codec_type": "video", "codec_name": "h264", "field_order": "bb" }
+              ], "format": { "format_name": "matroska,webm" } }
+            """);
+
+        Assert.Equal(fieldOrder, result.FieldOrder);
+    }
+
+    [Fact]
+    public void Parse_leaves_the_field_order_unset_when_ffprobe_omits_it()
+    {
+        var result = MediaProbeService.Parse("""
+            { "streams": [ { "codec_type": "video", "codec_name": "h264" } ], "format": { "format_name": "matroska,webm" } }
+            """);
+
+        Assert.Null(result.FieldOrder);
     }
 }

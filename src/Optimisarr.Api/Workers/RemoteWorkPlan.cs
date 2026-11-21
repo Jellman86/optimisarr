@@ -1,3 +1,4 @@
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Workers;
@@ -38,7 +39,9 @@ public sealed record RemoteAssignment(
     string? ImageEncoder = null,
     long? SourceBytes = null, double? SourceDurationSeconds = null,
     /// <summary>How this server chose the soundtrack bitrates in the command, kept on the job; never sent.</summary>
-    string? SoundtrackSearchJson = null);
+    string? SoundtrackSearchJson = null,
+    /// <summary>For a preview: the quality searches it leaves out, kept on the job; never sent.</summary>
+    SkippedQualitySearch? SkippedQualitySearches = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

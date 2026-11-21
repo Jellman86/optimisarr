@@ -39,6 +39,10 @@ public sealed record OriginalSnapshot(
     // How the encode thinned its frames under a frame-rate cap, so the quality reference is
     // decimated identically and the judged frames are the kept frames. Null keeps the source rate.
     Optimisarr.Core.Queue.FrameRateDecimation? FrameRate = null,
+    // The encode deinterlaced, so the quality reference is deinterlaced identically.
+    bool Deinterlaced = false,
+    // The encode reduced noise, so the quality reference is cleaned identically.
+    Optimisarr.Core.Queue.NoiseReduction Denoised = Optimisarr.Core.Queue.NoiseReduction.Off,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -51,7 +55,12 @@ public sealed record OriginalSnapshot(
     // The encode applies an audio filter chain, which a sampled downmix reference cannot reproduce.
     bool AudioFiltered = false,
     // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
-    string? VmafModel = null);
+    string? VmafModel = null,
+    // The output must keep the source's pixel shape. Set for super-resolution, whose engine drops it.
+    bool PixelShapeMustMatch = false,
+    // The silence the encode trimmed from a music file's start and end, with the level that counted
+    // as silence, so verification expects the shorter length and checks where the cut fell.
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -102,7 +111,8 @@ public sealed class VerificationService(
     VmafShadowService? shadow = null,
     AudioQualityObservationService? audioQuality = null,
     SoundtrackQualityObservationService? soundtrackQuality = null,
-    ImagePerceptualObservationService? imagePerceptualQuality = null)
+    ImagePerceptualObservationService? imagePerceptualQuality = null,
+    SilenceDetectService? silence = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -279,6 +289,7 @@ public sealed class VerificationService(
                         // source, whatever its timestamps say. A capped encode thins its
                         // reference by its own index rule and keeps the timestamp path.
                         pairDecodedFrames,
+                        pairDecodedFrames ? sourceDecodedFrames : null,
                         progress,
                         cancellationToken));
                 }
@@ -333,6 +344,14 @@ public sealed class VerificationService(
                 ? "ebur128 produced no true-peak reading."
                 : loudnessError;
 
+            var outputDuration = reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
+                : OutputDurationForVerification(outputProbe, reference.Kind, timestampResult);
+            // Trimmed jobs never go to a worker, so this always measures the file here.
+            var outputEdgeSilence = reference.SilenceTrim is { } trim && silence is not null && remoteEvidence is null
+                ? await silence.MeasureEdgesAsync(outputPath, trim.ThresholdDb, cancellationToken)
+                : null;
+
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
                 DecodeError: decodeResult.Error,
@@ -343,12 +362,7 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: referenceVideoDuration,
-                OutputDurationSeconds: reference.Kind == MediaKind.Audio && remoteEvidence is not null
-                    ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
-                    : OutputDurationForVerification(
-                    outputProbe,
-                    reference.Kind,
-                    timestampResult),
+                OutputDurationSeconds: outputDuration,
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
                 OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
@@ -407,6 +421,11 @@ public sealed class VerificationService(
                 OutputHeight: outputProbe.Height,
                 ExpectedWidth: reference.ExpectedWidth,
                 ExpectedHeight: reference.ExpectedHeight,
+                SilenceTrim: reference.SilenceTrim,
+                OutputEdgeSilence: outputEdgeSilence,
+                RequirePixelShapeRetained: reference.PixelShapeMustMatch,
+                OriginalPixelAspect: originalProbe.PixelAspect,
+                OutputPixelAspect: outputProbe.PixelAspect,
                 ExpectedFrameRate: reference.FrameRate?.TargetFps,
                 OutputFrameRate: outputProbe.VideoFrameRate,
                 ImageQualityMeasured: imageQualityResult?.Measured ?? false,
@@ -478,11 +497,17 @@ public sealed class VerificationService(
                 originalProbe.Width ?? 0, originalProbe.Height ?? 0, reference.IsHdr, reference.HdrConvertedToSdr,
                 ReferenceDurationSeconds: referenceVideoDuration,
                 ReferenceFrameRate: originalProbe.VideoFrameRate,
-                ReferenceCrop: reference.Crop, ReferenceDecimation: reference.FrameRate,
+                ReferenceCrop: reference.Crop, ReferenceDecimation: reference.FrameRate, ReferenceDeinterlace: reference.Deinterlaced,
+                ReferenceDenoise: reference.Denoised,
                 ReferenceContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(originalProbe),
                 DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                // Placed by decoded pictures, never packets: the two can differ, and a window past
+                // the last picture measures nothing. Without a decoded count it keeps the reported rate.
+                ReferenceFrameCount: reference.FrameRate is null
+                    && FramePairing.Applies(sourceDecodedFrames, candidateDecodedFrames)
+                    ? sourceDecodedFrames : null,
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
                     ? new(width, height, bits) : null,
                 ReferenceVideoCodec: originalProbe.VideoCodec);
@@ -610,6 +635,7 @@ public sealed class VerificationService(
         VmafAcceleration acceleration,
         VerificationPolicy policy,
         bool pairFramesByNumber,
+        int? referenceFrameCount,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -635,9 +661,12 @@ public sealed class VerificationService(
             ReferenceFrameRate: reference.FrameRate?.TargetFps ?? originalProbe.VideoFrameRate,
             ReferenceCrop: reference.Crop,
             ReferenceDecimation: reference.FrameRate,
+            ReferenceDeinterlace: reference.Deinterlaced,
+            ReferenceDenoise: reference.Denoised,
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
             PairFramesByNumber: pairFramesByNumber,
+            ReferenceFrameCount: referenceFrameCount,
             ReferenceVideoCodec: originalProbe.VideoCodec,
             ModelVersion: reference.VmafModel ?? QualityScoreCommandBuilder.LegacyModelVersionFor(
                 reference.Crop?.Width ?? originalProbe.Width.Value, reference.Crop?.Height ?? originalProbe.Height.Value),

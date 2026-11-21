@@ -38,7 +38,7 @@ aliases for the same current capture so existing documentation links continue to
 | Area | Captures |
 |---|---|
 | Dashboard | Full application, main area, savings overview |
-| Libraries | Library cards, workflow overview, Choose files, Advanced eligibility and placement, Encode, Advanced encoding, Advanced verification, Schedule & replace, candidates, exclusions |
+| Libraries | Library cards, overview summary, Which files, Video, Audio & subtitles, Checks, Schedule & replace with placement, candidates, exclusions |
 | Inventory | Full application, main table, artwork-led media dialog |
 | Queue | README hero, main view, working-job card, job dialog, mobile view, playback holds with and without viewer names |
 | Quarantine | History list, full review with synthetic media players, focused verification report |

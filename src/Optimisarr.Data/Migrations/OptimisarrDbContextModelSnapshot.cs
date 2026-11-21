@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -105,6 +105,9 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("RescanAfterChanges")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -678,6 +681,9 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTimeOffset?>("AcceptedBelowTargetAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("AdaptiveAudioBitrateKbps")
                         .HasColumnType("INTEGER");
 
@@ -685,6 +691,13 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("AdaptiveVideoQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AdaptiveVideoQualityEncoder")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("AdaptiveVideoQualityRetry")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("AppliedAudioFilter")
@@ -695,6 +708,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("AttemptHistoryJson")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AvoidIntelQsv")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("BypassSizePreflight")
                         .HasColumnType("INTEGER");
@@ -712,6 +728,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DetectedCrop")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetectedSilenceTrim")
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("EffectiveVideoQuality")
@@ -797,6 +816,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("RetryReason")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SkippedQualitySearches")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SoundtrackSearchJson")
                         .HasMaxLength(1048576)
                         .HasColumnType("TEXT");
@@ -813,6 +836,13 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("SuperResolutionApplied")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SuperResolutionRun")
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
@@ -918,6 +948,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HandbackFailure")
+                        .HasMaxLength(8000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HardwareDecoder")
@@ -1044,9 +1078,18 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("AudioQualityReportingEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("AudioSilenceMinimumSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("AudioSilenceThresholdDb")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("AudioTargetCodec")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AutoDedupeEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("AutoEnqueueEnabled")
                         .HasColumnType("INTEGER");
@@ -1072,6 +1115,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("CropBlackBars")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DeinterlaceVideo")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("DownmixToStereo")
@@ -1127,6 +1173,19 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("KeepSubtitleLanguages")
                         .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastAutoDedupeAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastAutoDedupeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LastAutoDedupeMoved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastAutoDedupeOutcome")
+                        .HasMaxLength(24)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("LastAutoEnqueueAt")
@@ -1196,6 +1255,11 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NoiseReduction")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("NormalizeOpusChannelLayout")
                         .HasColumnType("INTEGER");
 
@@ -1251,6 +1315,25 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("StrongerAdaptiveQuantisation")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("SuperResolutionEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SuperResolutionEngine")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuperResolutionModel")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuperResolutionQualityCheck")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SuperResolutionScale")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TargetContainer")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -1266,6 +1349,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("TargetVideoCodec")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("TrimAudioSilence")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
@@ -1339,6 +1425,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<int>("FailureCount")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FieldOrder")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("FrameCount")
                         .HasColumnType("INTEGER");

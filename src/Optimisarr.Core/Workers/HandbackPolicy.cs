@@ -25,6 +25,25 @@ public static class HandbackPolicy
     public static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(10);
 
     /// <summary>
+    /// The longest a worker is left alone after giving the same job back again and again.
+    ///
+    /// <para>The pause doubles with each refusal from the same worker. A fixed ten minutes let
+    /// Boothby fail two episodes at the same frame every 13 minutes for six hours on 2026-11-09,
+    /// downloading 800 MB of source each time; doubling leaves a sleeping laptop its quick retry
+    /// but turns twenty attempts into five. It never stops altogether, because a job a library
+    /// keeps for workers only has nowhere else to go.</para>
+    /// </summary>
+    public static readonly TimeSpan MaxCooldown = TimeSpan.FromHours(6);
+
+    /// <summary>How long a worker waits after its <paramref name="refusals"/>th handback of one job.</summary>
+    public static TimeSpan CooldownAfter(int refusals)
+    {
+        var doublings = Math.Clamp(refusals - 1, 0, 10);
+        var wait = TimeSpan.FromTicks(Cooldown.Ticks << doublings);
+        return wait < MaxCooldown ? wait : MaxCooldown;
+    }
+
+    /// <summary>
     /// How many <em>different</em> workers may refuse a job before none are offered it. Three
     /// separate machines refusing is no longer bad luck; temporary capacity returns are excluded
     /// from this count and retain only their per-worker pause. Three refusals from one machine is that
@@ -47,18 +66,20 @@ public static class HandbackPolicy
     /// Whether this worker may be offered this job now, given when it last handed it back and how
     /// many different workers have refused it.
     /// </summary>
-    public static bool MayOffer(DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now)
+    public static bool MayOffer(
+        DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now, int refusalsByThisWorker = 1)
     {
         if (workersWhoRefused >= MaxRefusingWorkers)
         {
             return false;
         }
 
-        return lastHandbackByThisWorker is not { } handback || now - handback >= Cooldown;
+        return lastHandbackByThisWorker is not { } handback || now - handback >= CooldownAfter(refusalsByThisWorker);
     }
 
     /// <summary>Why the job is being held back, for the log and the worker's card.</summary>
-    public static string Explain(DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now)
+    public static string Explain(
+        DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now, int refusalsByThisWorker = 1)
     {
         if (workersWhoRefused >= MaxRefusingWorkers)
         {
@@ -67,8 +88,11 @@ public static class HandbackPolicy
 
         if (lastHandbackByThisWorker is { } handback)
         {
-            var wait = Cooldown - (now - handback);
-            return $"This worker handed it back; it will not be offered again for {wait.TotalMinutes:F0} more minutes.";
+            var wait = CooldownAfter(refusalsByThisWorker) - (now - handback);
+            var left = wait.TotalMinutes >= 90 ? $"{wait.TotalHours:F1} more hours" : $"{wait.TotalMinutes:F0} more minutes";
+            return refusalsByThisWorker > 1
+                ? $"This worker has handed it back {refusalsByThisWorker} times; it will not be offered again for {left}."
+                : $"This worker handed it back; it will not be offered again for {left}.";
         }
 
         return "It may be offered.";

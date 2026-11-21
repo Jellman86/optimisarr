@@ -11,6 +11,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
 using Optimisarr.Api.OpenApi;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Setup;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
@@ -20,6 +21,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -56,6 +58,7 @@ builder.Services.AddSingleton(new SourceTimestampFacts(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
+builder.Services.AddSingleton(new SilenceDetectService(transcodeFfmpeg));
 var timestampIntegrity = new TimestampIntegrityCheck(ffprobe);
 builder.Services.AddSingleton(timestampIntegrity);
 builder.Services.AddSingleton<ISourceTimelinePreflight>(
@@ -69,6 +72,7 @@ builder.Services.AddSingleton<ISourceWindowBytesProbe>(new SourceWindowBytesProb
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
 var cudaVmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF_CUDA");
 builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe, cudaVmafFfmpeg));
+builder.Services.AddSingleton<IRequiredToolsGate, RequiredToolsGate>();
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 // Explicit research opt-in: this adds server CPU scoring even for sidecar-verified candidates.
 // It never supplies gate evidence or substitutes for a missing worker measurement.
@@ -117,18 +121,40 @@ builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>();
 builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeJournalStore>();
+builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeQuarantineService>();
+builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeCleanupRunner>(services => new Optimisarr.Api.Deduplication.DedupeCleanupRunner(
+    services.GetRequiredService<IServiceScopeFactory>(),
+    services.GetRequiredService<ExactDuplicateStore>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeJournalStore>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeQuarantineService>(),
+    services.GetRequiredService<IHostApplicationLifetime>(),
+    services.GetRequiredService<ILogger<Optimisarr.Api.Deduplication.DedupeCleanupRunner>>()));
 builder.Services.AddHostedService<Optimisarr.Api.Deduplication.DedupeJournalRecovery>();
 builder.Services.AddSingleton<ExactDuplicateStore>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();
 builder.Services.AddSingleton<ExactDuplicateCoordinator>();
 builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());
+builder.Services.AddSingleton(services => new Optimisarr.Api.Deduplication.AutoDedupeService(
+    services.GetRequiredService<IServiceScopeFactory>(),
+    services.GetRequiredService<ExactDuplicateCoordinator>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeCleanupRunner>(),
+    services.GetRequiredService<TimeProvider>(),
+    services.GetRequiredService<ILogger<Optimisarr.Api.Deduplication.AutoDedupeService>>()));
+builder.Services.AddHostedService<Optimisarr.Api.Deduplication.AutoDedupeWorker>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
+builder.Services.AddHttpClient(ArrTrackedFilesService.ClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<ArrTrackedFilesService>(services => new ArrTrackedFilesService(
+    services.GetRequiredService<OptimisarrDbContext>(),
+    services.GetRequiredService<IHttpClientFactory>(),
+    services.GetRequiredService<ILogger<ArrTrackedFilesService>>()));
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
 builder.Services.AddSingleton<BlindCalibrationService>();
+builder.Services.AddScoped<ArrRescanService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
@@ -353,9 +379,14 @@ internal sealed record SettingsDto(
     int? NonVideoSlots = null,
     int? EvidenceValidationSlots = null,
     int? AutomaticNonVideoSlots = null,
-    int? AutomaticEvidenceValidationSlots = null)
+    int? AutomaticEvidenceValidationSlots = null,
+    SuperResolutionSettingsDto? SuperResolution = null)
 {
-    public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
+    public static SettingsDto From(
+        QueueSettings settings,
+        bool remoteWorkersAvailable = false,
+        SuperResolutionOptions? superResolution = null,
+        SuperResolutionEnginePaths? realEsrgan = null) => new(
         settings.MaxConcurrentJobs,
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
@@ -375,7 +406,45 @@ internal sealed record SettingsDto(
         WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).NonVideo,
         WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
-            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence);
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence,
+        superResolution is null ? null : SuperResolutionSettingsDto.From(superResolution, realEsrgan ?? SuperResolutionEnginePaths.Bundled));
+}
+
+/// <summary>
+/// The super-resolution section of the settings. The preset, scale, denoise level and paths
+/// describe Real-CUGAN, which a library uses unless it chooses another engine; the device is this
+/// machine's for every engine, and Real-ESRGAN adds only where it is installed.
+/// </summary>
+internal sealed record SuperResolutionSettingsDto(
+    bool Enabled,
+    string Preset,
+    int Scale,
+    int NoiseLevel,
+    string Device,
+    string BinaryPath,
+    string ModelsPath,
+    string? RealEsrganBinaryPath = null,
+    string? RealEsrganModelsPath = null)
+{
+    public const string Engine = "realcugan";
+
+    public static SuperResolutionSettingsDto From(SuperResolutionOptions options, SuperResolutionEnginePaths realEsrgan) => new(
+        options.Enabled,
+        options.Preset,
+        options.Scale,
+        options.NoiseLevel,
+        options.Device,
+        options.BinaryPath,
+        options.ModelsPath,
+        realEsrgan.BinaryPath,
+        realEsrgan.ModelsPath);
+
+    /// <summary>A path a client left out keeps what is saved; an empty one returns to the bundled engine.</summary>
+    public SuperResolutionEnginePaths ToRealEsrganPaths(SuperResolutionEnginePaths saved) =>
+        new(RealEsrganBinaryPath ?? saved.BinaryPath, RealEsrganModelsPath ?? saved.ModelsPath);
+
+    public SuperResolutionOptions ToOptions() => new(
+        Enabled, Preset, Scale, NoiseLevel, Device, BinaryPath, ModelsPath);
 }
 
 internal sealed record QueueStatusDto(
@@ -511,7 +580,17 @@ internal sealed record SaveLibraryRequest(
     bool? AdaptiveAudioQuality = null,
     bool? AdaptiveImageQuality = null,
     bool? NormalizeOpusChannelLayout = null,
-    bool? AdaptiveSoundtrackQuality = null);
+    bool? AdaptiveSoundtrackQuality = null,
+    bool? TrimAudioSilence = null,
+    double? AudioSilenceThresholdDb = null,
+    double? AudioSilenceMinimumSeconds = null,
+    bool? SuperResolutionEnabled = null,
+    string? SuperResolutionQualityCheck = null,
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
+    bool? DeinterlaceVideo = null,
+    string? NoiseReduction = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -609,7 +688,17 @@ internal sealed record LibraryDto(
     bool AdaptiveAudioQuality,
     bool AdaptiveImageQuality,
     bool NormalizeOpusChannelLayout,
-    bool AdaptiveSoundtrackQuality)
+    bool AdaptiveSoundtrackQuality,
+    bool SuperResolutionEnabled,
+    string SuperResolutionQualityCheck,
+    string? SuperResolutionEngine,
+    string? SuperResolutionModel,
+    int? SuperResolutionScale,
+    bool DeinterlaceVideo,
+    string NoiseReduction,
+    bool TrimAudioSilence,
+    double AudioSilenceThresholdDb,
+    double AudioSilenceMinimumSeconds)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -696,7 +785,17 @@ internal sealed record LibraryDto(
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
         library.NormalizeOpusChannelLayout,
-        library.AdaptiveSoundtrackQuality);
+        library.AdaptiveSoundtrackQuality,
+        library.SuperResolutionEnabled,
+        library.SuperResolutionQualityCheck.ToString(),
+        library.SuperResolutionEngine,
+        library.SuperResolutionModel,
+        library.SuperResolutionScale,
+        library.DeinterlaceVideo,
+        library.NoiseReduction.ToString(),
+        library.TrimAudioSilence,
+        library.AudioSilenceThresholdDb,
+        library.AudioSilenceMinimumSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -39,7 +39,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         IServiceScopeFactory scopes, FileOperationClaims claims, string workRoot, int jobId, int attempt,
         string parent, string purpose, ILogger logger, CancellationToken token)
     {
-        if (purpose is not ("adaptive-quality" or "verification-reference")) throw new ArgumentException("Unknown scratch purpose.", nameof(purpose));
+        if (!OwnedScratchNames.Purposes.Contains(purpose)) throw new ArgumentException("Unknown scratch purpose.", nameof(purpose));
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var write = await db.BeginDiagnosticWriteAsync(token);
@@ -56,7 +56,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         };
         parent = Path.GetFullPath(parent);
         if (!SamePath(parent, ownerRoot) && !WorkPaths.IsUnderRoot(ownerRoot, parent)) throw new FileCleanupDeferredException();
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token, parent);
         if (held is null) throw new FileCleanupDeferredException();
         var libraries = await db.Libraries.AsNoTracking().Select(l => l.Path).ToListAsync(token);
         if (libraries.Any(p => SamePath(p, parent) || WorkPaths.IsUnderRoot(p, parent))) throw new FileCleanupDeferredException();
@@ -67,10 +67,10 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         while (!Directory.Exists(existing)) existing = Path.GetDirectoryName(existing) ?? throw new FileCleanupDeferredException();
         if (!ExactDuplicateScanner.SafePath(workRoot, existing)) throw new FileCleanupDeferredException();
         var nonce = Guid.NewGuid().ToString("N");
-        var root = Path.Combine(parent, $".{purpose}-{jobId}-{nonce}");
+        var root = Path.Combine(parent, OwnedScratchNames.DirectoryName(purpose, jobId, nonce));
         if (File.Exists(root) || Directory.Exists(root)) throw new FileCleanupDeferredException();
         Directory.CreateDirectory(root);
-        var marker = Path.Combine(root, ".optimisarr-owner");
+        var marker = Path.Combine(root, OwnedScratchNames.MarkerFileName);
         using (var stream = new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         using (var writer = new StreamWriter(stream)) writer.Write(nonce);
         var generation = FileGeneration.Read(marker) ?? throw new FileCleanupDeferredException();
@@ -129,7 +129,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
             // retain the workspace rather than broadening the scope of this disposal.
             if (Directory.EnumerateFileSystemEntries(Root).Any(p => !SamePath(p, _marker))) return;
             if (!await QueueOutputCleanup.TryDiscardScratchAsync(db, _claims, job!, _marker, _workRoot, MarkerMatches, default)) return;
-            using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _claims, default);
+            using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _claims, default, Root);
             if (held is null) return;
             Directory.Delete(Root, recursive: false);
             await write.CommitAsync();

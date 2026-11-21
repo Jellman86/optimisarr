@@ -53,7 +53,7 @@ public sealed class ArrActivityService(
                 request.Headers.TryAddWithoutValidation("X-Api-Key", connection.ApiKey);
             }
 
-            var client = httpClientFactory.CreateClient();
+            var client = httpClientFactory.CreateClient(ArrTrackedFilesService.ClientName);
             using var response = await client.SendAsync(request, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {

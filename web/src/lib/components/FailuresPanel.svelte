@@ -106,7 +106,7 @@
                     {title.primary ?? '—'}{#if title.episode}{' '}<span class="ml-1 font-normal text-ink-3">{[title.episode, title.secondary].filter(Boolean).join(' · ')}</span>{/if}
                   </div>
                   <p class="mt-0.5 text-xs font-medium text-bad">{story.headline}</p>
-                  {#if story.hint}<p class="mt-0.5 text-xs text-ink-3">{story.hint}</p>{/if}
+                  {#if story.hint}<p class="mt-0.5 text-xs text-ink-3">{story.hint}{#if story.advice}{' '}{story.advice}{/if}</p>{/if}
                   {#if sample.jobType !== 'Normal'}
                     <span class="badge mt-1 tone-warn">
                       {sample.jobType === 'Calibration' ? i18n.m.shared.failure_job_calibration : i18n.m.shared.failure_job_preview}

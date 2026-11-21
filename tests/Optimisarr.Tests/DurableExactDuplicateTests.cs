@@ -232,13 +232,13 @@ public sealed class DurableExactDuplicateTests : IAsyncLifetime
         try
         {
             Assert.True(await service.TryStartAsync(1, _root, inputs, false, default));
-            for (var i = 0; i < 200 && (await service.ReadAsync(1, 0, default)).Progress.BytesRead == 0; i++) await Task.Delay(10);
+            Assert.True(await TestWait.UntilAsync(async () => (await service.ReadAsync(1, 0, default)).Progress.BytesRead > 0));
             await using (var scope = _services.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
                 await db.Libraries.Where(l => l.Id == 1).ExecuteDeleteAsync();
             }
-            for (var i = 0; i < 200 && (await service.ReadAsync(1, 0, default)).Status is "Running" or "Queued"; i++) await Task.Delay(10);
+            await TestWait.UntilAsync(async () => (await service.ReadAsync(1, 0, default)).Status is not ("Running" or "Queued"));
             Assert.False(service.ExecuteTask!.IsFaulted);
             Assert.Equal("NotStarted", (await service.ReadAsync(1, 0, default)).Status);
         }
@@ -252,13 +252,11 @@ public sealed class DurableExactDuplicateTests : IAsyncLifetime
         try
         {
             Assert.True(await service.TryStartAsync(1, _root, inputs, refresh, default));
-            for (var i = 0; i < 500; i++)
-            {
-                var status = await service.ReadAsync(1, 0, default);
-                if (status.Status is not ("Running" or "Queued")) return status;
-                await Task.Delay(20);
-            }
-            throw new TimeoutException("Fixture scan did not finish.");
+            ExactDuplicateStatus? finished = null;
+            if (await TestWait.UntilAsync(async () =>
+                    (finished = await service.ReadAsync(1, 0, default)).Status is not ("Running" or "Queued")))
+                return finished!;
+            throw new TimeoutException($"Fixture scan was still {finished?.Status} after {TestWait.Default.TotalSeconds:0} seconds.");
         }
         finally { await service.StopAsync(default); }
     }

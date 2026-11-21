@@ -9,13 +9,31 @@ public sealed record NotificationMessage(string Title, string Body);
 /// </summary>
 public static class NotificationMessages
 {
-    public static NotificationMessage ReplacementCompleted(string path, long originalBytes, long newBytes)
+    public static NotificationMessage ReplacementCompleted(string path, long originalBytes, long newBytes) =>
+        new("Optimisarr: replaced a file", $"{path}\n{SizeChange(originalBytes, newBytes)}");
+
+    // A file that grew is reported as growth: "Saved -190 MB" reads as a saving to anyone skimming.
+    // A size of 0 means it could not be measured, so there is nothing to compare: only the sizes
+    // are given, never a saving.
+    private static string SizeChange(long originalBytes, long newBytes)
     {
-        var saved = originalBytes - newBytes;
-        var percent = originalBytes > 0 ? (int)Math.Round(100.0 * saved / originalBytes) : 0;
-        return new NotificationMessage(
-            "Optimisarr: replaced a file",
-            $"{path}\nSaved {Humanize(saved)} ({percent}%): {Humanize(originalBytes)} → {Humanize(newBytes)}.");
+        var sizes = $"{Humanize(originalBytes)} → {Humanize(newBytes)}";
+        if (originalBytes <= 0 || newBytes <= 0) return $"Size: {sizes}.";
+        if (newBytes == originalBytes) return $"Size unchanged: {sizes}.";
+        var change = Math.Abs(newBytes - originalBytes);
+        var percent = Percent(100.0 * change / originalBytes, saving: newBytes < originalBytes);
+        return newBytes < originalBytes
+            ? $"Saved {Humanize(change)} ({percent}): {sizes}."
+            : $"Grew by {Humanize(change)} ({percent}): {sizes}.";
+    }
+
+    // Whole percents from 1% up; below that a tenth, and never 0% for a change that happened.
+    // A saving whose file still exists is never the whole file, so it stops at 99.9%.
+    private static string Percent(double percent, bool saving)
+    {
+        var shown = percent >= 1 ? Math.Round(percent) : Math.Max(0.1, Math.Round(percent, 1));
+        if (saving && percent >= 99.5) shown = Math.Min(99.9, Math.Round(percent, 1));
+        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.#}%", shown);
     }
 
     public static NotificationMessage JobFailed(string path, string error) =>

@@ -112,4 +112,13 @@ public sealed class WorkerEncoderCatalogueTests
         Assert.True(selection.Succeeded);
         Assert.Equal("hevc_nvenc", selection.EncoderName);
     }
+
+    [Fact]
+    public void A_worker_is_given_another_encoder_for_a_job_intel_qsv_failed()
+    {
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_qsv", "hevc_vaapi"], avoidIntelQsv: true);
+
+        Assert.Equal("hevc_vaapi", selection.EncoderName);
+    }
 }

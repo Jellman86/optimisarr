@@ -19,7 +19,7 @@ public sealed class ReviewToolProcessTests
                 ? "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Out.Write([Console]::In.ReadToEnd())"
                 : "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())");
             var input = "-TagsFromFile\n写真 [1] café.png\n";
-            var result = await BoundedToolProcess.RunWithInputAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
+            var result = await BoundedToolProcess.RunWithInputAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
                 windows ? ["-NoProfile", "-NonInteractive", "-File", script] : [script], input, default, TimeSpan.FromSeconds(15));
             Assert.Equal(0, result.ExitCode);
             Assert.Equal(input, result.Output);
@@ -32,24 +32,18 @@ public sealed class ReviewToolProcessTests
     [InlineData(true)]
     public async Task Probe_rejects_excess_output_and_enforces_its_own_deadline(bool excessOutput)
     {
-        var root = Path.Combine(Path.GetTempPath(), "optimisarr-bounded-probe-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        try
-        {
-            var windows = OperatingSystem.IsWindows();
-            var script = Path.Combine(root, windows ? "probe.ps1" : "probe.py");
-            var content = windows
-                ? excessOutput ? "[Console]::Out.Write([string]::new('x', 3000000))" : "Start-Sleep -Seconds 60"
-                : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
-            await File.WriteAllTextAsync(script, content);
-            var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-File", script } : new[] { script };
-            var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
-                arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
-            Assert.Equal(-1, result.ExitCode);
-            Assert.Empty(result.Output);
-            Assert.Contains(excessOutput ? "bounded capture" : "timed out", result.Error);
-        }
-        finally { Directory.Delete(root, true); }
+        var windows = OperatingSystem.IsWindows();
+        var content = windows
+            ? excessOutput ? "[Console]::Out.Write([string]::new('x', 3000000))" : "Start-Sleep -Seconds 60"
+            : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
+        // A timed-out interpreter can briefly leave its script locked on Windows. This test
+        // needs only a process payload, so pass it directly rather than creating a file to delete.
+        var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-Command", content } : new[] { "-c", content };
+        var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
+            arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Output);
+        Assert.Contains(excessOutput ? "bounded capture" : "timed out", result.Error);
     }
 
     [Theory]
@@ -78,7 +72,7 @@ public sealed class ReviewToolProcessTests
         }
         else
         {
-            var script = "#!/usr/bin/python3\nimport os,time\nopen(" + JsonSerializer.Serialize(pidPath) + ", 'w').write(str(os.getpid()))\n";
+            var script = TestPython.Shebang + "import os,time\nopen(" + JsonSerializer.Serialize(pidPath) + ", 'w').write(str(os.getpid()))\n";
             if (floodStderr) script += "os.write(2,b'x'*1000000)\n";
             script += "print('ffmpeg version review',flush=True)\n";
             if (!floodStderr) script += "time.sleep(60)\n";
@@ -101,7 +95,8 @@ public sealed class ReviewToolProcessTests
                 Assert.Equal("ffmpeg version review", (await task).Version?.Trim());
             }
             else Assert.IsAssignableFrom<OperationCanceledException>(error);
-            try { child = Process.GetProcessById(int.Parse(File.ReadAllText(pidPath))); }
+            var pid = await TestPidFile.WaitAsync(pidPath, TimeSpan.FromSeconds(5));
+            try { child = Process.GetProcessById(pid); }
             catch (ArgumentException) { }
             if (!floodStderr) Assert.True(child is null || child.HasExited);
         }

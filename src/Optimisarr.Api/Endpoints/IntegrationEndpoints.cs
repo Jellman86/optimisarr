@@ -244,6 +244,11 @@ internal static class IntegrationEndpoints
         })
         .WithName("ListArrConnections");
 
+        // What each manager tracks, as far as it could be matched to the inventory. Reads only.
+        app.MapGet("/api/arr-connections/tracking", async (ArrTrackedFilesService tracked, CancellationToken cancellationToken) =>
+            Results.Ok((await tracked.GetAsync(cancellationToken)).Connections))
+        .WithName("GetArrTracking");
+
         app.MapPost("/api/arr-connections", async (
             SaveArrConnectionRequest request,
             OptimisarrDbContext db,
@@ -260,7 +265,8 @@ internal static class IntegrationEndpoints
                 Type = parsed.Type,
                 BaseUrl = parsed.BaseUrl,
                 ApiKey = parsed.ApiKey,
-                Enabled = parsed.Enabled
+                Enabled = parsed.Enabled,
+                RescanAfterChanges = parsed.RescanAfterChanges ?? true
             };
             db.ArrConnections.Add(connection);
             await db.SaveChangesAsync(cancellationToken);
@@ -295,6 +301,7 @@ internal static class IntegrationEndpoints
                 connection.ApiKey = parsed.ApiKey;
             }
             connection.Enabled = parsed.Enabled;
+            connection.RescanAfterChanges = parsed.RescanAfterChanges ?? connection.RescanAfterChanges;
             connection.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 

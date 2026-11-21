@@ -16,6 +16,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -163,6 +164,8 @@ public sealed partial class QueueDispatcher(
     {
         await pauseManager.RestoreAsync(stoppingToken);
         await FailLegacySizeReviewsAsync(stoppingToken);
+        // Nothing can be running yet, so any super-resolution scratch left is a crashed attempt's.
+        SuperResolutionScratch.ClearAtStartup(_workRoot);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -240,16 +243,17 @@ public sealed partial class QueueDispatcher(
                     db.Libraries,
                     job => job.LibraryId,
                     library => library.Id,
-                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace })
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, library.MoveOnComplete, job.SuperResolutionApplied })
                 .ToListAsync(cancellationToken);
 
             jobIds = ready
                 .Where(candidate => AutoReplacePolicy.ShouldReconcile(
                     candidate.Status,
                     candidate.VerificationPassed,
-                    candidate.AutoReplace,
+                    AutoReplacePolicy.ReplacesAutomatically(candidate.AutoReplace, candidate.MoveOnComplete),
                     queueSettings.DryRunMode,
-                    pauseManager.IsPaused))
+                    pauseManager.IsPaused,
+                    candidate.SuperResolutionApplied))
                 .OrderBy(candidate => candidate.Id)
                 .Take(AutoReplaceReconcileBatch)
                 .Select(candidate => candidate.Id)
@@ -342,6 +346,8 @@ public sealed partial class QueueDispatcher(
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+                .GetSuperResolutionOptionsAsync(stoppingToken)).Enabled;
             // A library's placement only means something while work can actually go elsewhere:
             // both the saved switch and deployment availability. Otherwise "only on workers" would hold a
             // job for a claim that the worker routes refuse, which is a stall nobody asked for.
@@ -356,8 +362,8 @@ public sealed partial class QueueDispatcher(
 
             var placements = await db.Libraries
                 .AsNoTracking()
-                .Select(library => new { library.Id, library.WorkPlacement })
-                .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
+                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction })
+                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction), stoppingToken);
             // Libraries whose jobs a worker cannot be offered until this machine has chosen a
             // per-title quality for them.
             var adaptiveLibraries = await db.Libraries
@@ -379,6 +385,7 @@ public sealed partial class QueueDispatcher(
                     job.Priority,
                     job.EnqueuedAt,
                     Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                    FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
                     IgnoreLibraryWindow = job.Type != JobType.Normal,
                     QualityChosen = job.AdaptiveVideoQuality != null,
@@ -396,12 +403,17 @@ public sealed partial class QueueDispatcher(
                     job.IgnoreLibraryWindow,
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
-                        ? placement
+                        ? EffectivePlacement(placement.WorkPlacement, SuperResolutionRouting.Applies(
+                            superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive)
+                            || VideoFieldOrder.Deinterlaces(placement.DeinterlaceVideo, job.FieldOrder)
+                            || NoiseReductionFilter.KeepsOnServer(placement.NoiseReduction, job.Kind))
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
                     WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
-                        && placements.GetValueOrDefault(requiredId) == WorkPlacement.WorkerOnly))
+                        && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly
+                        && !VideoFieldOrder.Deinterlaces(placements.GetValueOrDefault(requiredId).DeinterlaceVideo, job.FieldOrder)
+                        && !NoiseReductionFilter.KeepsOnServer(placements.GetValueOrDefault(requiredId).NoiseReduction, job.Kind)))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -739,7 +751,7 @@ public sealed partial class QueueDispatcher(
                     // The worker's byte limit and verification contract were fixed together at
                     // claim time. Applying a later library edit here could reject an output the
                     // worker was told to produce, or accept one the worker was told to stop.
-                    AutoReplace = library?.AutoReplace ?? false,
+                    AutoReplace = AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
                     MoveOverwrite = library?.MoveOverwrite ?? false
@@ -925,9 +937,13 @@ public sealed partial class QueueDispatcher(
             return null;
         }
 
+        // A deinterlaced or denoised job stays here, so a search already out on a worker stops rather than
+        // measure samples against a reference the worker cannot filter the same way.
         if (work is not { } loaded
             || loaded.Spec.VideoCodec is null
             || loaded.VideoEncoder is null
+            || loaded.Spec.Deinterlace
+            || loaded.Spec.Denoise != NoiseReduction.Off
             || loaded.SourcePicture is not { } source)
         {
             return null;
@@ -1033,6 +1049,11 @@ public sealed partial class QueueDispatcher(
                     return;
                 }
 
+                if (await RefusedForSaveFolderAsync(jobId, cancellationToken))
+                {
+                    return;
+                }
+
                 if (work.Value.Spec.Kind == MediaKind.Video
                     && await HeldBySourceTimelineAsync(jobId, work.Value.Original.Path, cancellationToken))
                 {
@@ -1054,7 +1075,31 @@ public sealed partial class QueueDispatcher(
 
             var preparedWork = work.Value;
             await WithJobAsync(jobId, job => job.VmafModel = preparedWork.Original.VmafModel, cancellationToken);
-            if (ShouldSelectAdaptiveQuality(
+            // A super-resolution job keeps the library's fixed quality: the adaptive search
+            // samples the normal encode, whose size and quality say nothing about the upscaled
+            // candidate, and its size forecast would only reject a job that was never predicted.
+            var superResolution = preparedWork.SuperResolution;
+            var superResolutionPlanned = superResolution is not null;
+            if (superResolution is { } choice)
+            {
+                // The candidate is the source scaled by the engine's ratio, judged by the library's
+                // quality check with the size gates off; a person approves every upscaled replacement.
+                preparedWork = PrepareSuperResolutionWork(preparedWork, choice.Options, choice.QualityCheck);
+            }
+            // Recorded per attempt, so a later ordinary attempt is not held for review as an upscale.
+            await WithJobAsync(jobId, job =>
+            {
+                job.SuperResolutionApplied = superResolutionPlanned;
+                job.SuperResolutionRun = superResolution?.Options.RunDescription;
+            }, cancellationToken);
+            if (preparedWork.IsDisposable && !preparedWork.IsCalibration)
+            {
+                // A local preview runs the per-title video search itself; the others never run here.
+                var skipped = SkippedPreviewSearches(preparedWork,
+                    adaptiveVideo: preparedWork.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf, videoSearchRuns: true);
+                await WithJobAsync(jobId, job => job.SkippedQualitySearches = skipped, cancellationToken);
+            }
+            if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
                 preparedWork.VideoQuality is not null,
@@ -1125,16 +1170,29 @@ public sealed partial class QueueDispatcher(
                     work.Value.VideoFrameRate),
                 work.Value.VideoFrameRate,
                 spec.TargetFrameRate);
-            var run = await RunFfmpegAsync(
-                jobId,
-                spec.OutputPath,
-                arguments,
-                progressDuration,
-                expectedFrameCount,
-                hardwareEncoder,
-                cancellationToken,
-                maxCandidateBytes: maxCandidateBytes,
-                minCandidateBytes: minCandidateBytes);
+
+            // A library opted into super-resolution runs a three-stage pipeline (extract →
+            // engine → reassemble) that produces the same candidate the single-command encode
+            // would; everything after this point — size handling, verification, replacement —
+            // is unchanged. Disabled libraries, previews and non-video jobs never enter it.
+            FfmpegRun run;
+            if (superResolution is { } frozenSuperResolution)
+            {
+                run = await RunSuperResolutionAsync(jobId, preparedWork, frozenSuperResolution.Options, cancellationToken);
+            }
+            else
+            {
+                run = await RunFfmpegAsync(
+                    jobId,
+                    spec.OutputPath,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken,
+                    maxCandidateBytes: maxCandidateBytes,
+                    minCandidateBytes: minCandidateBytes);
+            }
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
@@ -1169,6 +1227,18 @@ public sealed partial class QueueDispatcher(
                     cancellationToken,
                     maxCandidateBytes: maxCandidateBytes,
                     minCandidateBytes: minCandidateBytes);
+            }
+
+            // QSV stops at the same frame every time on a source whose picture times jump, so the
+            // job goes back to the queue to be planned afresh with another encoder. The flag it
+            // sets keeps QSV from being chosen again, so this cannot loop.
+            if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: Intel QSV stopped on this source's timestamps; queuing it again without QSV. ffmpeg: {Error}",
+                    jobId, run.Error);
+                await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
+                return;
             }
 
             if (run.ExitCode == 0)
@@ -1266,6 +1336,10 @@ public sealed partial class QueueDispatcher(
                     {
                         await VerifyAndFinishAsync(jobId, executionAttempt, spec.OutputPath, retriedWork, cancellationToken);
                     }
+                    else if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+                    {
+                        await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
+                    }
                     else
                     {
                         await FailFromFfmpegRunAsync(jobId, executionAttempt, spec.OutputPath, run);
@@ -1316,6 +1390,11 @@ public sealed partial class QueueDispatcher(
             AudioLoudnessGateEnabled = false, AudioClippingGateEnabled = false, AudioQualityGateEnabled = false,
             SoundtrackQualityGateEnabled = false, ImageQualityGateEnabled = false
         } : policy with { RequireSizeReduction = false };
+
+    private static SkippedQualitySearch SkippedPreviewSearches(JobWork work, bool adaptiveVideo, bool videoSearchRuns) =>
+        PreviewQualitySearch.Skipped(work.Spec.Kind, work.AdaptiveAudioQuality, work.AdaptiveImageQuality,
+            work.AdaptiveSoundtrackQuality, work.Spec.AudioEncoder is not null && !work.Spec.VideoOnly, adaptiveVideo, videoSearchRuns,
+            work.RealJobUpscales);
 
     internal static bool ShouldSelectAdaptiveQuality(
         VideoQualityStrategy strategy,
@@ -1376,7 +1455,10 @@ public sealed partial class QueueDispatcher(
         SoundtrackSearchSummary? SoundtrackSearch = null,
         int PerceptualRetryCount = 0,
         string? SourcePixelFormat = null,
-        PreparedWorkerSample? WorkerSample = null)
+        PreparedWorkerSample? WorkerSample = null,
+        SuperResolutionChoice? SuperResolution = null,
+        // A preview never upscales, but must not describe searches the real, upscaled job skips.
+        bool RealJobUpscales = false)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1438,7 +1520,14 @@ public sealed partial class QueueDispatcher(
         {
             prepared = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or JobNoLongerEligibleException)
+        catch (JobNoLongerEligibleException ex)
+        {
+            // Nothing else would ever end a job only workers can claim. Refusing it again on every
+            // poll would leave it queued for good, with no explanation.
+            await SkipQueuedJobAsync(jobId, ex.Message, cancellationToken);
+            return RemoteWorkPlan.Refused(ex.Message);
+        }
+        catch (InvalidOperationException ex)
         {
             return RemoteWorkPlan.Refused(ex.Message);
         }
@@ -1446,6 +1535,32 @@ public sealed partial class QueueDispatcher(
         if (prepared is not { } work)
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
+        }
+
+        // The authority behind the claim endpoint's cheap first pass: a super-resolution job runs
+        // this server's engine over this server's frames, and a worker lease carries only ffmpeg
+        // arguments. Offering it would produce an ordinary source-sized candidate that passes
+        // verification and replaces the original without the upscaling that was asked for.
+        if (work.Spec.Deinterlace)
+        {
+            return RemoteWorkPlan.Refused(
+                "This source is deinterlaced, which runs on this server: a worker cannot deinterlace the reference it would judge the result against.");
+        }
+        if (work.Spec.Denoise != NoiseReduction.Off)
+        {
+            return RemoteWorkPlan.Refused(
+                "This library reduces noise, which runs on this server: a worker cannot clean the reference it would judge the result against.");
+        }
+        if (work.Spec.SilenceTrim is not null)
+        {
+            return RemoteWorkPlan.Refused(
+                "This music file has silence trimmed from its edges, which is measured and checked on this server.");
+        }
+        if (work.SuperResolution is not null)
+        {
+            return RemoteWorkPlan.Refused(
+                "This library runs video through a super-resolution engine, which works on this " +
+                "server only. Set the library's placement to keep it off workers.");
         }
 
         if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
@@ -1460,6 +1575,10 @@ public sealed partial class QueueDispatcher(
                 with { SoundtrackSearch = selection };
         }
 
+        var skippedPreviewSearches = work.IsDisposable && !work.IsCalibration
+            ? SkippedPreviewSearches(work, work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf,
+                videoSearchRuns: work.Spec.ClipSeconds is null)
+            : (SkippedQualitySearch?)null;
         if (work.IsDisposable && work.Spec.ClipSeconds is { } seconds)
         {
             await using var sampleScope = scopeFactory.CreateAsyncScope();
@@ -1610,7 +1729,32 @@ public sealed partial class QueueDispatcher(
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
             work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds,
-            work.SoundtrackSearch is null ? null : JsonSerializer.Serialize(work.SoundtrackSearch, ReportJsonOptions)));
+            work.SoundtrackSearch is null ? null : JsonSerializer.Serialize(work.SoundtrackSearch, ReportJsonOptions),
+            skippedPreviewSearches));
+    }
+
+    /// <summary>
+    /// Ends a job that has not started and must not run, as the local dispatcher does before
+    /// encoding. Only a job still queued is touched, so a claim that has moved on keeps its state.
+    /// </summary>
+    internal async Task SkipQueuedJobAsync(int jobId, string reason, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using (var write = await db.BeginDiagnosticWriteAsync(cancellationToken))
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(job => job.Id == jobId && job.Status == JobStatus.Queued, cancellationToken);
+            if (job is null) return;
+            var now = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.Cancelled;
+            job.ErrorMessage = $"Skipped before encoding: {reason}";
+            job.FinishedAt = now;
+            job.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
+        }
+        logger.LogInformation("Job {JobId}: skipped before encoding — {Reason}", jobId, reason);
+        await NotifyAsync();
     }
 
     /// <summary>
@@ -1683,6 +1827,26 @@ public sealed partial class QueueDispatcher(
 
         var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
 
+        // Freeze the feature choice before selecting a container or an audio contract. Planning
+        // AAC/Opus here and copying later could leave TrueHD or Matroska ALAC in an unsafe MP4.
+        SuperResolutionChoice? superResolution = null;
+        if (!isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
+            && library?.SuperResolutionEnabled == true)
+        {
+            var engine = await settings.GetSuperResolutionOptionsForAsync(
+                library.SuperResolutionEngine, library.SuperResolutionModel, library.SuperResolutionScale, cancellationToken);
+            if (SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true))
+                superResolution = new SuperResolutionChoice(engine, library.SuperResolutionQualityCheck);
+        }
+        rules = SuperResolutionRules(rules, superResolution is not null);
+        var realJobUpscales = superResolution is not null;
+        if (isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
+            && library?.SuperResolutionEnabled == true)
+        {
+            var engine = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            realJobUpscales = SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true);
+        }
+
         // Language-based removal is destructive, so the inventory cache is never the authority at
         // dispatch time. Fresh-probe every source governed by either language rule and fail before
         // FFmpeg if that proof cannot be gathered. This also closes the same-size/same-mtime edge
@@ -1691,7 +1855,7 @@ public sealed partial class QueueDispatcher(
             && ((media.SubtitleTrackCount ?? 0) > 0
                 || TranscodeSpecResolver.IsMp4Container(Path.GetExtension(media.Path)));
         var needsAudioCopyProbe = isVideoJob && rules.VideoAudioCodec is null
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && (media.AudioCodecs ?? "").Split(',').Any(codec => codec.Trim().Equals("alac", StringComparison.OrdinalIgnoreCase));
         var sourceAudioLanguages = TrackLanguages.ParseTrackLanguages(media.AudioLanguages);
         var needsLanguageProbe = isVideoJob && rules.KeepAudioLanguages.Count > 0;
@@ -1746,6 +1910,39 @@ public sealed partial class QueueDispatcher(
                     $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}");
             }
         }
+        // The eligibility check before encoding only judges a probed inventory row, so a known
+        // interlaced file is refused here whatever its row says. A file probed before field order was
+        // captured has no answer on record: ask, and keep the answer so the inventory shows the same
+        // reason. A failed probe proves nothing and is not kept, so the later checks that need a
+        // successful one still fail as they would have.
+        // A library that deinterlaces also asks every time, because the encode and its verification
+        // are planned from the answer here and a later probe could not change them. The answer is kept
+        // whenever it differs, so the schedulers place the job by what the file really is.
+        if (isVideoJob && rules.TargetVideoCodec is not null && (!isDisposable || rules.DeinterlaceVideo))
+        {
+            if (media.FieldOrder is null || rules.DeinterlaceVideo || freshSourceProbe is not null)
+            {
+                var asked = freshSourceProbe ?? await scope.ServiceProvider
+                    .GetRequiredService<IMediaProbeService>()
+                    .ProbeAsync(media.Path, cancellationToken);
+                if (asked.Success)
+                {
+                    freshSourceProbe = asked;
+                    if (asked.FieldOrder is { } answered && answered != media.FieldOrder)
+                        await db.MediaFiles.Where(file => file.Id == media.Id)
+                            .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, answered), cancellationToken);
+                }
+            }
+            var refusedOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : freshSourceProbe?.FieldOrder;
+            if (!isDisposable && !rules.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(refusedOrder))
+                throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(refusedOrder!));
+        }
+        // A preview runs regardless, but warns about an interlaced source, and this probe has the answer.
+        if (isPreview && isVideoJob && media.FieldOrder is null && freshSourceProbe is { Success: true, FieldOrder: { } previewFieldOrder })
+        {
+            await db.MediaFiles.Where(file => file.Id == media.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, previewFieldOrder), cancellationToken);
+        }
         var mediaDurationSeconds = isPreview && isVideoJob
             ? MediaTimelineDuration.Resolve(
                 MediaKind.Video,
@@ -1762,7 +1959,7 @@ public sealed partial class QueueDispatcher(
         // aborts the encode. The inventory already recorded the source's audio codecs, so this needs
         // no extra probe — the resolver falls back to MKV when such audio would be copied.
         var sourceHasMp4IncompatibleAudio = isVideoJob
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && AudioContainerCompatibility.ContainsMp4Incompatible(media.AudioCodecs);
 
         // Each file's output lives under a per-media-file work root so two sources that share a
@@ -1847,6 +2044,20 @@ public sealed partial class QueueDispatcher(
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
             adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true,
             sourceAudioChannelLayout: sourceAudioChannelLayout);
+        // The probe just made is the authority when there is one, as it is for the other source facts.
+        var sourceFieldOrder = freshSourceProbe is { Success: true, FieldOrder: { } probedOrder } ? probedOrder : media.FieldOrder;
+        spec = spec with
+        {
+            Deinterlace = isVideoJob && spec.VideoCodec is not null && VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, sourceFieldOrder),
+            Denoise = isVideoJob && spec.VideoCodec is not null ? rules.NoiseReduction : NoiseReduction.Off,
+        };
+        // The audio quality measurement compares windows at equal offsets in files of equal length, so
+        // a library that measures it is never trimmed, whatever an older save left switched on.
+        if (media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence && spec.AudioEncoder is not null
+            && library is { AudioQualityReportingEnabled: false, AudioQualityGateEnabled: false, AdaptiveAudioQuality: false })
+        {
+            spec = spec with { SilenceTrim = await PlanSilenceTrimAsync(scope, job, media, rules, cancellationToken) };
+        }
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -1881,7 +2092,7 @@ public sealed partial class QueueDispatcher(
                         generatedPresentationTimes: spec.RegeneratePresentationTimestamps) };
         }
 
-        if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+        if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
                 freshSourceProbe?.AudioCodecs, spec.RemoveAudioStreamIndexes ?? []))
         {
@@ -1989,7 +2200,10 @@ public sealed partial class QueueDispatcher(
             ExpectedWidth: spec.ExpectedSize?.Width,
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
+            SilenceTrim: spec.SilenceTrim,
             FrameRate: spec.FrameRate,
+            Deinterlaced: spec.Deinterlace,
+            Denoised: spec.Denoise,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -2010,6 +2224,7 @@ public sealed partial class QueueDispatcher(
         // instead of silently falling back to the CPU library encoder.
         string? videoEncoderName = null;
         EncoderQuality? videoQuality = null;
+        int? adaptiveVideoQuality = null;
         if (spec.VideoCodec is not null)
         {
             var sourceBitDepth = PixelFormatInfo.Parse(
@@ -2028,11 +2243,13 @@ public sealed partial class QueueDispatcher(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     remoteWorker.VideoEncoders,
-                    sourceBitDepth)
+                    sourceBitDepth,
+                    job.AvoidIntelQsv)
                 : await ResolveVideoEncoderAsync(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     sourceBitDepth,
+                    job.AvoidIntelQsv,
                     cancellationToken);
             if (videoEncoder is { Succeeded: false })
             {
@@ -2040,6 +2257,8 @@ public sealed partial class QueueDispatcher(
             }
 
             videoEncoderName = videoEncoder.EncoderName;
+            adaptiveVideoQuality = AdaptiveQualityScope.For(
+                job.AdaptiveVideoQuality, job.AdaptiveVideoQualityEncoder, videoEncoderName);
             var videoPreset = EncoderPresetPolicy.Resolve(videoEncoderName, spec.Preset);
             if (!videoPreset.Succeeded)
             {
@@ -2050,12 +2269,13 @@ public sealed partial class QueueDispatcher(
             if (spec.Crf is { } requestedQuality)
             {
                 videoQuality = library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf
-                    && job.AdaptiveVideoQuality is { } adaptiveQuality
+                    && adaptiveVideoQuality is { } adaptiveQuality
                     ? EncoderQualityPolicy.ResolveAdaptive(
                         videoEncoderName,
                         requestedQuality,
                         adaptiveQuality,
-                        job.QualityRetryCount)
+                        job.QualityRetryCount,
+                        job.AdaptiveVideoQualityRetry ?? 0)
                     : EncoderQualityPolicy.Resolve(
                         videoEncoderName,
                         requestedQuality,
@@ -2211,8 +2431,8 @@ public sealed partial class QueueDispatcher(
             verificationPolicy,
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
             library?.WorkPlacement ?? WorkPlacement.Anywhere,
-            job.AdaptiveVideoQuality,
-            library?.AutoReplace ?? false,
+            adaptiveVideoQuality,
+            AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
             queueSettings.CpuThreadLimit,
             hardwareDecode,
             hardwareToneMap,
@@ -2229,7 +2449,9 @@ public sealed partial class QueueDispatcher(
             PerceptualSearch: ReadPerceptualRetry(job),
             AdaptiveSoundtrackQuality: library?.AdaptiveSoundtrackQuality ?? false,
             PerceptualRetryCount: job.QualityRetryCount,
-            SourcePixelFormat: media.PixelFormat);
+            SourcePixelFormat: media.PixelFormat,
+            SuperResolution: superResolution,
+            RealJobUpscales: realJobUpscales);
     }
 
     /// <summary>
@@ -2359,7 +2581,7 @@ public sealed partial class QueueDispatcher(
                     work.BypassSizePreflight);
                 if (sizeReview.ShouldReject)
                 {
-                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, work.VideoEncoder, sizeReview, cancellationToken);
                     return null;
                 }
 
@@ -2543,6 +2765,8 @@ public sealed partial class QueueDispatcher(
                 ReferenceFrameRate: work.Spec.TargetFrameRate ?? sourceProbe.VideoFrameRate,
                 ReferenceCrop: work.Spec.CropTo,
                 ReferenceDecimation: work.Spec.FrameRate,
+                ReferenceDeinterlace: work.Spec.Deinterlace,
+                ReferenceDenoise: work.Spec.Denoise,
                 // As on a worker: the candidate is a clip cut out of the source, so the reference
                 // window is cut before its cadence is normalised rather than after.
                 DistortedIsCutClip: true,
@@ -2617,7 +2841,7 @@ public sealed partial class QueueDispatcher(
         {
             job.Status = JobStatus.Transcoding;
             job.Progress = 0;
-            job.AdaptiveVideoQuality = selectedQuality;
+            job.RecordAdaptiveVideoQuality(selectedQuality, work.VideoEncoder);
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         // A fall-back is a warning, not news. The search running and learning nothing is the
@@ -2641,7 +2865,7 @@ public sealed partial class QueueDispatcher(
     }
 
     internal async Task RejectPredictedSizeAsync(
-        int jobId, int selectedQuality, SizePreflightAssessment forecast, CancellationToken cancellationToken)
+        int jobId, int selectedQuality, string? encoder, SizePreflightAssessment forecast, CancellationToken cancellationToken)
     {
         await _dbLock.WaitAsync(cancellationToken);
         try
@@ -2651,7 +2875,7 @@ public sealed partial class QueueDispatcher(
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.Probing) return;
-            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow);
+            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow, rejectedOn: encoder);
             await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -2682,6 +2906,38 @@ public sealed partial class QueueDispatcher(
             logger.LogInformation("Marked {Count} existing size-review jobs as predicted size failures; originals were unchanged", held.Count);
             await NotifyAsync();
         }
+    }
+
+    /// <summary>
+    /// Fails a job before any encoding when its library saves optimised files into a folder the
+    /// rule refuses, which would otherwise only be found out after the whole encode, here or on a
+    /// worker. True when the job was failed: nothing has been written and the original is
+    /// untouched. Failed rather than skipped, so automatic queueing does not pick the file up again
+    /// every cycle while the folder stays wrong.
+    /// </summary>
+    public async Task<bool> RefusedForSaveFolderAsync(int jobId, CancellationToken cancellationToken)
+    {
+        string? saveFolder;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            saveFolder = await db.Libraries.AsNoTracking()
+                .Where(library => library.MoveOnComplete
+                    && db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
+                .Select(library => library.TargetFolder)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (saveFolder is null
+            || await SaveElsewhere().RefusalBeforeEncodingAsync(saveFolder, cancellationToken) is not { } refusal)
+        {
+            return false;
+        }
+
+        await CompleteAsync(jobId, JobStatus.Failed, error: refusal);
+        await NotifyJobFailedAsync(jobId, refusal);
+        logger.LogWarning("Job {JobId}: not encoded — {Reason}", jobId, refusal);
+        return true;
     }
 
     /// <summary>
@@ -2831,7 +3087,7 @@ public sealed partial class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
+    internal sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -3193,7 +3449,7 @@ public sealed partial class QueueDispatcher(
         {
             job.WorkOutputPath = spec.OutputPath;
             job.FfmpegArguments = string.Join(' ', arguments);
-            job.AppliedAudioFilter = audioFilter.Chain;
+            job.AppliedAudioFilter = FfmpegCommandBuilder.AudioFilterChain(spec);
             job.VideoEncoder = videoEncoder;
             job.RequestedVideoQuality = videoQuality?.Requested;
             job.EffectiveVideoQuality = videoQuality?.Effective;
@@ -3298,6 +3554,7 @@ public sealed partial class QueueDispatcher(
     internal static void PrepareForAttempt(Job job, DateTimeOffset nowUtc)
     {
         job.Status = JobStatus.Transcoding;
+        job.SkippedQualitySearches = null;
         job.Attempt += 1;
         job.ExecutionAttempt += 1;
         job.AdaptiveAudioBitrateKbps = null;
@@ -3323,6 +3580,9 @@ public sealed partial class QueueDispatcher(
         job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
+        job.AcceptedBelowTargetAt = null;
+        // Measured again for each attempt: the file at the path may not be the one measured before.
+        job.DetectedSilenceTrim = null;
         job.FinishedAt = null;
     }
 
@@ -3515,17 +3775,10 @@ public sealed partial class QueueDispatcher(
 
         await WithJobAsync(jobId, job =>
         {
-            job.SourceSizeBytes = outcome.SourceSizeBytes;
-            job.OutputSizeBytes = outcome.OutputSizeBytes;
-            job.VerificationReportJson = reportJson;
-            job.VerificationPassed = outcome.Report.Passed;
-            job.VerifiedSourceSha256 = outcome.Report.Passed ? verifiedSource : null;
-            job.VerifiedOutputSha256 = outcome.Report.Passed ? verifiedOutput : null;
+            RecordVerdict(job, outcome, reportJson, verifiedSource, verifiedOutput, DateTimeOffset.UtcNow);
             job.CalibrationReferenceStartSeconds = work.IsCalibration
                 ? work.WorkerSample?.PresentationOffset ?? outcome.ReferenceStartSeconds
                 : null;
-            job.VerifiedAt = DateTimeOffset.UtcNow;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
 
         if (!outcome.Report.Passed)
@@ -3612,6 +3865,55 @@ public sealed partial class QueueDispatcher(
         return VerificationDisposition.Finished;
     }
 
+    // Internal so a test can prove a failed verdict keeps the file identity Accept anyway depends on.
+    internal static void RecordVerdict(
+        Job job, VerificationOutcome outcome, string reportJson, string? verifiedSource, string? verifiedOutput, DateTimeOffset nowUtc)
+    {
+        job.SourceSizeBytes = outcome.SourceSizeBytes;
+        job.OutputSizeBytes = outcome.OutputSizeBytes;
+        job.VerificationReportJson = reportJson;
+        job.VerificationPassed = outcome.Report.Passed;
+        // Kept whatever the verdict: a person may accept a file that missed only its picture
+        // target, and replacing it needs proof these are still the bytes that were judged.
+        job.VerifiedSourceSha256 = verifiedSource;
+        job.VerifiedOutputSha256 = verifiedOutput;
+        job.VerifiedAt = nowUtc;
+        job.UpdatedAt = nowUtc;
+    }
+
+    /// <summary>
+    /// Measures a music file's silence and remembers the decision on the job for the rest of this
+    /// attempt; a new attempt measures again, because the file at the path may have changed. Every
+    /// doubt resolves to no trim (see <see cref="SilenceTrimPlanner.Decide"/>).
+    /// </summary>
+    private async Task<AudioTrimPlan?> PlanSilenceTrimAsync(
+        AsyncServiceScope scope, Job job, MediaFile media, Optimisarr.Core.Rules.RuleSettings rules, CancellationToken cancellationToken)
+    {
+        if (job.DetectedSilenceTrim is { } decided) return AudioTrimPlan.TryParse(decided);
+
+        var probe = await scope.ServiceProvider.GetRequiredService<MediaProbeService>().ProbeAsync(media.Path, cancellationToken);
+        var source = new SilenceTrimSource(
+            probe.Success,
+            probe.DurationSeconds,
+            probe.AudioTrackCount,
+            probe.MaxAudioSampleRate,
+            StartIsTimed: probe.SubtitleTrackCount > 0
+                || SilenceTrimPlanner.HasStartTimedTags(probe.FormatTags)
+                // Audiobooks carry chapters, and a sidecar .lrc times its lines from the start.
+                || Path.GetExtension(media.Path).Equals(".m4b", StringComparison.OrdinalIgnoreCase)
+                || File.Exists(Path.ChangeExtension(media.Path, ".lrc")));
+        var measurement = source is { Probed: true, AudioStreamCount: 1 }
+            ? await scope.ServiceProvider.GetRequiredService<SilenceDetectService>().DetectAsync(
+                media.Path, rules.AudioSilenceThresholdDb, rules.AudioSilenceMinimumSeconds, cancellationToken)
+            : null;
+        var decision = SilenceTrimPlanner.Decide(source, measurement, rules.AudioSilenceThresholdDb);
+
+        var stored = decision.Plan?.ToString() ?? "none";
+        await WithJobAsync(job.Id, tracked => tracked.DetectedSilenceTrim = stored, cancellationToken);
+        logger.LogInformation("Job {JobId}: {Decision}", job.Id, decision.Reason);
+        return decision.Plan;
+    }
+
     internal static VerificationClip? BuildVerificationClip(
         bool isDisposable,
         bool isCalibration,
@@ -3634,6 +3936,20 @@ public sealed partial class QueueDispatcher(
                 // enables the frame-alignment probe for long-GOP sources.
                 VideoOnly: isCalibration && kind == MediaKind.Video)
             : null;
+
+    private static bool StoppedOnQsvTimestamps(string? encoder, FfmpegRun run) =>
+        run.ExitCode != 0 && !run.SizeGateFailed && IntelQsvTimestampFallback.Applies(encoder, run.Log ?? run.Error);
+
+    private async Task QueueWithoutIntelQsvAsync(
+        int jobId, int executionAttempt, string outputPath, string? processLog, string? error)
+    {
+        if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
+            JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, processLog, DateTimeOffset.UtcNow),
+            CancellationToken.None,
+            rejectedProcessLog: processLog, rejectedError: FfmpegErrorInterpreter.Explain(error) ?? error)) return;
+        await NotifyAsync();
+        Wake();
+    }
 
     internal async Task QueueHigherQualityRetryAsync(int jobId, int executionAttempt, string outputPath)
     {
@@ -3669,25 +3985,31 @@ public sealed partial class QueueDispatcher(
     // leave it in the work directory as ReadyToReplace (safe replacement is a later phase).
     private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work, bool dryRunMode)
     {
-        if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
+        var requiresReview = work.SuperResolution is not null;
+        if (!requiresReview && (work.MoveOnComplete || work.AutoReplace))
+        {
+            // A recovered completion may carry an older plan; the persisted attempt flag is
+            // authoritative even if the global feature switch has since been turned off.
+            await using var scope = scopeFactory.CreateAsyncScope();
+            requiresReview = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs
+                .AsNoTracking().Where(job => job.Id == jobId).Select(job => job.SuperResolutionApplied)
+                .FirstOrDefaultAsync(CancellationToken.None);
+        }
+        if (!requiresReview && work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
             // Resolve against this file's own work root so the per-media-file id segment is not
             // mirrored into the target folder — the destination keeps the library's structure.
             var mediaWorkRoot = WorkOutputRoot.ForMediaFile(_workRoot, work.MediaFileId);
-            var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
-
-            // Don't silently clobber an existing converted file unless the library opts into it.
-            // Failing here keeps the just-produced output in the work dir for inspection.
-            if (!work.MoveOverwrite && File.Exists(destination))
+            var saved = await SaveElsewhere().SaveAsync(mediaWorkRoot, outputPath, targetFolder, work.MoveOverwrite);
+            if (saved.Error is { } error)
             {
-                var error = $"A converted file already exists at the destination and overwrite is off: {destination}";
+                // Failing here keeps the just-produced output in the work dir for inspection.
                 await CompleteAsync(jobId, JobStatus.Failed, progress: 1.0, error: error);
                 await NotifyJobFailedAsync(jobId, error);
                 return;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            MoveFile(outputPath, destination);
+            var destination = saved.Destination!;
             // The output left the work dir; clean up its now-empty per-media scratch tree.
             WorkPaths.PruneEmptyAncestors(_workRoot, outputPath, IsWorkDirectoryReserved);
 
@@ -3708,7 +4030,7 @@ public sealed partial class QueueDispatcher(
         // already passed every verification gate; ReplaceAsync still quarantines the original
         // first and records a rollback, so the safety model holds. A failure (e.g. an unwritable
         // folder) leaves the job ReadyToReplace for a manual retry rather than touching the original.
-        if (work.AutoReplace && !dryRunMode)
+        if (!requiresReview && work.AutoReplace && !dryRunMode)
         {
             var guarded = await pauseManager.TryRunAutomaticActionAsync(async () =>
             {
@@ -3752,20 +4074,7 @@ public sealed partial class QueueDispatcher(
         }
     }
 
-    // Move our own work output; never the original. Falls back to copy+delete across
-    // filesystems, where an atomic rename isn't possible.
-    private static void MoveFile(string source, string destination)
-    {
-        try
-        {
-            File.Move(source, destination, overwrite: true);
-        }
-        catch (IOException)
-        {
-            File.Copy(source, destination, overwrite: true);
-            File.Delete(source);
-        }
-    }
+    private SaveElsewhere SaveElsewhere() => new(scopeFactory, environment);
 
     // RunFfmpegAsync has reaped its process before cancellation reaches this handler.
     internal Task HandleCancelledAsync(int jobId, int executionAttempt) =>
@@ -3868,12 +4177,15 @@ public sealed partial class QueueDispatcher(
         var queued = await db.Jobs.AsNoTracking()
             .Where(job => job.Status == JobStatus.Queued)
             .Select(job => new { job.Id, job.LibraryId, job.Type, job.EnqueuedAt,
-                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null })
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
+        var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+            .GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
         var libraries = await db.Libraries.AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
-                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo,
+                library.NoiseReduction, library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
@@ -3882,10 +4194,18 @@ public sealed partial class QueueDispatcher(
         var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
             job.EnqueuedAt, IgnoreLibraryWindow: job.Type != JobType.Normal,
             Placement: job.LibraryId is { } id
-                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
+                && libraries.TryGetValue(id, out var library)
+                    ? EffectivePlacement(library.WorkPlacement, SuperResolutionRouting.Applies(
+                        superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal)
+                        || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, job.FieldOrder)
+                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, job.Kind))
+                    : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
-                && libraries.TryGetValue(requiredId, out var requiredLibrary) && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
+                && libraries.TryGetValue(requiredId, out var requiredLibrary)
+                && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly
+                && !VideoFieldOrder.Deinterlaces(requiredLibrary.DeinterlaceVideo, job.FieldOrder)
+                && !NoiseReductionFilter.KeepsOnServer(requiredLibrary.NoiseReduction, job.Kind))).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));
@@ -4089,6 +4409,7 @@ public sealed partial class QueueDispatcher(
         string? targetCodec,
         EncoderMode encoderMode,
         int? sourceBitDepth,
+        bool avoidIntelQsv,
         CancellationToken cancellationToken)
     {
         if (targetCodec is null)
@@ -4097,7 +4418,7 @@ public sealed partial class QueueDispatcher(
         }
 
         var detected = await hardware.DetectAsync(cancellationToken);
-        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth);
+        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth, avoidIntelQsv);
     }
 
     // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc,

@@ -27,14 +27,38 @@ public sealed class OptimisationHistoryEvaluatorTests
     }
 
     [Fact]
-    public void A_failed_job_for_the_current_version_blocks_re_encoding_but_points_to_retry()
+    public void A_failed_job_for_the_current_version_holds_the_file_back_and_offers_that_job_to_retry()
     {
-        var history = new OptimisationHistory(LastCompletedAt: null, LastFailedAt: Modified.AddHours(1));
+        var history = new OptimisationHistory(LastCompletedAt: null, LastFailedAt: Modified.AddHours(1), LastFailedJobId: 42);
 
         var result = OptimisationHistoryEvaluator.Apply(Eligible, history, Modified);
 
         Assert.False(result.IsEligible);
-        Assert.Contains("Previously failed", result.Reason);
+        Assert.Equal("Failed last time, so it isn't tried again by itself", result.Reason);
+        Assert.Equal(42, result.RetryJobId);
+    }
+
+    [Fact]
+    public void A_stale_failure_offers_nothing_to_retry()
+    {
+        var history = new OptimisationHistory(LastCompletedAt: null, LastFailedAt: Modified.AddHours(-1), LastFailedJobId: 42);
+
+        var result = OptimisationHistoryEvaluator.Apply(Eligible, history, Modified);
+
+        Assert.True(result.IsEligible);
+        Assert.Null(result.RetryJobId);
+    }
+
+    [Fact]
+    public void An_already_optimised_file_offers_nothing_to_retry_even_after_an_earlier_failure()
+    {
+        var history = new OptimisationHistory(
+            LastCompletedAt: Modified.AddHours(2), LastFailedAt: Modified.AddHours(1), LastFailedJobId: 42);
+
+        var result = OptimisationHistoryEvaluator.Apply(Eligible, history, Modified);
+
+        Assert.Equal("Already optimised", result.Reason);
+        Assert.Null(result.RetryJobId);
     }
 
     [Fact]

@@ -39,10 +39,39 @@ python3 scripts/media_acceptance.py \
   --root /tmp/optimisarr-acceptance-002
 ```
 
-Native orchestration is for macOS/Linux. FFmpeg must support the tested codecs, their decoders,
+Native orchestration uses an isolated development runtime. FFmpeg must support the tested codecs, their decoders,
 `libvmaf`, `ssim`, and `ebur128`. An encoder appearing in its listing does not prove the resulting
 file can be decoded or that a required bit depth is supported; these are acceptance failures.
 For image metadata coverage, use the application's normal ExifTool installation.
+
+## Super-resolution and NVENC regression
+
+```bash
+python3 scripts/media_acceptance.py \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /absolute/path/to/ffmpeg --ffprobe /absolute/path/to/ffprobe \
+  --regression super-resolution --local-encoder hevc_nvenc \
+  --super-resolution-binary /absolute/path/to/realesrgan-ncnn-vulkan \
+  --super-resolution-models /absolute/path/to/realesrgan \
+  --root /absolute/path/to/new-super-resolution-run
+```
+
+The model root contains the release's `models` directory. Omit the engine paths to use the
+server's bundled installation. The native Windows engine uses its `.exe` path. FFmpeg must
+include libvmaf, and the server needs a working Vulkan device and the selected encoder.
+
+This generates small SDR 8-bit and 10-bit videos and an anamorphic one (360x288 stored pixels of
+shape 64:45, like half a widescreen DVD), each with lossless audio, a subtitle and an
+attachment, then runs Real-ESRGAN `animevideov3` at 2× through actual application jobs. With no
+`--local-encoder` the matrix covers H.264, HEVC and AV1 NVENC, excluding 10-bit H.264. Select
+only encoders the physical GPU supports, or use `libx265` for a software-encoding control.
+Each case requires application verification, doubled dimensions, every decoded frame, retained
+bit depth and colour tags, unchanged decoded audio, A/V start alignment and copied streams, and
+a passed **Picture shape** check. The anamorphic case also requires the source's pixel and display
+shape on the result, and for H.264 and HEVC the 64:45 shape in the video bitstream itself.
+It also proves automatic replacement remains suppressed, then explicitly replaces its own fixture
+and rolls back to the original SHA-256. This is server-side coverage; it does not qualify worker
+super-resolution or a different NVIDIA GPU.
 
 ## Uneven timing regression
 

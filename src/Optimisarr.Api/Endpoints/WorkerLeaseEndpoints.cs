@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -9,6 +10,7 @@ using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -264,6 +266,10 @@ internal static class WorkerLeaseEndpoints
 
             var capabilities = worker.ToCapabilities();
             var encoderMode = (await settings.GetQueueSettingsAsync(cancellationToken)).EncoderMode;
+            // Super-resolution work never leaves this server; one read per claim poll is enough
+            // to keep it that way for every candidate below.
+            var superResolutionEngineEnabled =
+                (await settings.GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
 
             // Keep the queue projection light, and scan bounded batches until an assignment is
             // found. A batch is a loading limit, never a visibility limit: cleanup, incompatible
@@ -307,10 +313,21 @@ internal static class WorkerLeaseEndpoints
                     .Where(handback => handback.EndReason == null)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
-                var lastHandbackHere = handbacks
-                    .Where(h => h.WorkerId == worker.Id)
+                // A refusal and a capacity return each start their own wait: a capacity return earns
+                // only the ordinary pause, and must not restart the longer wait old refusals earned.
+                var lastRefusalHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == null)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+                var lastCapacityReturnHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == LeaseEndReason.CapacityUnavailable)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+                // Each refusal from this machine doubles its own wait; see HandbackPolicy.MaxCooldown.
+                var refusalsHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == null)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Count());
 
                 var candidates = shortlist
                     .Select(id => loaded.FirstOrDefault(job => job.Id == id))
@@ -337,7 +354,7 @@ internal static class WorkerLeaseEndpoints
                     // preparation would refuse anyway from what is already loaded, so a queue of
                     // local-only or remux jobs does not cost an ffprobe per candidate per poll.
                     // Preparation repeats these refusals itself; this is only the cheap first pass.
-                    if (!PlausiblyOfferable(job, capabilities, encoderMode))
+                    if (!PlausiblyOfferable(job, capabilities, encoderMode, superResolutionEngineEnabled))
                     {
                         skipped++;
                         lastReason = "Queued work includes jobs this worker cannot encode or that must run on this server.";
@@ -346,12 +363,20 @@ internal static class WorkerLeaseEndpoints
 
                     // A job this worker already gave back, or that too many workers have given back.
                     // Offering it again straight away is a loop that re-downloads the source each time.
-                    lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
+                    lastRefusalHere.TryGetValue(job.Id, out var refusedAt);
+                    lastCapacityReturnHere.TryGetValue(job.Id, out var returnedAt);
                     refusingWorkers.TryGetValue(job.Id, out var refusedBy);
-                    if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
+                    refusalsHere.TryGetValue(job.Id, out var refusedHere);
+                    if (!HandbackPolicy.MayOffer(refusedAt, refusedBy, now, refusedHere))
                     {
                         skipped++;
-                        lastReason = HandbackPolicy.Explain(handedBackHere, refusedBy, now);
+                        lastReason = HandbackPolicy.Explain(refusedAt, refusedBy, now, refusedHere);
+                        continue;
+                    }
+                    if (!HandbackPolicy.MayOffer(returnedAt, workersWhoRefused: 0, now))
+                    {
+                        skipped++;
+                        lastReason = HandbackPolicy.Explain(returnedAt, workersWhoRefused: 0, now);
                         continue;
                     }
 
@@ -361,6 +386,8 @@ internal static class WorkerLeaseEndpoints
                     {
                         skipped++;
                         lastReason = verdict.Reason;
+                        await dispatcher.SkipQueuedJobAsync(job.Id, verdict.Reason, cancellationToken);
+                        db.Entry(job).State = EntityState.Detached;
                         continue;
                     }
 
@@ -373,6 +400,16 @@ internal static class WorkerLeaseEndpoints
                     {
                         skipped++;
                         lastReason = "The source timeline requires review before encoding.";
+                        continue;
+                    }
+
+                    // The same save-folder refusal the local dispatcher makes, before a worker
+                    // downloads the source and spends the whole encode only to be refused at finish.
+                    if (job.Type == JobType.Normal && await dispatcher.RefusedForSaveFolderAsync(job.Id, cancellationToken))
+                    {
+                        skipped++;
+                        lastReason = "The library's folder for optimised files can't be used.";
+                        db.Entry(job).State = EntityState.Detached;
                         continue;
                     }
 
@@ -537,6 +574,7 @@ internal static class WorkerLeaseEndpoints
                         job.VerificationReportJson = null;
                         job.PerceptualSearchJson = null;
                         job.SoundtrackSearchJson = assignment.SoundtrackSearchJson;
+                        job.SkippedQualitySearches = assignment.SkippedQualitySearches;
                         job.AdaptiveAudioBitrateKbps = null;
                         job.AdaptiveImageQuality = null;
                         job.VerifiedAt = null;
@@ -847,7 +885,7 @@ internal static class WorkerLeaseEndpoints
                 // and the queue would show no chosen quality at all.
                 if (lease.Job is { } searched)
                 {
-                    searched.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    searched.RecordAdaptiveVideoQuality(progress.Decision.SelectedQuality, searched.VideoEncoder);
                     searched.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
@@ -878,7 +916,7 @@ internal static class WorkerLeaseEndpoints
                 lease.AdaptiveAskedQuality = null;
                 if (lease.Job is { } stalled)
                 {
-                    stalled.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    stalled.RecordAdaptiveVideoQuality(progress.Decision.SelectedQuality, stalled.VideoEncoder);
                     stalled.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
@@ -1187,20 +1225,61 @@ internal static class WorkerLeaseEndpoints
             CancellationToken cancellationToken) =>
             await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
-                (_, job, outcome) =>
+                (_, _, _) => { },
+                _ => Results.NoContent(),
+                afterApply: async (db, lease, job) =>
                 {
                     // Requeue unfinished work, but preserve cancellation if it won while the
                     // worker was stopping its child process. Release still frees lease capacity.
-                    if (job.Status == JobStatus.Leased)
+                    // A late repeat of an earlier release must not take the job back from the
+                    // worker that has claimed it since, nor be recorded against its attempt.
+                    if (job.Status != JobStatus.Leased
+                        || await db.JobLeases.AnyAsync(other => other.JobId == job.Id && other.Id != lease.Id
+                            && other.State == LeaseState.Held, cancellationToken))
                     {
-                        job.Status = JobStatus.Queued;
+                        return;
                     }
-                },
-                _ => Results.NoContent()))
+
+                    job.Status = JobStatus.Queued;
+                    // Read only now, after the worker has been authenticated and its lease released.
+                    // Older workers send no body, or an empty object. A newer one says what went wrong.
+                    if (WorkerHandbackFailure.Normalise((await ReadReleaseAsync(http, cancellationToken))?.Failure)
+                        is not { } failure)
+                    {
+                        return;
+                    }
+
+                    var workerName = await db.Workers.AsNoTracking().Where(w => w.Id == lease.WorkerId)
+                        .Select(w => w.Name).FirstOrDefaultAsync(cancellationToken);
+                    WorkerHandback.Record(job, lease, workerName, failure, DateTimeOffset.UtcNow);
+                }))
+        // A report is a few kilobytes and is cut to 8,000 characters; nothing larger is read.
+        .WithMetadata(new RequestSizeLimitAttribute(64 * 1024))
         .WithName("ReleaseLease")
         // Declared like the other worker routes: this is outside admin-token protection, so the
         // document transformer will not add the 401 that an unknown or revoked credential returns.
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+    }
+
+    private sealed record ReleaseRequest(string? Failure);
+
+    private static async Task<ReleaseRequest?> ReadReleaseAsync(HttpRequest http, CancellationToken cancellationToken)
+    {
+        if (http.ContentLength is 0 || !http.HasJsonContentType())
+        {
+            return null;
+        }
+
+        // A report the server cannot read, malformed or in an unsupported charset, is a plain release.
+        try
+        {
+            return await http.ReadFromJsonAsync<ReleaseRequest>(cancellationToken);
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException
+            or NotSupportedException or System.Text.DecoderFallbackException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -1362,12 +1441,22 @@ internal static class WorkerLeaseEndpoints
     /// encoder for the target codec. Mirrors <see cref="QueueDispatcher.PrepareRemoteWorkAsync"/>,
     /// which remains the authority.
     /// </summary>
-    private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities, EncoderMode encoderMode)
+    private static bool PlausiblyOfferable(
+        Job job, WorkerCapabilities capabilities, EncoderMode encoderMode, bool superResolutionEngineEnabled)
     {
         var media = job.MediaFile!;
         var library = media.Library;
         if (job.Type != JobType.Normal && media.MediaKind != MediaKind.Video) return false;
-        if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
+        // Super-resolution work is server-only even under an "anywhere" placement: the engine
+        // works on the server's frames and a worker lease carries only ffmpeg arguments, so an
+        // offered job would come back as an ordinary source-sized encode that silently replaces
+        // the original without the upscaling that was asked for.
+        if (library is not null
+            && (!WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement)
+                || SuperResolutionRouting.Applies(superResolutionEngineEnabled, library.SuperResolutionEnabled,
+                    media.MediaKind, replaceBound: job.Type == JobType.Normal)
+                || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, media.FieldOrder)
+                || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, media.MediaKind)))
         {
             return false;
         }
@@ -1393,7 +1482,8 @@ internal static class WorkerLeaseEndpoints
             && WorkerEncoderCatalogue.Select(
                 targetCodec,
                 encoderMode,
-                capabilities.VideoEncoders).Succeeded;
+                capabilities.VideoEncoders,
+                avoidIntelQsv: job.AvoidIntelQsv).Succeeded;
     }
 
     private sealed class ClaimHistory

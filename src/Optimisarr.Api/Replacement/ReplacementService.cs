@@ -187,12 +187,30 @@ public sealed class ReplacementService
     }
 
     public Task<ReplacementActionResult> ReplaceAutomaticallyAsync(int jobId, CancellationToken cancellationToken) =>
-        ReplaceGuardedAsync(jobId, automatic: true, cancellationToken);
+        ReplaceGuardedAsync(jobId, ReplaceRequest.Automatic, cancellationToken);
 
     public Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken) =>
-        ReplaceGuardedAsync(jobId, automatic: false, cancellationToken);
+        ReplaceGuardedAsync(jobId, ReplaceRequest.Manual, cancellationToken);
 
-    private async Task<ReplacementActionResult> ReplaceGuardedAsync(int jobId, bool automatic, CancellationToken cancellationToken)
+    /// <summary>
+    /// Replaces the original with a failed job's output whose only fault is a picture-quality score
+    /// under the library's target, because a person looked at it and accepted it. Every other
+    /// replacement safeguard still applies, and the original goes to quarantine as usual. The
+    /// <paramref name="executionAttempt"/> is the attempt the person saw, so a job retried in the
+    /// meantime is refused rather than accepted on someone else's evidence.
+    /// </summary>
+    public Task<ReplacementActionResult> AcceptBelowTargetAsync(int jobId, int executionAttempt, CancellationToken cancellationToken) =>
+        ReplaceGuardedAsync(jobId, ReplaceRequest.BelowTarget(executionAttempt), cancellationToken);
+
+    private sealed record ReplaceRequest(bool IsAutomatic, int? AcceptedAttempt)
+    {
+        public static readonly ReplaceRequest Manual = new(false, null);
+        public static readonly ReplaceRequest Automatic = new(true, null);
+        public static ReplaceRequest BelowTarget(int attempt) => new(false, attempt);
+        public bool AcceptsBelowTarget => AcceptedAttempt is not null;
+    }
+
+    private async Task<ReplacementActionResult> ReplaceGuardedAsync(int jobId, ReplaceRequest request, CancellationToken cancellationToken)
     {
         // Only one replacement may act on a source at a time. A job becomes replaceable the instant it
         // reaches ReadyToReplace, where the post-verify auto-replace, the reconcile sweep, and a
@@ -218,7 +236,7 @@ public sealed class ReplacementService
         {
             if (await DedupeJournalStore.IsReservedAsync(_db, fileKeys, cancellationToken))
                 return ReplacementActionResult.Deferred("An unresolved exact-copy action reserves this source or destination. Resolve its journal before replacement.");
-            return await ReplaceCoreAsync(jobId, automatic, cancellationToken);
+            return await ReplaceCoreAsync(jobId, request, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -274,11 +292,70 @@ public sealed class ReplacementService
         return ReplacementActionResult.Failed(message, permanent: true, failureAlreadyRecorded: true);
     }
 
-    private Task<bool> IsAutomaticAcceptanceEnabledAsync(int? libraryId, CancellationToken cancellationToken) =>
-        _db.Libraries.AsNoTracking().AnyAsync(library => library.Id == libraryId && library.AutoReplace, cancellationToken);
-
-    private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, bool automatic, CancellationToken cancellationToken)
+    /// <summary>
+    /// Null when this failed job may be accepted below its picture-quality target; otherwise the
+    /// refusal. Uses the same rule the Queue shows the button by, against the job as it is now.
+    /// </summary>
+    private async Task<ReplacementActionResult?> RefuseBelowTargetAsync(
+        Job job, MediaFile media, int acceptedAttempt, CancellationToken cancellationToken)
     {
+        if (job.ExecutionAttempt != acceptedAttempt)
+            return ReplacementActionResult.Invalid("This job has been tried again since you looked at it. No replacement was made.");
+        var dryRun = (await _settings.GetQueueSettingsAsync(cancellationToken)).DryRunMode;
+        var decision = BelowTargetEligibility.Decide(job, media.MediaKind, media.Library?.MoveOnComplete == true, dryRun);
+        if (!decision.Eligible)
+            return ReplacementActionResult.Invalid(BelowTargetEligibility.Explain(decision.Refusal));
+        // A file someone excluded by hand is one they decided to leave alone. An automatic exclusion
+        // is expected here: a quality miss at the highest setting excludes the file at once.
+        if (await _db.Exclusions.AnyAsync(e => e.Path == media.Path && e.Source == ExclusionSource.Manual, cancellationToken))
+            return ReplacementActionResult.Invalid("This file is excluded. Remove its exclusion from the library's Excluded tab before accepting it.");
+        if (await _db.Replacements.AnyAsync(r => r.JobId == job.Id
+                && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
+            return ReplacementActionResult.Invalid("This job already has a replacement in progress or waiting for recovery.");
+        return null;
+    }
+
+    /// <summary>
+    /// The files no longer match what was measured. Forget their identity so the job stops being
+    /// offered for acceptance; trying the file again makes a fresh, measurable attempt.
+    /// </summary>
+    private async Task<ReplacementActionResult> RefuseChangedBelowTargetAsync(Job job, CancellationToken token)
+    {
+        await _db.Jobs.Where(row => row.Id == job.Id && row.Status == JobStatus.Failed
+                && row.ExecutionAttempt == job.ExecutionAttempt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(row => row.VerifiedSourceSha256, (string?)null)
+                .SetProperty(row => row.VerifiedOutputSha256, (string?)null)
+                .SetProperty(row => row.UpdatedAt, DateTimeOffset.UtcNow), token);
+        await _db.Entry(job).ReloadAsync(token);
+        return ReplacementActionResult.Failed(
+            "The original or the output changed after they were measured, so the output was not accepted. The original was left untouched; try the file again.",
+            permanent: true);
+    }
+
+    // An acceptance whose output never reached the original's place did not happen: the job is
+    // still the plain failure it was, and can be accepted again.
+    private static void ForgetUnfinishedAcceptance(Job? job)
+    {
+        if (job is { Status: JobStatus.Failed }) job.AcceptedBelowTargetAt = null;
+    }
+
+    // A failed job a person accepted is finished, not failed: it must not be counted among failures.
+    private static void ClearFailureOnceAccepted(Job job)
+    {
+        if (job.AcceptedBelowTargetAt is null) return;
+        job.ErrorMessage = null;
+        job.FailureCategory = null;
+    }
+
+    private Task<bool> IsAutomaticAcceptanceEnabledAsync(int? libraryId, CancellationToken cancellationToken) =>
+        // The same rule as AutoReplacePolicy.ReplacesAutomatically, written so the database can apply it.
+        _db.Libraries.AsNoTracking().AnyAsync(
+            library => library.Id == libraryId && library.AutoReplace && !library.MoveOnComplete, cancellationToken);
+
+    private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, ReplaceRequest request, CancellationToken cancellationToken)
+    {
+        var automatic = request.IsAutomatic;
         var job = await _db.Jobs
             .Include(j => j.MediaFile)
             .ThenInclude(f => f!.Library)
@@ -293,7 +370,8 @@ public sealed class ReplacementService
         // the same ready job before one of them acquires the per-job claim. If the winner has already
         // committed the replacement, replaying the request is a successful no-op rather than an
         // invalid operation. A rolled-back/pending record is not complete and remains invalid.
-        if (job.Status == JobStatus.Completed && job.VerificationPassed == true)
+        if (job.Status == JobStatus.Completed
+            && (job.VerificationPassed == true || request.AcceptsBelowTarget && job.AcceptedBelowTargetAt is not null))
         {
             var existing = await _db.Replacements
                 .AsNoTracking()
@@ -306,21 +384,25 @@ public sealed class ReplacementService
             }
         }
 
-        if (job.Status != JobStatus.ReadyToReplace)
+        if (job.MediaFile is not { } media)
+        {
+            return ReplacementActionResult.Invalid($"Job {jobId} has no media file to replace.");
+        }
+
+        if (request.AcceptedAttempt is { } acceptedAttempt)
+        {
+            if (await RefuseBelowTargetAsync(job, media, acceptedAttempt, cancellationToken) is { } refusal)
+                return refusal;
+        }
+        else if (job.Status != JobStatus.ReadyToReplace)
         {
             return ReplacementActionResult.Invalid(
                 $"Job {jobId} is {job.Status}; only a ReadyToReplace job can replace the original.");
         }
-
-        if (job.VerificationPassed != true)
+        else if (job.VerificationPassed != true)
         {
             return ReplacementActionResult.Invalid(
                 $"Job {jobId} has not passed verification; it cannot replace the original.");
-        }
-
-        if (job.MediaFile is not { } media)
-        {
-            return ReplacementActionResult.Invalid($"Job {jobId} has no media file to replace.");
         }
 
         if (automatic && !await IsAutomaticAcceptanceEnabledAsync(media.LibraryId, cancellationToken))
@@ -425,6 +507,10 @@ public sealed class ReplacementService
         if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
             return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
 
+        if (request.AcceptsBelowTarget
+            && (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256)))
+            return ReplacementActionResult.Invalid("This output has no verified file identity, so it cannot be accepted. Try the file again.");
+
         if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
             return await RefuseIdentityAsync(job,
                 "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", automatic, cancellationToken);
@@ -433,7 +519,9 @@ public sealed class ReplacementService
         await using var outputGuard = FileContentIdentity.OpenGuard(job.WorkOutputPath);
         if (!await FileContentIdentity.MatchesAsync(media.Path, job.VerifiedSourceSha256, cancellationToken)
             || !await FileContentIdentity.MatchesAsync(job.WorkOutputPath, job.VerifiedOutputSha256, cancellationToken))
-            return await RefuseIdentityAsync(job,
+            return request.AcceptsBelowTarget
+                ? await RefuseChangedBelowTargetAsync(job, cancellationToken)
+                : await RefuseIdentityAsync(job,
                 "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", automatic, cancellationToken);
 
         var originalSize = new FileInfo(media.Path).Length;
@@ -449,6 +537,21 @@ public sealed class ReplacementService
         // finalize a completed pair of moves from this Pending row.
         if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
             return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
+
+        // Mark the acceptance in the same write as the rollback record, and only if the job is still the
+        // failed attempt the person looked at: a retry or another acceptance in between wins.
+        await using var intent = await _db.BeginDiagnosticWriteAsync(cancellationToken);
+        if (request.AcceptedAttempt is { } attempt)
+        {
+            var acceptedAt = DateTimeOffset.UtcNow;
+            var marked = await _db.Jobs
+                .Where(row => row.Id == job.Id && row.Status == JobStatus.Failed && row.ExecutionAttempt == attempt
+                    && row.AcceptedBelowTargetAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(row => row.AcceptedBelowTargetAt, acceptedAt), cancellationToken);
+            if (marked == 0)
+                return ReplacementActionResult.Invalid("The job changed while it was being accepted. No replacement was made.");
+            await _db.Entry(job).ReloadAsync(cancellationToken);
+        }
 
         var replacement = new ReplacementEntity
         {
@@ -466,6 +569,7 @@ public sealed class ReplacementService
         };
         _db.Replacements.Add(replacement);
         await _db.SaveChangesAsync(cancellationToken);
+        await intent.CommitAsync(cancellationToken);
 
         try
         {
@@ -502,6 +606,8 @@ public sealed class ReplacementService
             if (restored)
             {
                 _db.Replacements.Remove(replacement);
+                // The original is back, so nothing was accepted; the job stays a plain failure.
+                ForgetUnfinishedAcceptance(job);
                 await _db.SaveChangesAsync(CancellationToken.None);
             }
 
@@ -525,6 +631,7 @@ public sealed class ReplacementService
 
         job.Status = JobStatus.Completed;
         job.UpdatedAt = DateTimeOffset.UtcNow;
+        ClearFailureOnceAccepted(job);
 
         // Accrue the durable lifetime savings tally in the same transaction as the replacement,
         // so the Dashboard headline reflects this file and survives later row/history changes.
@@ -827,6 +934,7 @@ public sealed class ReplacementService
             if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256, replacement.MediaFileId))
             {
                 _db.Replacements.Remove(replacement);
+                ForgetUnfinishedAcceptance(replacement.Job);
                 await _db.SaveChangesAsync(cancellationToken);
                 _logger.LogWarning(
                     "Restored original for interrupted pending replacement {ReplacementId}",
@@ -838,6 +946,7 @@ public sealed class ReplacementService
         {
             // The process stopped after recording Pending but before moving the original.
             _db.Replacements.Remove(replacement);
+            ForgetUnfinishedAcceptance(replacement.Job);
             await _db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -956,6 +1065,7 @@ public sealed class ReplacementService
         {
             replacement.Job.Status = JobStatus.Completed;
             replacement.Job.UpdatedAt = DateTimeOffset.UtcNow;
+            ClearFailureOnceAccepted(replacement.Job);
         }
 
         replacement.Status = ReplacementStatus.Replaced;

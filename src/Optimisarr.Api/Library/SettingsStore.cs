@@ -2,6 +2,7 @@ using Optimisarr.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 using System.Globalization;
@@ -94,8 +95,27 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         SettingKeys.ReplacementQuarantineRetentionDays,
         SettingKeys.RemoteWorkersEnabled,
         SettingKeys.WorkerVerificationRequired,
-        SettingKeys.BrandStyle
+        SettingKeys.BrandStyle,
+        SettingKeys.RealCuganPreset,
+        SettingKeys.RealCuganScale,
+        SettingKeys.RealCuganNoiseLevel
     };
+
+    /// <summary>
+    /// Super-resolution values that belong to this machine: whether it runs the experimental engine
+    /// at all, which GPU it uses, since device numbers mean nothing on another machine, and which
+    /// executables and model files it trusts. A backup naming them is accepted, but they are never
+    /// exported or restored.
+    /// </summary>
+    private static readonly string[] HostLocalSuperResolutionKeys =
+    [
+        SettingKeys.RealCuganEnabled,
+        SettingKeys.RealCuganDevice,
+        SettingKeys.RealCuganBinaryPath,
+        SettingKeys.RealCuganModelsPath,
+        SettingKeys.RealEsrganBinaryPath,
+        SettingKeys.RealEsrganModelsPath
+    ];
 
     /// <summary>
     /// Setting keys accepted while reading a backup. Legacy verification keys remain recognised so
@@ -103,7 +123,7 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
     /// deliberately absent from <see cref="PortableSettingKeys"/> and are never persisted again.
     /// </summary>
     public static readonly IReadOnlySet<string> RecognizedImportSettingKeys = new HashSet<string>(
-        PortableSettingKeys.Concat(LegacyVerificationSettingKeys));
+        PortableSettingKeys.Concat(LegacyVerificationSettingKeys).Concat(HostLocalSuperResolutionKeys));
 
     /// <summary>
     /// The legacy single library root, if one was configured before the
@@ -224,7 +244,7 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             // Opt-in because the established software path is the compatibility baseline.
             ParseEnum(settings.GetValueOrDefault(SettingKeys.HdrToneMapMode), HdrToneMapMode.Software),
             VerificationPolicy.Default,
-            ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
+            ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: true),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
             // Startup records the fresh-install default or preserves the historical choice.
@@ -312,6 +332,82 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             [SettingKeys.WorkerVerificationRequired] = settings.WorkerVerificationRequired.ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
     }
+
+    /// <summary>
+    /// Reads the super-resolution engine options. Missing or unparseable values — an old
+    /// database, a foreign backup — fall back per field to the documented defaults, so what the
+    /// API returns is the configuration that would actually take effect, never a half-read one.
+    /// </summary>
+    public async Task<SuperResolutionOptions> GetSuperResolutionOptionsAsync(CancellationToken cancellationToken)
+    {
+        var settings = await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == SettingKeys.RealCuganEnabled
+                || setting.Key == SettingKeys.RealCuganPreset
+                || setting.Key == SettingKeys.RealCuganScale
+                || setting.Key == SettingKeys.RealCuganNoiseLevel
+                || setting.Key == SettingKeys.RealCuganDevice
+                || setting.Key == SettingKeys.RealCuganBinaryPath
+                || setting.Key == SettingKeys.RealCuganModelsPath)
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+
+        var defaults = SuperResolutionOptions.Defaults;
+        return new SuperResolutionOptions(
+            ParseBool(settings.GetValueOrDefault(SettingKeys.RealCuganEnabled), defaults.Enabled),
+            ParseChoice(settings.GetValueOrDefault(SettingKeys.RealCuganPreset), defaults.Preset,
+                RealCuganModelCatalog.Presets),
+            ParseInt(settings.GetValueOrDefault(SettingKeys.RealCuganScale), defaults.Scale,
+                min: SuperResolutionOptions.Scales.Min(), max: SuperResolutionOptions.Scales.Max()),
+            ParseInt(settings.GetValueOrDefault(SettingKeys.RealCuganNoiseLevel), defaults.NoiseLevel, min: -1, max: 3),
+            ParseDevice(settings.GetValueOrDefault(SettingKeys.RealCuganDevice), defaults.Device),
+            settings.GetValueOrDefault(SettingKeys.RealCuganBinaryPath, defaults.BinaryPath),
+            settings.GetValueOrDefault(SettingKeys.RealCuganModelsPath, defaults.ModelsPath));
+    }
+
+    /// <summary>Where this machine keeps Real-ESRGAN. Empty paths mean the bundled engine.</summary>
+    public async Task<SuperResolutionEnginePaths> GetRealEsrganPathsAsync(CancellationToken cancellationToken)
+    {
+        var settings = await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == SettingKeys.RealEsrganBinaryPath || setting.Key == SettingKeys.RealEsrganModelsPath)
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+        return new SuperResolutionEnginePaths(
+            settings.GetValueOrDefault(SettingKeys.RealEsrganBinaryPath, string.Empty),
+            settings.GetValueOrDefault(SettingKeys.RealEsrganModelsPath, string.Empty));
+    }
+
+    public Task SetRealEsrganPathsAsync(SuperResolutionEnginePaths paths, CancellationToken cancellationToken) =>
+        UpsertManyAsync(new Dictionary<string, string>
+        {
+            [SettingKeys.RealEsrganBinaryPath] = paths.BinaryPath,
+            [SettingKeys.RealEsrganModelsPath] = paths.ModelsPath,
+        }, cancellationToken);
+
+    /// <summary>The run a library's choice makes on this machine.</summary>
+    public async Task<SuperResolutionOptions> GetSuperResolutionOptionsForAsync(
+        string? engine, string? model, int? scale, CancellationToken cancellationToken)
+    {
+        var server = await GetSuperResolutionOptionsAsync(cancellationToken);
+        return engine is null
+            ? server
+            : server.ForEngine(await GetRealEsrganPathsAsync(cancellationToken), engine, model, scale);
+    }
+
+    /// <summary>
+    /// Persists the super-resolution options verbatim. Callers validate first — the settings API
+    /// rejects unsupported combinations with a clear error rather than storing them.
+    /// </summary>
+    public Task SetSuperResolutionOptionsAsync(SuperResolutionOptions options, CancellationToken cancellationToken) =>
+        UpsertManyAsync(new Dictionary<string, string>
+        {
+            [SettingKeys.RealCuganEnabled] = options.Enabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.RealCuganPreset] = options.Preset,
+            [SettingKeys.RealCuganScale] = options.Scale.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.RealCuganNoiseLevel] = options.NoiseLevel.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.RealCuganDevice] = options.Device,
+            [SettingKeys.RealCuganBinaryPath] = options.BinaryPath,
+            [SettingKeys.RealCuganModelsPath] = options.ModelsPath,
+        }, cancellationToken);
 
     /// <summary>Reads the exportable settings as raw key/value pairs. Secrets are never included.</summary>
     public async Task<IReadOnlyDictionary<string, string>> ExportSettingsAsync(CancellationToken cancellationToken)
@@ -436,6 +532,23 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
 
     private static bool ParseBool(string? value, bool fallback) =>
         bool.TryParse(value, out var parsed) ? parsed : fallback;
+
+    /// <summary>A stored choice that must be one of a fixed set; anything else reads as the fallback.</summary>
+    private static string ParseChoice(string? value, string fallback, IReadOnlyList<string> choices) =>
+        value is not null && choices.Contains(value) ? value : fallback;
+
+    private static string ParseDevice(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        if (value is "auto" or "cpu") return value;
+        if (value.StartsWith("gpu:", StringComparison.Ordinal)
+            && int.TryParse(value["gpu:".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
+            && index >= 0)
+        {
+            return value;
+        }
+        return fallback;
+    }
 
     private static T ParseEnum<T>(string? value, T fallback)
         where T : struct, Enum =>

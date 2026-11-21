@@ -29,6 +29,10 @@ test('schedule explains the dispatch gate and each library window without mislab
         { id: 6, name: 'Series', enabled: true, autoEnqueueEnabled: true,
           autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00',
           autoReplace: false, lastAutoEnqueueAt: null },
+        // An older row with both switches on: saving elsewhere wins, so nothing is replaced.
+        { id: 7, name: 'Copies', enabled: true, autoEnqueueEnabled: true,
+          autoEnqueueWindowStart: '00:00', autoEnqueueWindowEnd: '00:00',
+          autoReplace: true, moveOnComplete: true, targetFolder: '/optimised', lastAutoEnqueueAt: null },
       ] : null
     await route.fulfill({ status: body === null ? 404 : 200, contentType: 'application/json', body: JSON.stringify(body ?? {}) })
   })
@@ -42,7 +46,10 @@ test('schedule explains the dispatch gate and each library window without mislab
   await expect(dispatch).toContainText('3 / 4')
   await expect(dispatch).toContainText('Every 6h')
   const windows = page.getByRole('region', { name: 'Auto-optimise windows' })
-  await expect(windows.locator('article')).toHaveCount(3)
+  await expect(windows.locator('article')).toHaveCount(4)
+  // Saving elsewhere wins over an old "replace automatically": nothing is replaced, so it reads Off.
+  await expect(windows.locator('article').filter({ hasText: 'Films' }).locator('.schedule-library-facts dd').first()).toHaveText('When verified')
+  await expect(windows.locator('article').filter({ hasText: 'Copies' }).locator('.schedule-library-facts dd').first()).toHaveText('Off')
   await expect(windows.locator('article').filter({ hasText: 'Films' })).toContainText('In window')
   await expect(windows.locator('article').filter({ hasText: 'Archive' })).toContainText(/disabled/i)
   await expect(windows.locator('article').filter({ hasText: 'Series' })).toContainText('Outside window')

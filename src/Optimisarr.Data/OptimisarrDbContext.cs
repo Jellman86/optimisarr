@@ -242,9 +242,14 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.MediaType).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.NoiseReduction).HasConversion<string>().HasMaxLength(16);
+            entity.Property(library => library.LastAutoDedupeOutcome).HasConversion<string>().HasMaxLength(24);
             entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.WorkPlacement).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.SuperResolutionQualityCheck).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.SuperResolutionEngine).HasMaxLength(32);
+            entity.Property(library => library.SuperResolutionModel).HasMaxLength(64);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
@@ -267,6 +272,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.Container).HasMaxLength(32);
             entity.Property(file => file.VideoCodec).HasMaxLength(64);
             entity.Property(file => file.VideoProfile).HasMaxLength(64);
+            entity.Property(file => file.FieldOrder).HasMaxLength(32);
             entity.Property(file => file.PixelFormat).HasMaxLength(32);
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
             entity.Property(file => file.AudioLanguages).HasMaxLength(256);
@@ -287,6 +293,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(job => job.Id);
             entity.Property(job => job.PerceptualSearchJson).HasMaxLength(262144);
             entity.Property(job => job.SoundtrackSearchJson).HasMaxLength(1048576);
+            entity.Property(job => job.SkippedQualitySearches).HasConversion<string>().HasMaxLength(128);
             entity.ToTable(t => t.HasCheckConstraint("CK_Jobs_PerceptualSearch", """
                 (AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)
                 AND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)
@@ -303,8 +310,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.VerifiedOutputSha256).HasMaxLength(64);
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
+            entity.Property(job => job.AdaptiveVideoQualityEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
             entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
+            entity.Property(job => job.SuperResolutionRun).HasMaxLength(128);
             entity.Property(job => job.VmafModel).HasMaxLength(64);
             entity.Property(job => job.RequestedRuleProfile).HasConversion<string>().HasMaxLength(32);
 
@@ -421,6 +430,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
                 """));
             entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.EndReason).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.HandbackFailure).HasMaxLength(Optimisarr.Core.Workers.WorkerHandbackFailure.MaxLength);
             entity.Property<long>("AcquiredUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("AcquiredAt"));
             entity.HasIndex("JobId", "AcquiredUtcTicks", "Id");
             entity.Property(lease => lease.QualitySourceSha256).HasMaxLength(64);

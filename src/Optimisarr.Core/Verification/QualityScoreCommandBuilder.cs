@@ -53,6 +53,11 @@ public sealed record QualityMeasurementContext(
     // before any timestamp handling. Decimating by nearest timestamp instead can keep different
     // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
     Queue.FrameRateDecimation? ReferenceDecimation = null,
+    // The encode deinterlaced, so the reference is too. Frames stay paired one to one.
+    bool ReferenceDeinterlace = false,
+    // The encode reduced noise, so the reference is cleaned identically and the gate judges how faithfully
+    // the encode kept the cleaned picture.
+    Queue.NoiseReduction ReferenceDenoise = Queue.NoiseReduction.Off,
     // How far into its own container each file's first picture sits (video start minus container
     // start). FFmpeg seeks and stamps frames relative to the container start, which is the earliest
     // stream, so two files whose pictures match frame for frame still present them at different
@@ -93,7 +98,11 @@ public sealed record QualityMeasurementContext(
     VmafEncodedVideo? EncodedVideo = null,
     string? ReferenceVideoCodec = null,
     // A worker fills these fixed CAMBI tokens from its actual candidate probe before scoring.
-    bool EncodedVideoFromWorker = false);
+    bool EncodedVideoFromWorker = false,
+    // How many pictures the reference really holds, when they were counted. A variable-frame-rate
+    // file can report 29.97 fps while holding 25.5 a second, so a window placed at the reported
+    // rate can start after its last frame and score nothing. Frame windows are placed by this count.
+    int? ReferenceFrameCount = null);
 
 public sealed record VmafEncodedVideo(int Width, int Height, int BitDepth);
 
@@ -124,6 +133,7 @@ public static class QualityScoreCommandBuilder
     // same 10-bit pixels as the software path, including when choosing the executable.
     public static VmafAcceleration EffectiveAcceleration(QualityMeasurementContext context) =>
         context.ReferenceIsHdr || context.ReferenceCrop is not null || context.ReferenceDecimation is not null
+            || context.ReferenceDeinterlace || context.ReferenceDenoise != Queue.NoiseReduction.Off
             || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
 
     /// <summary>
@@ -216,9 +226,9 @@ public static class QualityScoreCommandBuilder
 
         // Thinning by frame index happens before anything touches timestamps, so the index each
         // frame is judged by is the one the encode judged it by.
-        var referenceDecimation = context.ReferenceDecimation is { } decimation
-            ? $"{Queue.FrameRatePlanner.Filter(decimation)},"
-            : string.Empty;
+        var referenceDecimation = (context.ReferenceDeinterlace ? $"{Domain.VideoFieldOrder.DeinterlaceFilter}," : string.Empty)
+            + (Queue.NoiseReductionFilter.For(context.ReferenceDenoise) is { } denoise ? $"{denoise}," : string.Empty)
+            + (context.ReferenceDecimation is { } decimation ? $"{Queue.FrameRatePlanner.Filter(decimation)}," : string.Empty);
 
         // With a crop, the picture being judged is the cropped one: both streams are brought to
         // its size, and the viewing model is chosen from it.
@@ -255,6 +265,11 @@ public static class QualityScoreCommandBuilder
         // matching initial PTS. Absolute indices preserve correspondence without optimising
         // away a genuinely duplicated or missing picture (#406).
         var sequential = pairFrames && !completeFramePairing;
+        // A cleaned reference is named in the report, because the score then says nothing about the cleaning itself.
+        if (context.ReferenceDenoise != Queue.NoiseReduction.Off)
+        {
+            colourPreprocessing += $" · reference noise-reduced ({context.ReferenceDenoise.ToString().ToLowerInvariant()}) like the encode";
+        }
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
@@ -280,7 +295,8 @@ public static class QualityScoreCommandBuilder
         var distortedTimeline = completeFramePairing
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
-            ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value,
+                context.ReferenceFrameCount, context.ReferenceDurationSeconds)
             : TimelinePreparation(
                 context.DistortedStartSeconds,
                 distortedInputStart,
@@ -291,7 +307,8 @@ public static class QualityScoreCommandBuilder
         var referenceTimeline = completeFramePairing
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
-            ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value,
+                context.ReferenceFrameCount, context.ReferenceDurationSeconds)
             : TimelinePreparation(
                 context.ReferenceStartSeconds,
                 referenceInputStart,
@@ -535,10 +552,20 @@ public static class QualityScoreCommandBuilder
         return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
     }
 
-    private static string SequentialFrameTimeline(int startSeconds, int durationSeconds, double frameRate)
+    private static string SequentialFrameTimeline(
+        int startSeconds, int durationSeconds, double frameRate, int? frameCount, double? referenceDurationSeconds)
     {
-        var first = (long)Math.Round(startSeconds * frameRate);
-        var end = first + (long)Math.Round(durationSeconds * frameRate);
+        // Seconds become frame numbers at the rate the file really holds pictures when it was
+        // counted, and the window is kept inside the file, ending at its last frame if need be.
+        var counted = frameCount is > 0 && referenceDurationSeconds is > 0 && double.IsFinite(referenceDurationSeconds.Value);
+        var indexRate = counted ? frameCount!.Value / referenceDurationSeconds!.Value : frameRate;
+        var first = (long)Math.Round(startSeconds * indexRate);
+        var length = (long)Math.Round(durationSeconds * indexRate);
+        if (counted && first + length > frameCount!.Value)
+        {
+            first = Math.Max(0, frameCount.Value - length);
+        }
+        var end = counted ? Math.Min(first + length, frameCount!.Value) : first + length;
         var step = (long)Math.Round(1_000_000 / frameRate);
         return $"trim=start_frame={first}:end_frame={end},settb=AVTB,setpts=N*{step}";
     }

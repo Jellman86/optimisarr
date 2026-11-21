@@ -19,6 +19,8 @@ public sealed record RuleOverrides
     public string? TargetContainer { get; init; }
     public HdrHandling? Hdr { get; init; }
     public bool? OptimiseDolbyVision { get; init; }
+    public bool? DeinterlaceVideo { get; init; }
+    public Queue.NoiseReduction? NoiseReduction { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public bool? ExcludeHardLinkedFiles { get; init; }
     public IReadOnlyList<string>? SkipSourceCodecs { get; init; }
@@ -29,6 +31,9 @@ public sealed record RuleOverrides
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
     public bool? NormalizeOpusChannelLayout { get; init; }
+    public bool? TrimAudioSilence { get; init; }
+    public double? AudioSilenceThresholdDb { get; init; }
+    public double? AudioSilenceMinimumSeconds { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
     public bool? ReencodeLossyAudio { get; init; }

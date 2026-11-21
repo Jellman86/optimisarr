@@ -23,7 +23,8 @@ public sealed record Candidate(
     string? Codec,
     string Profile,
     bool Eligible,
-    string Reason);
+    string Reason,
+    int? RetryJobId = null);
 
 /// <summary>
 /// Turns the probed inventory into optimisation candidates by running the pure
@@ -114,7 +115,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 codec,
                 profile.ToString(),
                 decision.IsEligible,
-                decision.Reason));
+                decision.Reason,
+                decision.RetryJobId));
         }
 
         return candidates;
@@ -179,6 +181,9 @@ public sealed class CandidateService(OptimisarrDbContext db)
         return markedPaths.Any(path => string.Equals(StemOf(path), stem, StringComparison.Ordinal));
     }
 
+    /// <summary>The probed facts of one inventory row, as the pure rules and planner take them.</summary>
+    public static MediaProperties PropertiesOf(MediaFile file) => Describe(file).Media;
+
     // Project a probed row into the pure evaluator's input plus the codec that drives its eligibility
     // (audio files report their audio codec; video and still-image files carry it as the video codec).
     private static (MediaProperties Media, string? Codec) Describe(MediaFile file)
@@ -206,7 +211,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.MaxAudioChannels,
             TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
             TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages),
-            file.HardLinkCount) { AudioCodecSummary = file.AudioCodecs };
+            file.HardLinkCount,
+            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs };
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }
@@ -260,7 +266,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
         // SQLite stores DateTimeOffset as text and can't aggregate it server-side, so
         // fetch the terminal jobs and reduce to the latest per file in memory.
         var rows = await query
-            .Select(job => new { job.MediaFileId, job.Status, job.FinishedAt })
+            .Select(job => new { job.Id, job.MediaFileId, job.Status, job.FinishedAt })
             .ToListAsync(cancellationToken);
 
         return rows
@@ -273,6 +279,9 @@ public sealed class CandidateService(OptimisarrDbContext db)
                         .Max(row => row.FinishedAt),
                     LastFailedAt: group
                         .Where(row => row.Status == JobStatus.Failed)
-                        .Max(row => row.FinishedAt)));
+                        .Max(row => row.FinishedAt),
+                    LastFailedJobId: group
+                        .Where(row => row.Status == JobStatus.Failed)
+                        .MaxBy(row => row.FinishedAt)?.Id));
     }
 }

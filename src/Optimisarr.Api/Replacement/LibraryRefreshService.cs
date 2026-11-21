@@ -6,8 +6,8 @@ using Optimisarr.Data;
 namespace Optimisarr.Api.Replacement;
 
 /// <summary>
-/// Tells connected media servers to re-scan a title after a verified replacement (or
-/// a rollback), reusing the same connections configured for the activity-pause gate.
+/// Tells connected media servers, and Sonarr or Radarr where asked, to re-scan a title after a
+/// verified replacement (or a rollback), reusing the connections already configured.
 /// Strictly best-effort: a server being offline or rejecting the call is logged and
 /// ignored, never affecting the replacement's outcome. The original is already safely
 /// replaced before this runs.
@@ -15,7 +15,8 @@ namespace Optimisarr.Api.Replacement;
 public sealed class LibraryRefreshService(
     OptimisarrDbContext db,
     IHttpClientFactory httpClientFactory,
-    ILogger<LibraryRefreshService> logger)
+    ILogger<LibraryRefreshService> logger,
+    ArrRescanService? arrRescan = null)
 {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
@@ -29,6 +30,11 @@ public sealed class LibraryRefreshService(
         foreach (var watcher in targets)
         {
             await NotifyWatcherAsync(watcher, changedFilePath, cancellationToken);
+        }
+
+        if (arrRescan is not null)
+        {
+            await arrRescan.RescanForPathAsync(changedFilePath, cancellationToken);
         }
     }
 

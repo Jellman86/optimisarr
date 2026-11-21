@@ -3,6 +3,10 @@
   import {
     api,
     type Settings,
+    type SuperResolutionEngine,
+    type SuperResolutionSettings,
+    type SuperResolutionStatus,
+    type SuperResolutionProbe,
     type TimedCleanupPreview,
     type ActivityWatcher,
     type ActivityWatcherType,
@@ -12,6 +16,7 @@
     type SaveNotificationTarget,
     type ArrConnection,
     type ArrConnectionType,
+    type ArrTracking,
     type SaveArrConnection,
     type ConnectionTestResult,
     type PlexDiscoveredServer,
@@ -42,15 +47,16 @@
   // A tab strip could not do the reporting, and its numbered sections implied a sequence
   // that never existed: nobody configures their encoder before their notifications because
   // it happens to be numbered lower.
-  type RoomKey = 'encoding' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
+  type RoomKey = 'encoding' | 'superResolution' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
 
   const ROOM_ICONS: Record<RoomKey, string> = {
-    encoding: 'gpu', files: 'shield-check', servers: 'tv', downloads: 'download',
+    encoding: 'gpu', superResolution: 'film', files: 'shield-check', servers: 'tv', downloads: 'download',
     notifications: 'bell', workers: 'server', system: 'sliders',
   }
 
   const ROOM_PATHS: Record<RoomKey, string> = {
     encoding: 'encoding',
+    superResolution: 'super-resolution',
     files: 'files',
     servers: 'media-servers',
     downloads: 'download-managers',
@@ -68,7 +74,16 @@
     return match ? match[0] : null
   }
 
-  let openRoom = $derived(roomFromPath(router.path))
+  // Setup shows one room's forms inside its own page, without the Settings frame around them.
+  let { embeddedRoom = null, onEmbeddedChange = undefined, embeddedDraft = $bindable(false) }: {
+    embeddedRoom?: 'servers' | 'downloads' | null
+    /** Called when a connection was saved or removed, so setup can count again at once. */
+    onEmbeddedChange?: () => void
+    /** True while a connection form holds something typed but not saved. */
+    embeddedDraft?: boolean
+  } = $props()
+
+  let openRoom = $derived(embeddedRoom ?? roomFromPath(router.path))
 
   let focusAfterNavigation = $state<string | null>(null)
 
@@ -189,18 +204,34 @@
   }
 
   const arrTypes: ArrConnectionType[] = ['Sonarr', 'Radarr']
-  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true })
+  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true, rescanAfterChanges: true })
 
   let arrs = $state<ArrConnection[]>([])
   let arrError = $state<string | null>(null)
   let editingArrId = $state<number | null>(null)
   let arrDraft = $state<SaveArrConnection>(emptyArr())
   let savingArr = $state(false)
+  let arrTracking = $state<ArrTracking[] | null>(null)
+  let checkingArrTracking = $state(false)
+
+  async function checkArrTracking() {
+    checkingArrTracking = true
+    arrTracking = null
+    arrError = null
+    try {
+      arrTracking = await api.arrTracking()
+    } catch (err) {
+      arrError = err instanceof Error ? err.message : i18n.m.settings.error_load_arrs
+    } finally {
+      checkingArrTracking = false
+    }
+  }
 
   async function loadArrs() {
     try {
       arrs = await api.arrConnections()
       arrError = null
+      onEmbeddedChange?.()
     } catch (err) {
       arrError = err instanceof Error ? err.message : i18n.m.settings.error_load_arrs
     }
@@ -213,7 +244,7 @@
 
   function startEditArr(c: ArrConnection) {
     editingArrId = c.id
-    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled }
+    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled, rescanAfterChanges: c.rescanAfterChanges }
   }
 
   async function saveArr() {
@@ -251,6 +282,16 @@
   let watcherError = $state<string | null>(null)
   let editingId = $state<number | null>(null)
   let watcherDraft = $state<SaveActivityWatcher>(emptyWatcher())
+
+  // Setup must not move on over something typed into a connection form and never saved.
+  $effect(() => {
+    const typed = (...values: (string | null | undefined)[]) => values.some((value) => (value ?? '').trim() !== '')
+    embeddedDraft = embeddedRoom === 'downloads'
+      ? editingArrId !== null || typed(arrDraft.name, arrDraft.baseUrl, arrDraft.apiKey)
+      : embeddedRoom === 'servers'
+        ? editingId !== null || typed(watcherDraft.name, watcherDraft.baseUrl, watcherDraft.apiToken)
+        : false
+  })
   let savingWatcher = $state(false)
 
   // Interactive sign-in (Plex OAuth/PIN, Jellyfin Quick Connect).
@@ -380,6 +421,7 @@
     try {
       watchers = await api.activityWatchers()
       watcherError = null
+      onEmbeddedChange?.()
     } catch (err) {
       watcherError = err instanceof Error ? err.message : i18n.m.settings.error_load_watchers
     }
@@ -432,7 +474,72 @@
     }
   }
 
-  let settings = $state<Settings>({
+    // The documented initial super-resolution configuration. The server holds the same defaults;
+  // this copy exists so the form can bind before (and regardless of) the first load.
+  function defaultSuperResolution(): SuperResolutionSettings {
+    return { enabled: false, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '', realEsrganBinaryPath: '', realEsrganModelsPath: '' }
+  }
+
+  let engineStatus = $state<SuperResolutionStatus | null>(null)
+  let engineError = $state<string | null>(null)
+  let engineLoading = $state(false)
+  let probingEngine = $state(false)
+  let engineProbe = $state<SuperResolutionProbe | null>(null)
+
+  let statusEngine = $state<SuperResolutionEngine>('realcugan')
+
+  /** Clearing the last answer makes the effect below fetch this engine's. */
+  function checkEngine(engine: SuperResolutionEngine) {
+    statusEngine = engine
+    engineStatus = null
+    engineError = null
+    engineProbe = null
+  }
+
+  async function loadEngineStatus() {
+    engineLoading = true
+    engineError = null
+    // The operator can switch engines while this runs, and the answer is not about the new one.
+    const engine = statusEngine
+    try {
+      const status = await api.superResolutionStatus(engine)
+      if (engine === statusEngine) engineStatus = status
+    } catch (err) {
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
+    } finally {
+      engineLoading = false
+    }
+  }
+
+  async function probeEngine() {
+    probingEngine = true
+    engineProbe = null
+    const engine = statusEngine
+    try {
+      const probe = await api.probeSuperResolution(engine)
+      if (engine === statusEngine) engineProbe = probe
+    } catch (err) {
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
+    } finally {
+      probingEngine = false
+    }
+  }
+
+  function restoreSuperResolutionDefaults() {
+    // Defaults cover the engine configuration only; the experimental switch stays as the operator left it.
+    settings = { ...settings, superResolution: { ...defaultSuperResolution(), enabled: settings.superResolution.enabled } }
+    engineProbe = null
+  }
+
+  /** The first four Vulkan devices, plus a saved higher index so it is never hidden. */
+  function gpuDeviceOptions(value: string): number[] {
+    const saved = /^gpu:(\d+)$/.exec(value)
+    const indexes = [0, 1, 2, 3]
+    if (saved && !indexes.includes(Number(saved[1]))) indexes.push(Number(saved[1]))
+    return indexes
+  }
+
+let settings = $state<Settings>({
     maxConcurrentJobs: 1,
     minFreeDiskBytes: 10 * 1024 * 1024 * 1024,
     cpuThreadLimit: 0,
@@ -440,7 +547,7 @@
     encoderMode: 'Auto',
     hardwareDecode: true,
     hdrToneMapMode: 'Software',
-    replacementAllowCrossFilesystem: false,
+    replacementAllowCrossFilesystem: true,
     dryRunMode: false,
     remoteWorkersEnabled: false,
     workerVerificationRequired: true,
@@ -451,6 +558,7 @@
     automaticNonVideoSlots: 0,
     automaticEvidenceValidationSlots: 1,
     replacementQuarantineRetentionDays: 0,
+    superResolution: defaultSuperResolution(),
   })
 
   // The values as the server last confirmed them. Everything the form binds to is a draft
@@ -467,13 +575,26 @@
   /** Which settings belong to which room, so a card can count its own unsaved edits. */
   const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
     encoding: ['maxConcurrentJobs', 'workloadConcurrencyMode', 'nonVideoSlots', 'evidenceValidationSlots', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
+    superResolution: ['superResolution'],
     files: ['dryRunMode', 'remoteWorkersEnabled', 'workerVerificationRequired', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
   }
 
   function sameValue(a: unknown, b: unknown): boolean {
     // Number inputs hand back strings, so 5 and '5' are the same answer typed twice.
     if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
+    if (typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b)
     return a === b
+  }
+
+  /**
+   * A copy of a settings object that is safe to edit or keep as a snapshot. `superResolution` is
+   * the one nested object in `Settings`: a top-level spread alone would leave the draft and its
+   * saved copy pointing at the same object, so an edit through a bound control would change both
+   * at once — and the change detector, which compares values, would report nothing changed. No
+   * save bar, no room badge, no leave-guard, and a save that silently drops the edit.
+   */
+  function detach(value: Settings): Settings {
+    return { ...value, superResolution: { ...value.superResolution } }
   }
 
   let changedFields = $derived.by(() => {
@@ -508,12 +629,12 @@
       minFreeDiskGiB = savedMinFreeDiskGiB
       return
     }
-    settings = { ...settings, [field]: savedSettings[field] }
+    settings = detach({ ...settings, [field]: savedSettings[field] })
   }
 
   function discardAll() {
     if (!savedSettings) return
-    settings = { ...savedSettings }
+    settings = detach(savedSettings)
     minFreeDiskGiB = savedMinFreeDiskGiB
     message = null
     error = null
@@ -530,6 +651,18 @@
         encoder: settings.encoderMode,
         hours: settings.libraryScanIntervalHours,
       }),
+    },
+    {
+      key: 'superResolution' as RoomKey,
+      title: i18n.m.settings.room_super_resolution,
+      description: i18n.m.settings.room_super_resolution_desc,
+      state: settings.superResolution.enabled
+        ? tr(i18n.m.settings.room_super_resolution_state_on, {
+            preset: settings.superResolution.preset,
+            scale: settings.superResolution.scale,
+            noise: settings.superResolution.noiseLevel,
+          })
+        : i18n.m.settings.room_super_resolution_state_off,
     },
     {
       key: 'files' as RoomKey,
@@ -628,6 +761,16 @@
     }
   })
 
+  // The status section answers "can this machine run the engine?" — so it detects the first
+  // time the room is opened instead of waiting for a Detect button that only exists once a
+  // status has come back. The button re-checks whenever the operator wants (after fixing a
+  // path or installing a driver), and it stays reachable in the error state below.
+  $effect(() => {
+    if (openRoom === 'superResolution' && savedSettings?.superResolution.enabled && !engineLoading && !engineStatus && !engineError) {
+      void loadEngineStatus()
+    }
+  })
+
   async function load() {
     loading = true
     error = null
@@ -640,9 +783,9 @@
       // expression reads it synchronously, which makes the calling $effect depend on it, so
       // assigning it here would retrigger the effect and loop forever on "Loading…".
       const loaded = await api.settings()
-      settings = { ...settings, ...loaded }
+      settings = { ...settings, ...loaded, superResolution: loaded.superResolution ?? defaultSuperResolution() }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       await loadCleanupPreview()
     } catch (err) {
@@ -659,6 +802,7 @@
     try {
       const saved = await api.saveSettings({
         ...settings,
+        superResolution: settings.superResolution,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         nonVideoSlots: Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)),
         evidenceValidationSlots: Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)),
@@ -669,7 +813,7 @@
       })
       settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       message = i18n.m.settings.saved
       await loadCleanupPreview()
@@ -710,8 +854,8 @@
       count: cleanupPreview.totalCount,
       failedCount: cleanupPreview.failedOutputCount,
       failedSpace: formatSize(cleanupPreview.failedOutputBytes),
-      quarantineCount: cleanupPreview.quarantinedOriginalCount,
-      quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+      quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
+      quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
     }))
     if (!confirmed) return
 
@@ -818,12 +962,14 @@
 {/snippet}
 
 <div class="settings-layout">
+{#if !embeddedRoom}
 <header class="settings-page-header">
   <div class="min-w-0">
     <h1 class="page-title">{i18n.m.nav.settings}</h1>
     <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
   </div>
 </header>
+{/if}
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
@@ -865,7 +1011,7 @@
         </section>
       {/each}
     </div>
-  {:else}
+  {:else if !embeddedRoom}
     <div class="settings-room-heading">
       <button type="button" class="btn btn-ghost -ml-2 mb-5 px-2 text-xs" onclick={closeRoom}>
         <Icon name="arrow-left" /> {i18n.m.settings.all_settings}
@@ -983,6 +1129,173 @@
   </div>
   {/if}
 
+  {#if openRoom === 'superResolution'}
+  <div class="min-w-0 space-y-5">
+  <ConfigSection
+    id="super-resolution-engine"
+    title={i18n.m.settings.sr_engine_title}
+    description={i18n.m.settings.sr_engine_desc}
+  >
+    <div class="settings-fields">
+      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label">
+          <label class="label" for="sr-enabled">{i18n.m.settings.sr_enable}</label>
+          <p>{i18n.m.settings.sr_enable_hint}</p>
+        </div>
+        <Toggle bind:checked={settings.superResolution.enabled} label={i18n.m.settings.sr_enable} />
+        {@render wasChanged('superResolution', '')}
+      </div>
+
+      <!-- Every engine setting stays hidden until the experimental switch is on. -->
+      {#if settings.superResolution.enabled}
+      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="sr-engine">{i18n.m.settings.sr_engine}</label><p>{i18n.m.settings.sr_engine_hint}</p></div>
+        <input id="sr-engine" class="input" value="Real-CUGAN (realcugan-ncnn-vulkan)" disabled />
+        <p class="text-xs text-ink-3 mt-2">{i18n.m.settings.sr_engine_note}</p>
+      </div>
+
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-preset">{i18n.m.settings.sr_preset} <InfoTip text={i18n.m.settings.sr_preset_tip} /></label><p>{i18n.m.settings.sr_preset_hint}</p></div>
+        <select id="sr-preset" class="input" bind:value={settings.superResolution.preset}>
+          <option value="mixed">{i18n.m.settings.sr_preset_mixed}</option>
+          <option value="pro">{i18n.m.settings.sr_preset_pro}</option>
+          <option value="nose">{i18n.m.settings.sr_preset_nose}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-scale">{i18n.m.settings.sr_scale} <InfoTip text={i18n.m.settings.sr_scale_tip} /></label><p>{i18n.m.settings.sr_scale_hint}</p></div>
+        <select id="sr-scale" class="input" bind:value={settings.superResolution.scale}>
+          <option value={2}>{i18n.m.settings.sr_scale_2}</option>
+          <option value={3}>{i18n.m.settings.sr_scale_3}</option>
+          <option value={4}>{i18n.m.settings.sr_scale_4}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-noise">{i18n.m.settings.sr_noise} <InfoTip text={i18n.m.settings.sr_noise_tip} /></label><p>{i18n.m.settings.sr_noise_hint}</p></div>
+        <select id="sr-noise" class="input" bind:value={settings.superResolution.noiseLevel}>
+          <option value={-1}>{i18n.m.settings.sr_noise_conservative}</option>
+          <option value={0}>{i18n.m.settings.sr_noise_none}</option>
+          <option value={1}>{i18n.m.settings.sr_noise_1}</option>
+          <option value={2}>{i18n.m.settings.sr_noise_2}</option>
+          <option value={3}>{i18n.m.settings.sr_noise_3}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-device">{i18n.m.settings.sr_device} <InfoTip text={i18n.m.settings.sr_device_tip} /></label><p>{i18n.m.settings.sr_device_hint}</p></div>
+        <select id="sr-device" class="input" bind:value={settings.superResolution.device}>
+          <option value="auto">{i18n.m.settings.sr_device_auto}</option>
+          <option value="cpu">{i18n.m.settings.sr_device_cpu}</option>
+          {#each gpuDeviceOptions(settings.superResolution.device) as index (index)}
+            <option value={`gpu:${index}`}>{tr(i18n.m.settings.sr_device_gpu, { index })}</option>
+          {/each}
+        </select>
+        {#if settings.superResolution.device === 'cpu'}<p class="text-xs text-warn mt-2">{i18n.m.settings.sr_device_no_cpu}</p>{/if}
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-binary">{i18n.m.settings.sr_binary}</label><p>{i18n.m.settings.sr_binary_hint}</p></div>
+        <input id="sr-binary" class="input" bind:value={settings.superResolution.binaryPath} placeholder="realcugan-ncnn-vulkan" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-models">{i18n.m.settings.sr_models}</label><p>{i18n.m.settings.sr_models_hint}</p></div>
+        <input id="sr-models" class="input" bind:value={settings.superResolution.modelsPath} placeholder="/opt/realcugan-ncnn-vulkan/models" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-esrgan-binary">{i18n.m.settings.sr_esrgan_binary}</label><p>{i18n.m.settings.sr_esrgan_binary_hint}</p></div>
+        <input id="sr-esrgan-binary" class="input" bind:value={settings.superResolution.realEsrganBinaryPath} placeholder="realesrgan-ncnn-vulkan" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-esrgan-models">{i18n.m.settings.sr_esrgan_models}</label><p>{i18n.m.settings.sr_esrgan_models_hint}</p></div>
+        <input id="sr-esrgan-models" class="input" bind:value={settings.superResolution.realEsrganModelsPath} placeholder="/opt/realesrgan" />
+      </div>
+
+      <div class="settings-video-fields">
+        <button type="button" class="btn btn-ghost min-h-11" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
+      </div>
+      {/if}
+    </div>
+  </ConfigSection>
+
+  <!-- Engine checks run against the saved configuration, so they wait for the switch to be saved on. -->
+  {#if savedSettings?.superResolution.enabled}
+  <ConfigSection
+    id="super-resolution-status"
+    title={i18n.m.settings.sr_status_title}
+    description={i18n.m.settings.sr_status_desc}
+  >
+    <div class="mb-3">
+      <label class="label" for="sr-status-engine">{i18n.m.settings.sr_status_engine}</label>
+      <select id="sr-status-engine" class="input" value={statusEngine} onchange={event => checkEngine(event.currentTarget.value as SuperResolutionEngine)}>
+        <option value="realcugan">Real-CUGAN</option>
+        <option value="realesrgan">Real-ESRGAN</option>
+      </select>
+    </div>
+    {#if engineLoading || (!engineStatus && !engineError)}
+      <div class="card p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
+    {:else}
+      <div class="space-y-3">
+        {#if engineError}
+          <Banner kind="error">{engineError}</Banner>
+        {/if}
+        {#if engineStatus}
+          <div class="card p-5 space-y-3 text-sm">
+            <p>
+              <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
+              {engineStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
+                : engineStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
+                : engineStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
+                : i18n.m.settings.sr_status_misconfigured}
+            </p>
+            <p class="text-ink-3">{tr(i18n.m.settings.sr_status_models, {
+              dir: engineStatus.modelDirectory ?? '—',
+              root: engineStatus.modelsRoot ?? '—',
+            })}</p>
+            <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {engineStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
+            {#if engineStatus.problems.length}
+              <ul class="list-disc pl-5 text-ink-3">
+                {#each engineStatus.problems as problem}
+                  <li>{problem}</li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/if}
+        {#if engineProbe}
+          <Banner kind={engineProbe.success ? 'success' : 'error'}>{engineProbe.success
+            ? tr(i18n.m.settings.sr_probe_ok, { device: engineProbe.deviceUsed ?? '' })
+            : (engineProbe.error ?? i18n.m.settings.sr_probe_failed)}</Banner>
+        {/if}
+        <div class="flex gap-3">
+          <button type="button" class="btn btn-ghost min-h-11" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>
+          <button type="button" class="btn btn-ghost min-h-11" onclick={probeEngine} disabled={probingEngine}>
+            {probingEngine ? i18n.m.settings.sr_probing : i18n.m.settings.sr_probe}
+          </button>
+        </div>
+      </div>
+    {/if}
+  </ConfigSection>
+
+  <ConfigSection
+    id="super-resolution-output"
+    title={i18n.m.settings.sr_output_title}
+    description={i18n.m.settings.sr_output_desc}
+  >
+    <p class="text-sm leading-relaxed text-ink-3">{tr(i18n.m.settings.sr_output_math, { scale: settings.superResolution.scale, height: 1080 * settings.superResolution.scale })}</p>
+    <p class="text-xs leading-relaxed text-ink-3">{i18n.m.settings.sr_output_limit}</p>
+  </ConfigSection>
+  {:else if settings.superResolution.enabled}
+    <Banner kind="info">{i18n.m.settings.sr_save_to_test}</Banner>
+  {/if}
+  </div>
+  {/if}
+
   {#if openRoom === 'files'}
   <div class="min-w-0 space-y-5">
   <ConfigSection
@@ -1052,8 +1365,8 @@
                 {tr(i18n.m.settings.cleanup_breakdown, {
                   failedCount: cleanupPreview.failedOutputCount,
                   failedSpace: formatSize(cleanupPreview.failedOutputBytes),
-                  quarantineCount: cleanupPreview.quarantinedOriginalCount,
-                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+                  quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
+                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
                 })}
               </p>
             {/if}
@@ -1261,6 +1574,7 @@
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if c.enabled && c.rescanAfterChanges}<span class="badge tone-neutral" title={i18n.m.settings.arr_rescan_hint}>{i18n.m.settings.badge_rescans}</span>{/if}
                 {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
@@ -1268,6 +1582,21 @@
             </li>
           {/each}
         </ul>
+        <div class="mb-4">
+          <button type="button" class="btn btn-ghost min-h-11" onclick={checkArrTracking} disabled={checkingArrTracking}>{checkingArrTracking ? i18n.m.settings.arr_tracking_checking : i18n.m.settings.arr_tracking_check}</button>
+          <p class="mt-1 text-xs text-ink-4">{i18n.m.settings.arr_tracking_hint}</p>
+          {#if arrTracking}
+            <ul class="mt-2 space-y-1 text-sm" data-testid="arr-tracking" role="status">
+              {#each arrTracking as result (result.id)}
+                <li class={result.reachable ? 'text-ink-2' : 'text-bad'}>
+                  {result.reachable
+                    ? tr(i18n.m.settings.arr_tracking_result, { name: result.name, tracked: result.trackedFiles, found: result.foundInLibraries, unclear: result.unclear, notFound: result.notFound })
+                    : tr(i18n.m.settings.arr_tracking_unreachable, { name: result.name })}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {:else}
         <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.download_managers_empty}</p>
       {/if}
@@ -1304,6 +1633,9 @@
         </div>
         <div class="mt-3">
           <Toggle bind:checked={arrDraft.enabled} label={i18n.m.settings.enabled} hint={i18n.m.settings.arr_enabled_hint} />
+        </div>
+        <div class="mt-3">
+          <Toggle bind:checked={arrDraft.rescanAfterChanges} label={i18n.m.settings.arr_rescan} hint={i18n.m.settings.arr_rescan_hint} />
         </div>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveArr} disabled={savingArr}>

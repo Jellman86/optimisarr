@@ -26,7 +26,11 @@ public sealed class MigrationTests : IDisposable
             VALUES (1, 'Music', 'fixtures', 'Other', 'ConservativeHevc', 1,
                 '2026-10-14T00:00:00+00:00', '2026-10-14T00:00:00+00:00');
             """);
-        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "fixtures/source.flac", RelativePath = "source.flac" });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO MediaFiles (Id, LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt, Status, MediaKind)
+            VALUES (1, 1, 'fixtures/source.flac', 'source.flac', 0, '2026-10-12T00:00:00+00:00',
+                '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00', 'Discovered', 'Unknown');
+            """);
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO Jobs (Id, MediaFileId, LibraryId, Status, Type, Priority, Progress, Attempt,
@@ -92,6 +96,28 @@ public sealed class MigrationTests : IDisposable
         Assert.Equal(0.02, restored.MaximumAudioQualityDistance);
     }
 
+    [Fact]
+    public async Task Silence_trim_migration_leaves_existing_libraries_off_with_usable_defaults()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261119201056_AcceptBelowTarget");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Music', '/data/music', 'Music', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.TrimAudioSilence);
+        Assert.Equal(-60, library.AudioSilenceThresholdDb);
+        Assert.Equal(2, library.AudioSilenceMinimumSeconds);
+    }
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
         "optimisarr-tests",
@@ -112,7 +138,11 @@ public sealed class MigrationTests : IDisposable
             VALUES (1, 'Legacy uploads', 'legacy', 'Film', 'ConservativeHevc', 1,
                 '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00');
             """);
-        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "legacy/source.mkv", RelativePath = "source.mkv" });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO MediaFiles (Id, LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt, Status, MediaKind)
+            VALUES (1, 1, 'legacy/source.mkv', 'source.mkv', 0, '2026-10-12T00:00:00+00:00',
+                '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00', 'Discovered', 'Unknown');
+            """);
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO Workers (Id, Name, OperatingSystem, Architecture, ProtocolVersion, VideoEncoders,
                 HardwareDecoders, Vmaf, FreeScratchBytes, MaxConcurrency, PairedAt)
@@ -698,6 +728,36 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(films.MaxFrameRate);
         // And placement arrives as "anywhere": exactly how jobs were placed before the choice.
         Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, films.WorkPlacement);
+    }
+
+    [Fact]
+    public async Task An_upgraded_library_reads_back_super_resolution_off_with_the_recommended_check()
+    {
+        // EF generated "" for the new enum column, which is not a member and would fail every
+        // existing library on load; the corrected default must read back.
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261030132014_AddAdaptiveSoundtrackQuality");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Anime', '/data/anime', 'Tv', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var anime = await db.Libraries.SingleAsync();
+        Assert.False(anime.SuperResolutionEnabled);
+        Assert.Equal(Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly, anime.SuperResolutionQualityCheck);
     }
 
     public void Dispose()

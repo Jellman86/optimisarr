@@ -52,6 +52,29 @@ public sealed class JobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_encode_tells_the_server_what_ffmpeg_said_when_it_hands_the_job_back()
+    {
+        // Boothby failed two episodes the same way 20 times each and the server never knew why:
+        // the hand-back carried nothing. FFmpeg's explanation is at the end of its output.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        using var http = new HttpClient(server);
+        const string tail = "frame=25697 fps=442\n[vost#0:0/hevc_qsv @ 0x5626] Non-monotonic DTS; previous: 16507520, "
+            + "current: 16444160; Error submitting a packet to the muxer: Invalid argument\nConversion failed!";
+        var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
+            new FakeMeasuringTranscoder(exitCode: 234, errorTail: tail), "ffmpeg.exe", _scratch, () => null);
+
+        var outcome = await runner.RunAsync(Pairing(), Assignment(), CancellationToken.None);
+
+        Assert.False(outcome.Delivered);
+        Assert.Contains(server.Calls, c => c.EndsWith("/release", StringComparison.Ordinal));
+        Assert.NotNull(server.ReleaseBody);
+        var failure = System.Text.Json.JsonDocument.Parse(server.ReleaseBody!).RootElement.GetProperty("failure").GetString();
+        Assert.Contains("code 234", failure);
+        Assert.Contains("Non-monotonic DTS", failure);
+    }
+
+    [Fact]
     public async Task Monitor_progress_arrives_before_a_short_encode_finishes_without_waiting_for_lease_renewal()
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");

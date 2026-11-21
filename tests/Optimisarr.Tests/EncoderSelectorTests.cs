@@ -92,4 +92,40 @@ public sealed class EncoderSelectorTests
         Assert.False(selection.Succeeded);
         Assert.Contains("No known encoder", selection.Error);
     }
+
+    private static readonly EncoderCapability[] IntelOnly =
+    [
+        new("libx265", "hevc", "CPU", true),
+        new("hevc_qsv", "hevc", "Intel QSV", true),
+        new("hevc_vaapi", "hevc", "VAAPI", true)
+    ];
+
+    [Fact]
+    public void Auto_skips_intel_qsv_for_a_job_it_failed_and_uses_vaapi_on_the_same_gpu()
+    {
+        Assert.Equal("hevc_qsv", EncoderSelector.Select("hevc", EncoderMode.Auto, IntelOnly).EncoderName);
+
+        var selection = EncoderSelector.Select("hevc", EncoderMode.Auto, IntelOnly, avoidIntelQsv: true);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("hevc_vaapi", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Auto_falls_back_to_the_cpu_when_qsv_is_avoided_and_nothing_else_is_there()
+    {
+        EncoderCapability[] qsvOnly = [new("libx265", "hevc", "CPU", true), new("hevc_qsv", "hevc", "Intel QSV", true)];
+
+        Assert.Equal("libx265", EncoderSelector.Select("hevc", EncoderMode.Auto, qsvOnly, avoidIntelQsv: true).EncoderName);
+    }
+
+    [Fact]
+    public void A_queue_forced_onto_intel_qsv_says_why_it_cannot_encode_a_job_qsv_failed()
+    {
+        var selection = EncoderSelector.Select("hevc", EncoderMode.IntelQsv, IntelOnly, avoidIntelQsv: true);
+
+        Assert.False(selection.Succeeded);
+        Assert.Contains("Intel QSV", selection.Error);
+        Assert.Contains("Auto", selection.Error);
+    }
 }

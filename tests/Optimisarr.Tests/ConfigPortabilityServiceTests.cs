@@ -117,6 +117,187 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_librarys_model_choice_travels_with_its_backup()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/live", MediaType = MediaType.Film, SuperResolutionEnabled = true,
+                SuperResolutionEngine = "realesrgan", SuperResolutionModel = "realesrgan-x4plus", SuperResolutionScale = 4 });
+            await db.SaveChangesAsync();
+        }
+
+        var snapshot = await ExportAsync();
+        Assert.Equal("realesrgan-x4plus", snapshot.Libraries.Single(library => library.Path == "/data/live").SuperResolutionModel);
+
+        await using (var db = CreateDb())
+        {
+            var library = await db.Libraries.SingleAsync(candidate => candidate.Path == "/data/live");
+            library.SuperResolutionEngine = null;
+            library.SuperResolutionModel = null;
+            library.SuperResolutionScale = null;
+            await db.SaveChangesAsync();
+        }
+        Assert.True((await ImportAsync(snapshot)).Applied);
+
+        await using var restored = CreateDb();
+        var result = await restored.Libraries.SingleAsync(candidate => candidate.Path == "/data/live");
+        Assert.Equal("realesrgan", result.SuperResolutionEngine);
+        Assert.Equal(4, result.SuperResolutionScale);
+
+        var unusable = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { SuperResolutionScale = 2 }).ToArray() };
+        Assert.False((await ImportAsync(unusable)).Applied);
+    }
+
+    [Fact]
+    public async Task A_librarys_noise_reduction_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Tapes", Path = "/data/tapes", MediaType = MediaType.Film, NoiseReduction = NoiseReduction.Strong });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal("Strong", snapshot.Libraries.Single(library => library.Path == "/data/tapes").NoiseReduction);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { NoiseReduction = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(NoiseReduction.Off, (await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).NoiseReduction);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(NoiseReduction.Strong, (await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).NoiseReduction);
+
+        var invalid = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { NoiseReduction = "Maximum" }).ToArray() };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
+    public async Task A_librarys_deinterlace_choice_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Tapes", Path = "/data/tapes", MediaType = MediaType.Film, DeinterlaceVideo = true });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/tapes").DeinterlaceVideo);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { DeinterlaceVideo = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).DeinterlaceVideo);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).DeinterlaceVideo);
+    }
+
+    [Fact]
+    public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Film,
+                SuperResolutionEnabled = true, SuperResolutionQualityCheck = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off });
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionEnabled);
+        Assert.False(snapshot.Libraries.Single(library => library.Path == "/data/films").SuperResolutionEnabled);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using var restored = CreateDb();
+        Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.Equal("Off", snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionQualityCheck);
+        Assert.Equal(Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off,
+            (await restored.Libraries.SingleAsync(library => library.Path == "/data/anime")).SuperResolutionQualityCheck);
+        Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+
+        // A backup taken before the field existed leaves each library's stored switch alone.
+        var legacy = snapshot with
+        {
+            Version = 1,
+            Libraries = snapshot.Libraries.Select(library => library with
+                { SuperResolutionEnabled = null }).ToArray()
+        };
+        Assert.True((await ImportAsync(legacy)).Applied);
+        await using var legacyRestored = CreateDb();
+        Assert.True((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.False((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+    }
+
+    [Fact]
+    public async Task A_backup_carries_super_resolution_preferences_but_never_turns_the_engine_on_or_names_its_files()
+    {
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults with
+            {
+                Enabled = true, Preset = "pro", BinaryPath = "/opt/realcugan/realcugan-ncnn-vulkan", ModelsPath = "/opt/realcugan",
+            }, CancellationToken.None);
+        }
+
+        var snapshot = await ExportAsync();
+        Assert.Equal("pro", snapshot.Settings[SettingKeys.RealCuganPreset]);
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganEnabled));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganBinaryPath));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganModelsPath));
+        // A device number means nothing on another machine.
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganDevice));
+
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults, CancellationToken.None);
+        }
+        // A backup from elsewhere (or an older build) that names these host-local values is still accepted,
+        // but whether this machine runs the engine, and which files it executes, stay this machine's choice.
+        var foreign = snapshot with
+        {
+            Settings = new Dictionary<string, string>(snapshot.Settings)
+            {
+                [SettingKeys.RealCuganEnabled] = "true",
+                [SettingKeys.RealCuganBinaryPath] = "/tmp/not-the-engine",
+                [SettingKeys.RealCuganModelsPath] = "/tmp/models",
+            },
+        };
+        Assert.True((await ImportAsync(foreign)).Applied);
+        await using var restored = CreateDb();
+        var options = await new SettingsStore(restored).GetSuperResolutionOptionsAsync(CancellationToken.None);
+        Assert.False(options.Enabled);
+        Assert.Equal("", options.BinaryPath);
+        Assert.Equal("", options.ModelsPath);
+        Assert.Equal("pro", options.Preset);
+    }
+
+    [Fact]
+    public async Task A_backup_with_an_unknown_super_resolution_check_is_rejected_before_anything_changes()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Tv });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var broken = snapshot with
+        {
+            Libraries = [snapshot.Libraries[0] with { Name = "Renamed", SuperResolutionQualityCheck = "Vibes" }],
+        };
+
+        var result = await ImportAsync(broken);
+
+        Assert.False(result.Applied);
+        await using var unchanged = CreateDb();
+        Assert.Equal("Animation", (await unchanged.Libraries.SingleAsync()).Name);
+    }
+
+    [Fact]
     public async Task Export_omits_secrets_and_includes_settings_and_definitions()
     {
         await using (var db = CreateDb())
@@ -243,6 +424,44 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(
             Optimisarr.Core.Queue.ContentTune.None,
             (await db.Libraries.SingleAsync()).ContentTune);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_manager_rescan_choice_survives_export_and_restore(bool rescan)
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", RescanAfterChanges = rescan });
+            await db.SaveChangesAsync();
+        }
+        var exported = await ExportAsync();
+
+        await ResetDatabaseAsync();
+        await ImportAsync(exported);
+        await ImportAsync(exported);
+
+        await using var restored = CreateDb();
+        Assert.Equal(rescan, (await restored.ArrConnections.SingleAsync()).RescanAfterChanges);
+    }
+
+    [Fact]
+    public async Task A_backup_from_before_the_rescan_setting_recreates_connections_with_it_off_and_keeps_existing_choices()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection { Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989", RescanAfterChanges = true });
+            await db.SaveChangesAsync();
+        }
+        var legacy = new ConfigSnapshot(ConfigSnapshot.CurrentVersion, _clock.GetUtcNow(), new Dictionary<string, string>(), [], [], [],
+            [new ArrConnectionSnapshot("Radarr", "Radarr", "http://radarr:7878", true), new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true)]);
+
+        await ImportAsync(legacy);
+
+        await using var restored = CreateDb();
+        Assert.False((await restored.ArrConnections.SingleAsync(c => c.Name == "Radarr")).RescanAfterChanges);
+        Assert.True((await restored.ArrConnections.SingleAsync(c => c.Name == "Sonarr")).RescanAfterChanges);
     }
 
     [Fact]
@@ -664,6 +883,68 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         db.NotificationTargets.RemoveRange(db.NotificationTargets);
         db.AppSettings.RemoveRange(db.AppSettings);
         await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Import_stores_replace_automatically_off_for_a_library_that_saves_in_another_folder()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var both = snapshot with { Libraries = [snapshot.Libraries[0] with { MoveOnComplete = true, TargetFolder = "/data/optimised", AutoReplace = true }] };
+
+        var result = await ImportAsync(both);
+
+        Assert.True(result.Applied);
+        await using var restored = CreateDb();
+        var library = await restored.Libraries.SingleAsync();
+        Assert.True(library.MoveOnComplete);
+        Assert.Equal("/data/optimised", library.TargetFolder);
+        Assert.False(library.AutoReplace);
+    }
+
+    [Fact]
+    public async Task Import_refuses_a_save_folder_inside_a_library_and_writes_nothing()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            db.Libraries.Add(new Library { Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var films = snapshot.Libraries.Single(library => library.Name == "Films");
+        // Only Films is in the file: the TV library it points into is one this server already has.
+        var inside = snapshot with { Libraries = [films with { Name = "Renamed", MoveOnComplete = true, TargetFolder = "/data/tv/optimised" }] };
+
+        var result = await ImportAsync(inside);
+
+        Assert.False(result.Applied);
+        Assert.Contains("inside the TV library", Assert.Single(result.Errors));
+        await using var unchanged = CreateDb();
+        var saved = await unchanged.Libraries.SingleAsync(library => library.Path == "/data/films");
+        Assert.Equal("Films", saved.Name);
+        Assert.False(saved.MoveOnComplete);
+    }
+
+    [Fact]
+    public async Task Import_refuses_a_save_folder_that_cannot_be_a_path()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var broken = snapshot with { Libraries = [snapshot.Libraries[0] with { MoveOnComplete = true, TargetFolder = "/data/opti\0mised" }] };
+
+        var result = await ImportAsync(broken);
+
+        Assert.False(result.Applied);
+        Assert.Contains("not a path this server can use", Assert.Single(result.Errors));
     }
 
     private async Task<ConfigSnapshot> ExportAsync()

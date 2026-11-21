@@ -78,6 +78,7 @@ public sealed class ReplacementServiceTests : IDisposable
         await SetCrossFilesystemReplacementAsync(false);
         var switched = false;
 
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await ReplaceAsync(id, canMoveAtomically: (_, _) =>
         {
             if (!switched)
@@ -194,6 +195,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var id = await SeedReadyJobAsync(original, output, true);
         await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
         await using var db = new OptimisarrDbContext(_options);
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await NewService(db, canMoveAtomically: (_, _) =>
         {
             using var changed = new OptimisarrDbContext(_options);
@@ -218,6 +220,7 @@ public sealed class ReplacementServiceTests : IDisposable
         await using var db = new OptimisarrDbContext(_options);
         var row = await db.Jobs.FindAsync(id); row!.VerifiedSourceSha256 = null; await db.SaveChangesAsync();
         var changedOnce = false;
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await NewService(db, canMoveAtomically: (_, _) =>
         {
             if (!changedOnce)
@@ -252,6 +255,25 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(1, (await db.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
         await service.ReplaceAutomaticallyAsync(id, default);
         Assert.Equal(1, (await db.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
+    }
+
+    [Fact]
+    public async Task A_library_with_both_switches_on_does_not_replace_a_job_that_is_already_ready()
+    {
+        var (original, output) = WriteFiles("Both.avi", "Both.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        await db.Libraries.ExecuteUpdateAsync(setters => setters
+            .SetProperty(library => library.MoveOnComplete, true)
+            .SetProperty(library => library.TargetFolder, Path.Combine(_dataDir, "elsewhere")));
+
+        var result = await NewService(db).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+        Assert.Empty(await db.Replacements.ToListAsync());
     }
 
     private async Task AttachLibraryAsync(int jobId, MediaType type, bool autoReplace)
@@ -373,7 +395,7 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.Equal("ORIGINAL-DATA", File.ReadAllText(original));
         Assert.Equal("CORRUPT!!", File.ReadAllText(output));
-        Assert.Empty(Directory.GetFiles(_trashDir, "*", SearchOption.AllDirectories));
+        Assert.False(Directory.Exists(_trashDir) && Directory.EnumerateFiles(_trashDir, "*", SearchOption.AllDirectories).Any());
     }
 
     [Fact]
@@ -553,6 +575,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var moveProbeCalls = 0;
 
         await using var db = new OptimisarrDbContext(_options);
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var service = NewService(
             db,
             canMoveAtomically: (_, _) =>
@@ -651,6 +674,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
         var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
 
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await ReplaceAsync(jobId, canMoveAtomically: (_, _) => false);
 
         Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
@@ -1127,6 +1151,222 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.False(File.Exists(stagedPath));
         Assert.Equal(ReplacementStatus.RolledBack, (await db.Replacements.SingleAsync()).Status);
         Assert.Equal(LifetimeStats.Empty, await ReadLifetimeAsync());
+    }
+
+    // --- Accept anyway: a failed output whose only fault is a picture-quality score under target ---
+
+    [Fact]
+    public async Task Accepting_below_target_quarantines_the_original_and_records_it_was_accepted_by_hand()
+    {
+        var (original, output) = WriteFiles("Soft.avi", "Soft.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+
+        var result = await AcceptAsync(id, attempt);
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(result.Replacement!.QuarantinePath));
+        Assert.Equal("SCORED-94", File.ReadAllText(result.Replacement.FinalPath));
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.SingleAsync();
+        Assert.Equal(JobStatus.Completed, job.Status);
+        Assert.NotNull(job.AcceptedBelowTargetAt);
+        Assert.False(job.VerificationPassed);
+        Assert.Null(job.FailureCategory);
+        Assert.Null(job.ErrorMessage);
+        Assert.Equal(ReplacementStatus.Replaced, (await db.Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Accepting_twice_returns_the_first_replacement_without_moving_anything_again()
+    {
+        var (original, output) = WriteFiles("Twice.avi", "Twice.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+        var first = await AcceptAsync(id, attempt);
+
+        var second = await AcceptAsync(id, attempt);
+
+        Assert.Equal(ReplacementResultKind.AlreadyCompleted, second.Kind);
+        Assert.Equal(first.Replacement!.Id, second.Replacement!.Id);
+    }
+
+    [Fact]
+    public async Task Plain_replace_still_refuses_a_failed_job_that_could_be_accepted_below_target()
+    {
+        var (original, output) = WriteFiles("Plain.avi", "Plain.mkv", "ORIGINAL", "SCORED-94");
+        var (id, _) = await SeedBelowTargetJobAsync(original, output);
+
+        Assert.Equal(ReplacementResultKind.Invalid, (await ReplaceAsync(id)).Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+    }
+
+    [Fact]
+    public async Task A_job_tried_again_since_the_person_looked_is_not_accepted()
+    {
+        var (original, output) = WriteFiles("Stale.avi", "Stale.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+
+        var result = await AcceptAsync(id, attempt - 1);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Null((await db.Jobs.SingleAsync()).AcceptedBelowTargetAt);
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("Audio tracks")]
+    [InlineData(null)]
+    public async Task Only_a_sole_picture_quality_miss_can_be_accepted(string? otherFailedCheck)
+    {
+        var (original, output) = WriteFiles("Broken.avi", "Broken.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output, otherFailedCheck, minimum: otherFailedCheck is null ? 12 : 70);
+
+        var result = await AcceptAsync(id, attempt);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("SCORED-94", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public async Task An_output_changed_since_it_was_measured_is_refused_and_no_longer_offered()
+    {
+        var (original, output) = WriteFiles("Changed.avi", "Changed.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+        File.WriteAllText(output, "SOMETHING-ELSE");
+
+        var result = await AcceptAsync(id, attempt);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.SingleAsync();
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Null(job.VerifiedOutputSha256);
+        Assert.Null(job.AcceptedBelowTargetAt);
+    }
+
+    [Fact]
+    public async Task A_failed_move_restores_the_original_and_leaves_the_job_unaccepted()
+    {
+        var (original, output) = WriteFiles("Restore.avi", "Restore.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(db, moveFile: (source, destination) =>
+            source == output ? throw new IOException("disk full") : FileMover.Move(source, destination));
+
+        var result = await service.AcceptBelowTargetAsync(id, attempt, CancellationToken.None);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        db.ChangeTracker.Clear();
+        var job = await db.Jobs.SingleAsync();
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Null(job.AcceptedBelowTargetAt);
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_file_excluded_by_hand_is_not_accepted_but_an_automatic_exclusion_does_not_block()
+    {
+        var (original, output) = WriteFiles("Excluded.avi", "Excluded.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.Exclusions.Add(new Exclusion { Path = original, Source = ExclusionSource.Manual });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(ReplacementResultKind.Invalid, (await AcceptAsync(id, attempt)).Kind);
+
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            await db.Exclusions.ExecuteUpdateAsync(setters => setters.SetProperty(e => e.Source, ExclusionSource.RepeatedFailures));
+        }
+        Assert.Equal(ReplacementResultKind.Success, (await AcceptAsync(id, attempt)).Kind);
+    }
+
+    [Fact]
+    public async Task Accepting_below_target_respects_dry_run()
+    {
+        var (original, output) = WriteFiles("Dry.avi", "Dry.mkv", "ORIGINAL", "SCORED-94");
+        var (id, attempt) = await SeedBelowTargetJobAsync(original, output);
+        await SetDryRunModeAsync(true);
+
+        Assert.Equal(ReplacementResultKind.Invalid, (await AcceptAsync(id, attempt)).Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_acceptance_interrupted_by_a_crash_is_kept_only_if_its_output_was_placed(bool outputPlaced)
+    {
+        var (original, output) = WriteFiles("Crash.avi", "Crash.mkv", "ORIGINAL", "NEW");
+        var (id, _) = await SeedBelowTargetJobAsync(original, output);
+        await using (var seed = new OptimisarrDbContext(_options))
+            await seed.Jobs.ExecuteUpdateAsync(setters => setters.SetProperty(j => j.AcceptedBelowTargetAt, DateTimeOffset.UtcNow));
+        var quarantinePath = Path.Combine(_trashDir, "pending-job", "Crash.avi");
+        var finalPath = Path.Combine(_dataDir, "Crash.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantinePath)!);
+        File.Move(original, quarantinePath);
+        if (outputPlaced) File.Move(output, finalPath);
+        await SeedPendingReplacementAsync(id, original, finalPath, quarantinePath);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        var job = await db.Jobs.AsNoTracking().SingleAsync();
+        if (outputPlaced)
+        {
+            Assert.Equal(JobStatus.Completed, job.Status);
+            Assert.NotNull(job.AcceptedBelowTargetAt);
+            Assert.Null(job.FailureCategory);
+        }
+        else
+        {
+            Assert.Equal("ORIGINAL", File.ReadAllText(original));
+            Assert.Equal(JobStatus.Failed, job.Status);
+            Assert.Null(job.AcceptedBelowTargetAt);
+        }
+    }
+
+    private async Task<(int Id, int Attempt)> SeedBelowTargetJobAsync(
+        string originalPath, string outputPath, string? otherFailedCheck = null, double minimum = 70)
+    {
+        var id = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: false);
+        var checks = new List<Optimisarr.Core.Verification.VerificationCheck>
+        {
+            new("Duration", Optimisarr.Core.Verification.CheckOutcome.Passed, "ok"),
+            new("Perceptual quality (VMAF)", Optimisarr.Core.Verification.CheckOutcome.Failed, "94 under 95"),
+        };
+        if (otherFailedCheck is not null)
+            checks.Add(new(otherFailedCheck, Optimisarr.Core.Verification.CheckOutcome.Failed, "missing"));
+        var report = new Optimisarr.Core.Verification.VerificationReport(checks,
+            Context: new("libx265", 24, 24, "Crf", 1, "Full file", 95, 90, 40),
+            Vmaf: new(true, null, new(95, 94, minimum, null, null, VmafFifthPercentile: 91)));
+        var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        });
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id);
+        job.Status = JobStatus.Failed;
+        job.ExecutionAttempt = 3;
+        job.VerificationReportJson = json;
+        job.ErrorMessage = "Verification failed: Perceptual quality (VMAF)";
+        job.FailureCategory = FailureCategory.Verification;
+        job.MediaFile!.MediaKind = MediaKind.Video;
+        await db.SaveChangesAsync();
+        return (id, job.ExecutionAttempt);
+    }
+
+    private async Task<ReplacementActionResult> AcceptAsync(int jobId, int attempt)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        return await NewService(db).AcceptBelowTargetAsync(jobId, attempt, CancellationToken.None);
     }
 
     private (string OriginalPath, string OutputPath) WriteFiles(

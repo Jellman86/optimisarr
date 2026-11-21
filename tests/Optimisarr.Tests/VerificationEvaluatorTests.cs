@@ -533,6 +533,65 @@ public sealed class VerificationEvaluatorTests
     // an encode intended to produce a particular size, the gate checks the output against that
     // intent rather than against the source.
 
+    // An upscaled DVD is judged against its stored pixels, and VMAF scales the candidate to the
+    // reference's stored size whatever shape its pixels are, so neither the size check nor the
+    // quality score notices an output that lost its pixel shape. This check does.
+
+    [Fact]
+    public void An_output_that_lost_the_sources_pixel_shape_fails_and_says_it_would_display_squashed()
+    {
+        var input = Healthy() with
+        {
+            RequirePixelShapeRetained = true,
+            OriginalPixelAspect = new SampleAspectRatio(64, 45),
+            OutputPixelAspect = null,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        var failure = Assert.Single(report.Checks, c => c.Outcome == CheckOutcome.Failed);
+        Assert.Equal("Picture shape", failure.Name);
+        Assert.Contains("64:45", failure.Detail);
+        Assert.Contains("1:1", failure.Detail);
+    }
+
+    [Theory]
+    [InlineData(64, 45, 64, 45)]
+    [InlineData(1280, 1281, 1, 1)]
+    public void An_output_that_kept_the_pixel_shape_passes(int originalNumerator, int originalDenominator, int outputNumerator, int outputDenominator)
+    {
+        var input = Healthy() with
+        {
+            RequirePixelShapeRetained = true,
+            OriginalPixelAspect = new SampleAspectRatio(originalNumerator, originalDenominator),
+            OutputPixelAspect = new SampleAspectRatio(outputNumerator, outputDenominator),
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join(" | ", report.Checks.Where(c => c.Outcome != CheckOutcome.Passed).Select(c => c.Detail)));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Picture shape"));
+    }
+
+    [Fact]
+    public void Square_and_unspecified_pixels_are_the_same_shape()
+    {
+        var input = Healthy() with { RequirePixelShapeRetained = true, OriginalPixelAspect = null, OutputPixelAspect = new SampleAspectRatio(1, 1) };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Picture shape"));
+    }
+
+    [Fact]
+    public void The_pixel_shape_is_judged_only_when_the_job_asks_for_it()
+    {
+        var input = Healthy() with { OriginalPixelAspect = new SampleAspectRatio(64, 45), OutputPixelAspect = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Picture shape");
+    }
+
     [Fact]
     public void An_output_at_the_intended_size_passes_the_structure_gate()
     {
@@ -689,6 +748,83 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.False(report.Passed);
+    }
+
+    // --- Silence trimmed from a music file's start and end ---------------------------------
+
+    private static readonly AudioTrimPlan Trim = new(StartSample: 121_252, EndSample: 474_075, SampleRate: 44_100, SourceSeconds: 13.7, ThresholdDb: -60);
+
+    private static VerificationInput Trimmed(double output, double leading = 0.25, double trailing = 0.25,
+        double? lenientLeading = null, double? lenientTrailing = null) => HealthyAudio() with
+    {
+        OriginalDurationSeconds = 13.7, OriginalAudioLastPresentationSeconds = 13.7, OutputDurationSeconds = output,
+        SilenceTrim = Trim,
+        OutputEdgeSilence = new TrimmedEdges(new EdgeSilence(leading, trailing),
+            new EdgeSilence(lenientLeading ?? leading, lenientTrailing ?? trailing)),
+    };
+
+    [Fact]
+    public void A_trimmed_file_is_judged_against_the_length_it_was_meant_to_keep()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds + 0.03), VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Contains("after trimming", report.Checks.Single(c => c.Name == "Duration").Detail);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Theory]
+    [InlineData(-0.5)]
+    [InlineData(0.5)]
+    public void Cutting_more_or_less_than_planned_fails_the_trim_check(double off)
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds + off), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void A_cut_that_stopped_short_keeps_too_much_silence_and_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 1.2), VerificationPolicy.Default);
+
+        Assert.Contains("stopped short", report.Checks.Single(c => c.Name == "Silence trimmed").Detail);
+    }
+
+    [Fact]
+    public void A_cut_that_reached_into_the_music_keeps_too_little_silence_and_fails_even_at_the_right_length()
+    {
+        // The right length, but the window moved: the start lost its padding and the end has it twice
+        // over, or a start-only trim simply begins on music.
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 0, trailing: 0.3), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+        Assert.Contains("reached into the music", report.Checks.Single(c => c.Name == "Silence trimmed").Detail);
+    }
+
+    [Fact]
+    public void Lossy_noise_in_the_kept_padding_is_forgiven_by_the_lenient_measurement()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds, leading: 0.05, lenientLeading: 0.24), VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void A_trim_whose_output_silence_was_not_measured_cannot_pass()
+    {
+        var report = VerificationEvaluator.Evaluate(Trimmed(Trim.KeptSeconds) with { OutputEdgeSilence = null }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
+    }
+
+    [Fact]
+    public void An_untrimmed_file_has_no_trim_check_and_keeps_its_plain_length_check()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyAudio(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Silence trimmed");
+        Assert.StartsWith("Original 3600s", report.Checks.Single(c => c.Name == "Duration").Detail);
     }
 
     private static VerificationInput Healthy() => new(

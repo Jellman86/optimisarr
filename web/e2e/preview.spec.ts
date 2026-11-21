@@ -319,3 +319,44 @@ test('a worker preview plays its bounded reference instead of seeking into the f
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.locator('video').first()).toHaveAttribute('src', '/api/preview/41/reference')
 })
+
+test('a preview lists each quality search it left out, in words', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, skippedQualitySearches: ['SoundtrackBitrates', 'VideoQuality', 'Unrecognised'] })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+  const notes = page.getByTestId('preview-skipped-searches').locator('p')
+  await expect(notes).toHaveText([
+    "This preview kept the library's soundtrack bitrate. Real jobs first choose the smallest bitrate for each soundtrack that meets your limit.",
+    "This preview ran on a worker at the library's saved video quality. Real jobs first search for the per-title quality that meets your VMAF target.",
+  ])
+})
+
+test('a preview that left out no quality search shows no note', async ({ page }) => {
+  await openCompletedPreview(page)
+  await expect(page.getByTestId('preview-skipped-searches')).toHaveCount(0)
+})
+
+test('a preview of an interlaced source says a real job would leave it untouched', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, sourceInterlaced: true })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+  await expect(page.getByTestId('preview-interlaced')).toContainText('a real job would leave it untouched')
+})
+
+for (const [savingPercent, text, tone] of [[2.8, '−2.8%', 'tone-ok'], [0, '0%', 'tone-neutral'], [-5, '+5%', 'tone-warn']] as const) {
+  test(`a preview size change of ${savingPercent}% reads ${text} in ${tone}`, async ({ page }) => {
+    await mockPreview(page, { ...completedPreview, savingPercent })
+    await page.goto('/#/inventory')
+    await page.getByText('Example Film.mkv', { exact: true }).click()
+    await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+    // The fixture is a clipped preview, so the figure is marked as approximate.
+    const badge = page.getByTestId('preview-size-change')
+    await expect(badge).toHaveText(`≈${text}`)
+    await expect(badge).toHaveClass(new RegExp(`\\b${tone}\\b`))
+  })
+}

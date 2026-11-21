@@ -52,6 +52,12 @@ public sealed record TranscodeSpec(
     // the source cadence. Always a clean halving of the source (see FrameRatePlanner), and the
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null,
+    // Deinterlace before anything else touches the picture. The same filter reaches the VMAF
+    // reference, so a progressive candidate is not judged against woven fields.
+    bool Deinterlace = false,
+    // Noise reduction, applied straight after any deinterlace and before crop, scale or frame-rate
+    // decimation. The same filter, in the same place, reaches the VMAF reference.
+    NoiseReduction Denoise = NoiseReduction.Off,
     // The channel layout the source's audio tracks declare, or null when it was not reported.
     // Opus writes surround in the standard 5.1 order, so a source that declares the side
     // variant is mapped onto it (see AudioChannelLayoutPolicy).
@@ -66,6 +72,12 @@ public sealed record TranscodeSpec(
 {
     /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
     public bool AudioSampleOnly { get; init; }
+
+    /// <summary>
+    /// For a music file, the window to keep once silence is trimmed from its start and end. Applied
+    /// to the whole-file encode only: a sample or a clip is a window of its own.
+    /// </summary>
+    public AudioTrimPlan? SilenceTrim { get; init; }
 
     /// <summary>
     /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
@@ -165,8 +177,11 @@ public static class FfmpegCommandBuilder
         var encoder = isVideoReencode ? (videoEncoder ?? EncoderFor(spec.VideoCodec!)) : null;
         var family = encoder is null ? EncoderFamily.Cpu : FamilyOf(encoder);
 
+        // A hardware tone-map reads GPU surfaces, which the software deinterlace and denoise filters never hand it.
+        var softwarePictureFilter = spec.Deinterlace || spec.Denoise != NoiseReduction.Off;
         var useHardwareToneMap = hardwareToneMap
             && hardwareDecode
+            && !softwarePictureFilter
             && spec.TonemapToSdr
             && family is EncoderFamily.Qsv or EncoderFamily.Vaapi;
 
@@ -174,7 +189,8 @@ public static class FfmpegCommandBuilder
         // work retains the software colour pipeline and therefore needs system-memory frames.
         var useHardwareDecode = hardwareDecode
             && family is EncoderFamily.Nvenc or EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.VideoToolbox
-            && (!spec.TonemapToSdr || useHardwareToneMap);
+            && (!spec.TonemapToSdr || useHardwareToneMap)
+            && !softwarePictureFilter;
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
         if (useHardwareDecode && family is EncoderFamily.Qsv or EncoderFamily.Vaapi)
@@ -361,6 +377,16 @@ public static class FfmpegCommandBuilder
         // directly. The downscale goes first: it is a software filter so it must precede any
         // upload, and scaling before the tone-map does the expensive colour work on fewer pixels.
         var filters = new List<string>();
+        // Fields must be combined before cropping or scaling blends lines from different moments.
+        if (spec.Deinterlace)
+        {
+            filters.Add(VideoFieldOrder.DeinterlaceFilter);
+        }
+        // Noise is reduced on whole, combined frames, before anything blends or drops them.
+        if (NoiseReductionFilter.For(spec.Denoise) is { } denoise)
+        {
+            filters.Add(denoise);
+        }
         // Crop first, then scale: the downscale was computed from the cropped size, and scaling
         // bars only to cut them away afterwards would waste the work and blur the edge.
         if (spec.CropTo is { } crop)
@@ -589,17 +615,30 @@ public static class FfmpegCommandBuilder
         return new(layout.Applies ? layout.Filter : explicitFilter, layout);
     }
 
+    /// <summary>
+    /// Every audio filter the whole-file encode runs: the silence trim first, so the timestamps
+    /// restart before anything else sees them, then the resolved chain.
+    /// </summary>
+    public static string? AudioFilterChain(TranscodeSpec spec)
+    {
+        var chain = ResolveAudioFilter(spec).Chain;
+        // Never a video's soundtrack, which must stay in step with its picture.
+        var trim = spec is { SilenceTrim: { } plan, Kind: not MediaKind.Video, AudioSampleOnly: false, ClipSeconds: null, ClipStartSeconds: null }
+            ? plan.FilterExpression
+            : null;
+        return trim is null ? chain : chain is null ? trim : $"{trim},{chain}";
+    }
+
     private static void AppendAudioFilter(List<string> args, TranscodeSpec spec)
     {
-        var resolution = ResolveAudioFilter(spec);
-        if (resolution.Chain is null)
+        if (AudioFilterChain(spec) is not { } chain)
         {
             return;
         }
 
         // The filter is its own argument, so the chain never reaches a shell string.
         args.Add("-af");
-        args.Add(resolution.Chain);
+        args.Add(chain);
     }
 
     private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)
@@ -790,6 +829,9 @@ public static class FfmpegCommandBuilder
 
     // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;
     // the hardware encoders each name constant quality differently and reject -crf.
+    internal static void AppendQualityArguments(List<string> args, string encoder, int? crf) =>
+        AppendQualityArguments(args, FamilyOf(encoder), crf);
+
     private static void AppendQualityArguments(List<string> args, EncoderFamily family, int? crf)
     {
         if (crf is not { } quality)

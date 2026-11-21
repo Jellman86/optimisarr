@@ -150,7 +150,7 @@ with a terminal **Compression ceiling** result; blank leaves compression unrestr
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
 **Settings → Remote workers**. Fresh installations enable workers; existing choices are preserved. If these controls are absent,
 remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through the
-normal deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
+normal deployment process. Each library chooses placement under **Schedule & replace →
 Where this library's work may run**. **Only on workers** keeps eligible video and audio re-encodes off the
 container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
 enabled for these placement choices to apply. Remuxes and image jobs remain server work. Standalone audio needs protocol 6 and its selected audio encoder.

@@ -100,8 +100,9 @@ no support SLA or promise of a release schedule.
   work-disk safety pause. The only global scheduling setting is the library scan
   interval; *when* work runs is set per library (see auto-optimise below).
 - Per-library **auto-optimise** windows continuously queue newly eligible files;
-  opt-in **Auto-accept passed jobs** promotes only fully verified jobs after a risk
+  opt-in **Replace the original automatically** promotes only fully verified jobs after a risk
   confirmation, still quarantining the original first so rollback remains available.
+  **Save optimised files in another folder** leaves the library untouched instead.
 - **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
   Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR tone-mapped
   to SDR and AAC 96 kbps audio downmixed to stereo. Optionally **re-encode oversized files already
@@ -205,9 +206,10 @@ curl http://localhost:8787/api/ready
 Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
 mounted paths, free space, filesystem/mount relationships, permissions, and media tools. Missing
 or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
-a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
-**Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
-then scan and queue a small test set deliberately. Use **Settings → System → First-run setup → Run
+a real **Test again** action. Setup asks for a library's name, folder and preset, looks through
+the folder for files (which only reads them), and starts in **Dry-run mode**. It ends on **Try one
+file**: choose a suggested file to see what would happen to it before anything is queued. Completing
+setup never starts a job. Use **Settings → System → First-run setup → Run
 setup again** to revisit the guided checks without deleting existing configuration.
 Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
 container mount boundary.
@@ -240,11 +242,12 @@ with `libvmaf`; the Tools page reports that optional capability independently. A
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
 failure retries in software. New video re-encode libraries enable VMAF with the Visually lossless
 target by default; remux and non-video libraries skip it, and existing libraries keep their saved policy.
-The same editor presents two mutually exclusive video-quality paths: the default **Adaptive per-title
-VMAF**, or **Fixed library quality**. Adaptive mode tests up to four encoder values across
+A library's **Video** page has one **How quality is chosen** control: the default **Smallest file
+that meets the target** (adaptive per-title VMAF), **Fixed setting, checked against the target**, or
+**Fixed setting, no picture check**. The first tests up to four encoder values across
 bounded early/middle/late video-only samples before the full encode, then chooses the smallest
-measured passing candidate. Adaptive preparation falls back to Fixed when evidence is unavailable
-or contradictory and never replaces final verification. Fixed remains a one-click opt-out when the
+measured passing candidate. That preparation falls back to the fixed setting when evidence is unavailable
+or contradictory and never replaces final verification. A fixed setting remains a one-click opt-out when the
 extra measurement cost is not appropriate.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference

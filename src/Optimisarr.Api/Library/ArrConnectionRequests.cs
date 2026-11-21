@@ -11,6 +11,7 @@ public sealed record ArrConnectionDto(
     string BaseUrl,
     bool HasApiKey,
     bool Enabled,
+    bool RescanAfterChanges,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
@@ -21,6 +22,7 @@ public sealed record ArrConnectionDto(
         connection.BaseUrl,
         !string.IsNullOrEmpty(connection.ApiKey),
         connection.Enabled,
+        connection.RescanAfterChanges,
         connection.CreatedAt,
         connection.UpdatedAt);
 }
@@ -30,20 +32,23 @@ public sealed record SaveArrConnectionRequest(
     string? Type,
     string? BaseUrl,
     string? ApiKey,
-    bool? Enabled);
+    bool? Enabled,
+    bool? RescanAfterChanges = null);
 
 public sealed record ParsedArrConnection(
     string Name,
     ArrConnectionType Type,
     string BaseUrl,
     string? ApiKey,
-    bool Enabled);
+    bool Enabled,
+    bool? RescanAfterChanges);
 
 public static class ArrConnectionRequestParser
 {
     /// <summary>
     /// Validates a save request. A blank <c>ApiKey</c> is returned as null so the caller
-    /// can keep an existing secret on update rather than wiping it.
+    /// can keep an existing secret on update rather than wiping it. An omitted <c>RescanAfterChanges</c>
+    /// stays null so the caller can apply its own default or keep the saved choice.
     /// </summary>
     public static bool TryParse(SaveArrConnectionRequest request, out ParsedArrConnection parsed, out string? error)
     {
@@ -73,7 +78,7 @@ public static class ArrConnectionRequestParser
         }
 
         var apiKey = string.IsNullOrWhiteSpace(request.ApiKey) ? null : request.ApiKey.Trim();
-        parsed = new ParsedArrConnection(name, type, baseUrl, apiKey, request.Enabled ?? true);
+        parsed = new ParsedArrConnection(name, type, baseUrl, apiKey, request.Enabled ?? true, request.RescanAfterChanges);
         return true;
     }
 }

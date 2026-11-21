@@ -68,6 +68,48 @@ COPY tools/image-quality-native/ tools/image-quality-native/
 COPY scripts/build_image_quality.sh scripts/build_image_quality.sh
 RUN bash scripts/build_image_quality.sh /image-build /image-install
 
+# Real-CUGAN super-resolution engine (experimental, off by default). The official x86-64 release
+# is pinned by checksum and verified before extraction; it carries the binary and its three model
+# sets. Other architectures get no engine, which the settings report as not installed.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS realcugan-fetch
+ARG TARGETARCH
+ARG REALCUGAN_VERSION=20220728
+ARG REALCUGAN_SHA256=d745174bd04c0232c89d935b74799311008fda06bea4195f61be5f0f3cc087cb
+RUN mkdir -p /opt/realcugan /licenses \
+    && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+        && curl -fsSL -o /tmp/realcugan.zip \
+            "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/${REALCUGAN_VERSION}/realcugan-ncnn-vulkan-${REALCUGAN_VERSION}-ubuntu.zip" \
+        && echo "${REALCUGAN_SHA256}  /tmp/realcugan.zip" | sha256sum -c - \
+        && unzip -q /tmp/realcugan.zip -d /tmp/realcugan \
+        && release="$(find /tmp/realcugan -mindepth 1 -maxdepth 1 -type d)" \
+        && cp -r "$release/realcugan-ncnn-vulkan" "$release/models-se" "$release/models-pro" "$release/models-nose" /opt/realcugan/ \
+        && cp "$release/LICENSE" /licenses/realcugan-ncnn-vulkan-LICENSE \
+        && chmod -R a-w,a+rX /opt/realcugan \
+        && chmod 0555 /opt/realcugan/realcugan-ncnn-vulkan; \
+    fi
+
+# Real-ESRGAN super-resolution engine, for the live action Real-CUGAN is not trained for. Pinned and
+# verified the same way. The release carries no licence file; docker/licenses/realesrgan has them.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS realesrgan-fetch
+ARG TARGETARCH
+ARG REALESRGAN_RELEASE=v0.2.5.0
+ARG REALESRGAN_BUILD=20220424
+ARG REALESRGAN_SHA256=e5aa6eb131234b87c0c51f82b89390f5e3e642b7b70f2b9bbe95b6a285a40c96
+RUN mkdir -p /opt/realesrgan \
+    && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+        && curl -fsSL -o /tmp/realesrgan.zip \
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/${REALESRGAN_RELEASE}/realesrgan-ncnn-vulkan-${REALESRGAN_BUILD}-ubuntu.zip" \
+        && echo "${REALESRGAN_SHA256}  /tmp/realesrgan.zip" | sha256sum -c - \
+        && unzip -q /tmp/realesrgan.zip -d /tmp/realesrgan \
+        && cp -r /tmp/realesrgan/realesrgan-ncnn-vulkan /tmp/realesrgan/models /opt/realesrgan/ \
+        && chmod -R a-w,a+rX /opt/realesrgan \
+        && chmod 0555 /opt/realesrgan/realesrgan-ncnn-vulkan; \
+    fi
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
 WORKDIR /app
 
@@ -126,6 +168,16 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # Keep the server as the default target for existing builds.
 FROM media-runtime AS runtime
+# Super-resolution runs on the server only. The engine needs the Vulkan loader and OpenMP; Mesa's
+# drivers cover Intel and AMD GPUs. NVIDIA needs its driver injected by the container runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libvulkan1 libgomp1 mesa-vulkan-drivers \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=realcugan-fetch /opt/realcugan/ /opt/realcugan/
+COPY --from=realcugan-fetch /licenses/ /app/licenses/realcugan/
+COPY docker/licenses/realcugan/ /app/licenses/realcugan/
+COPY --from=realesrgan-fetch /opt/realesrgan/ /opt/realesrgan/
+COPY docker/licenses/realesrgan/ /app/licenses/realesrgan/
 COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark
 COPY --from=api-build /app/publish/ /app/
@@ -137,6 +189,7 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
     OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
+    PATH=/opt/realcugan:/opt/realesrgan:$PATH \
     PUID=1000 \
     PGID=1000 \
     UMASK=002

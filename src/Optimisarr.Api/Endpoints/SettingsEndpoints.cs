@@ -11,12 +11,14 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Endpoints;
@@ -30,7 +32,8 @@ internal static class SettingsEndpoints
             CancellationToken cancellationToken) =>
         {
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
+            var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolution, await settings.GetRealEsrganPathsAsync(cancellationToken)));
         })
         .WithName("GetSettings");
 
@@ -46,10 +49,35 @@ internal static class SettingsEndpoints
                 return ApiErrors.BadRequest(error!.Code, error.Message);
             }
 
+            // Validate every section before anything is stored, so a rejected request changes
+            // nothing. An absent super-resolution section leaves the stored engine configuration
+            // exactly as it was, so older clients and automations keep working unchanged.
+            SuperResolutionOptions? superResolution = null;
+            if (request.SuperResolution is { } requestedSuperResolution)
+            {
+                if (!SuperResolutionRequestParser.TryParse(
+                        requestedSuperResolution, out var parsedSuperResolution, out var superResolutionError))
+                {
+                    return ApiErrors.BadRequest(superResolutionError!.Code, superResolutionError.Message);
+                }
+                superResolution = parsedSuperResolution;
+                if (SuperResolutionRequestParser.RealEsrganPathError(requestedSuperResolution) is { } pathError)
+                {
+                    return ApiErrors.BadRequest(pathError.Code, pathError.Message);
+                }
+            }
+
             await settings.SetQueueSettingsAsync(parsed, cancellationToken);
+            if (superResolution is not null)
+            {
+                await settings.SetSuperResolutionOptionsAsync(superResolution, cancellationToken);
+                await settings.SetRealEsrganPathsAsync(
+                    request.SuperResolution!.ToRealEsrganPaths(await settings.GetRealEsrganPathsAsync(cancellationToken)), cancellationToken);
+            }
 
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
+            var superResolutionOptions = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolutionOptions, await settings.GetRealEsrganPathsAsync(cancellationToken)));
         })
         .WithName("UpdateSettings");
 
@@ -85,6 +113,38 @@ internal static class SettingsEndpoints
         })
         .WithName("PreviewTimedCleanup")
         .Produces<TimedCleanupPreview>();
+
+        // Read-only. Dry-run holds back more than the Replace button, so the page that offers to
+        // unlock it asks here what would then happen without anyone pressing anything further.
+        app.MapGet("/api/settings/dry-run-unlock", async (
+            TimedCleanupService cleanup,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var preview = await cleanup.PreviewWithoutDryRunAsync(cancellationToken);
+            var dedupeLibraries = (await db.Libraries.AsNoTracking()
+                    .Where(library => library.Enabled && library.AutoDedupeEnabled)
+                    .Select(library => library.MediaType)
+                    .ToListAsync(cancellationToken))
+                .Count(AutoDedupeSchedule.Supports);
+            // The same jobs the dispatcher's reconcile pass would replace once dry-run is off.
+            var jobsToReplace = await db.Jobs.AsNoTracking().CountAsync(
+                job => job.Status == JobStatus.ReadyToReplace
+                    && job.VerificationPassed == true
+                    && !job.SuperResolutionApplied
+                    && db.Libraries.Any(library => library.Id == job.LibraryId && library.AutoReplace && !library.MoveOnComplete),
+                cancellationToken);
+            return Results.Ok(new DryRunUnlockEffects(
+                preview.RetentionDays,
+                preview.QuarantinedOriginalCount,
+                preview.QuarantinedOriginalBytes,
+                preview.QuarantinedCopyCount,
+                preview.QuarantinedCopyBytes,
+                dedupeLibraries,
+                jobsToReplace));
+        })
+        .WithName("PreviewDryRunUnlock")
+        .Produces<DryRunUnlockEffects>();
 
         app.MapPost("/api/settings/cleanup", async (
             TimedCleanupPreview confirmedPreview,

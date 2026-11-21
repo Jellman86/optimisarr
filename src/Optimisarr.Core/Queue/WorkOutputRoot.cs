@@ -24,4 +24,14 @@ public static class WorkOutputRoot
     /// <summary>Disposable calibration output, isolated from previews and replaceable work.</summary>
     public static string ForCalibration(string workRoot, Guid sessionId, int jobId) =>
         $"{workRoot.TrimEnd('/', '\\')}/calibration/{sessionId:N}/{jobId}";
+
+    /// <summary>
+    /// Scratch for one super-resolution attempt: its own folder under a dedicated root, never a
+    /// media file's work folder, so a crashed attempt's pictures are never reused by a retry and the
+    /// whole root can be cleared before the queue starts.
+    /// </summary>
+    public static string ForSuperResolution(string workRoot, int jobId, Guid attempt) =>
+        $"{SuperResolutionRoot(workRoot)}/{jobId}-{attempt:N}";
+
+    public static string SuperResolutionRoot(string workRoot) => $"{workRoot.TrimEnd('/', '\\')}/super-resolution";
 }

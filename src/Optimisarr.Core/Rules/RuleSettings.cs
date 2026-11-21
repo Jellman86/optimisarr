@@ -102,6 +102,18 @@ public sealed record RuleSettings
     /// </summary>
     public bool OptimiseDolbyVision { get; init; }
 
+    /// <summary>
+    /// Deinterlace a source reported as interlaced instead of leaving it untouched. Off by default:
+    /// it changes the picture, and it is wrong for telecined film, which needs inverse telecine.
+    /// </summary>
+    public bool DeinterlaceVideo { get; init; }
+
+    /// <summary>
+    /// Reduce noise, such as tape grain, while re-encoding video. Off by default: it changes the picture,
+    /// and the quality gate then judges the encode against the cleaned picture rather than the original.
+    /// </summary>
+    public Queue.NoiseReduction NoiseReduction { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 
@@ -170,6 +182,18 @@ public sealed record RuleSettings
     /// own surround placement.
     /// </summary>
     public bool NormalizeOpusChannelLayout { get; init; } = true;
+
+    /// <summary>
+    /// When <c>true</c>, a music file's silence at its very start and end is measured and trimmed.
+    /// Off by default; see <see cref="Queue.SilenceTrimPlanner"/> for what is and is not cut.
+    /// </summary>
+    public bool TrimAudioSilence { get; init; }
+
+    /// <summary>Audio quieter than this, in dBFS, counts as silence when trimming.</summary>
+    public double AudioSilenceThresholdDb { get; init; } = SilenceTrimSettings.DefaultThresholdDb;
+
+    /// <summary>The shortest silence, in seconds, that is trimmed from an edge.</summary>
+    public double AudioSilenceMinimumSeconds { get; init; } = SilenceTrimSettings.DefaultMinimumSeconds;
 
     /// <summary>
     /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other

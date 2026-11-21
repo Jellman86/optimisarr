@@ -8,6 +8,23 @@ export const inventoryFiles = [
 
 export const poster = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><defs><linearGradient id="sky" x2="1" y2="1"><stop stop-color="#153756"/><stop offset="1" stop-color="#050915"/></linearGradient><radialGradient id="star"><stop stop-color="#ffdfa0"/><stop offset=".5" stop-color="#b57745"/><stop offset="1" stop-color="#543249"/></radialGradient></defs><path fill="url(#sky)" d="M0 0h400v600H0z"/><circle cx="268" cy="205" r="170" fill="url(#star)"/><circle cx="315" cy="168" r="166" fill="#111c32"/><path d="M0 430L170 320l230 130v150H0" fill="#17283e"/><text x="34" y="516" font-family="sans-serif" font-size="57" fill="#f0e3c9" letter-spacing="10">ORBIT</text><text x="38" y="550" font-family="sans-serif" font-size="13" fill="#bdc7d5" letter-spacing="5">ARTWORK FIXTURE</text></svg>'
 
+// Opening Orbit's plan needs a whole plan: an empty object leaves the page without a source to show.
+const orbitPlan = {
+  mediaFileId: 7, libraryId: 1, eligible: true, reason: 'Video codec differs from the library’s HEVC target.',
+  kind: 'Video', action: 'Encode',
+  source: {
+    relativePath: inventoryFiles[0].relativePath, sizeBytes: inventoryFiles[0].sizeBytes, container: 'matroska',
+    videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, isHdr: false, isDolbyVision: false,
+    interlaced: false, audioCodecs: 'truehd, aac', maxAudioChannels: 8, audioTrackCount: 2, subtitleTrackCount: 4,
+  },
+  picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+  image: null,
+  sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false },
+  audioTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: false }],
+  subtitleTracks: [],
+  file: { container: 'mkv', fileName: 'Orbit.2025.2160p.mkv', renamed: false, mayBecomeMatroska: false },
+}
+
 export async function mockInventory(page: Page) {
   const json = (route: Route, body: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/api/**', async route => {
@@ -20,6 +37,9 @@ export async function mockInventory(page: Page) {
     if (path === '/api/health') return json(route, { status: 'healthy', version: 'test' })
     if (path === '/api/media/7/thumbnail') return route.fulfill({ contentType: 'image/svg+xml', body: poster })
     if (path.endsWith('/thumbnail')) return route.fulfill({ status: 404 })
+    if (path === '/api/media/7/plan') return json(route, orbitPlan)
+    if (path === '/api/library-options') return json(route, { ruleProfileSpecs: [] })
+    if (path === '/api/settings') return json(route, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
     if (path === '/api/inventory') {
       const library = url.searchParams.get('libraryId'), show = url.searchParams.get('show')
       const scoped = inventoryFiles.filter(f => !library || f.libraryId === Number(library))
@@ -120,4 +140,131 @@ test('a successful probe refreshes the open file and its preview eligibility', a
   await expect(dialog).toContainText('Audio qualifies')
   await expect(dialog.getByRole('button', { name: 'Preview', exact: true })).toBeEnabled()
   await expect(dialog.getByRole('button', { name: 'Re-probe', exact: true })).toBeEnabled()
+})
+
+test('an eligible file answers the question and opens its plan instead of queueing', async ({ page }) => {
+  await mockInventory(page)
+  const enqueues: string[] = []
+  page.on('request', request => { if (request.url().includes('/enqueue')) enqueues.push(request.url()) })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+
+  const verdict = dialog.getByRole('region', { name: 'Can it be optimised?' })
+  await expect(verdict).toContainText('Yes')
+  await expect(verdict).toContainText('Video codec differs')
+  await dialog.getByRole('link', { name: 'Optimise this file…', exact: true }).click()
+
+  await expect(page).toHaveURL(/#\/inventory\/optimise\/7$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Optimise this file' })).toBeVisible()
+  await expect(page.locator('[data-one-file-plan]')).toContainText('Orbit.2025.2160p.mkv')
+  expect(enqueues).toEqual([])
+})
+
+test('a file the rules skip keeps the button, off, with the reason and where to change it', async ({ page }) => {
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+
+  const verdict = dialog.getByRole('region', { name: 'Can it be optimised?' })
+  await expect(verdict).toContainText('No')
+  await expect(verdict).toContainText('Already uses the target codec.')
+  await expect(verdict.getByRole('link', { name: 'Films → Which files' })).toHaveAttribute('href', '#/libraries/1/configure/files')
+  const optimise = dialog.getByRole('button', { name: 'Optimise this file…', exact: true })
+  await expect(optimise).toBeDisabled()
+  await expect(optimise).toHaveAccessibleDescription('Already uses the target codec.')
+  await expect(dialog.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0)
+})
+
+test('a file held back by its last failure can be tried again from its details', async ({ page }) => {
+  await mockInventory(page)
+  let retriedOnce = false
+  const failedReason = 'Failed last time, so it isn’t tried again by itself'
+  await page.route('**/api/inventory?*', route => {
+    const file = inventoryFiles[1]
+    const item = retriedOnce
+      ? { file, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null }
+      : { file, eligible: false, reason: failedReason, retryJobId: 55 }
+    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0 } } })
+  })
+  const retries: string[] = []
+  await page.route('**/api/jobs/55/retry*', route => {
+    retries.push(new URL(route.request().url()).pathname)
+    retriedOnce = true
+    return route.fulfill({ json: { id: 55, status: 'Queued' } })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('region', { name: 'Can it be optimised?' })).toContainText(failedReason)
+  const tryAgain = dialog.getByRole('button', { name: 'Try again', exact: true })
+  await expect(tryAgain).toHaveAccessibleDescription(failedReason)
+
+  await tryAgain.click()
+
+  await expect(dialog.locator('[data-inventory-retried]')).toContainText('Added to the queue')
+  await expect(dialog.locator('[data-inventory-retried]').getByRole('link', { name: 'Open the queue' })).toHaveAttribute('href', '#/queue')
+  await expect(tryAgain).toHaveCount(0)
+  expect(retries).toEqual(['/api/jobs/55/retry'])
+})
+
+test('trying again from the Skipped filter keeps the details open to say it was queued', async ({ page }) => {
+  await mockInventory(page)
+  let retried = false
+  const failedReason = 'Failed last time, so it isn’t tried again by itself'
+  // As the server does: once retried, the file is no longer skipped, so the Skipped page loses it.
+  await page.route('**/api/inventory?*', route => {
+    const show = new URL(route.request().url()).searchParams.get('show')
+    const item = { file: inventoryFiles[1], eligible: false, reason: failedReason, retryJobId: 55 }
+    const items = retried && show === 'skipped' ? [] : [retried ? { ...item, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null } : item]
+    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0 } } })
+  })
+  let refuse = true
+  await page.route('**/api/jobs/55/retry*', route => {
+    if (refuse) return route.fulfill({ status: 409, json: { code: 'job.retry.alreadyActive', error: 'This file already has an active job. Wait for it to finish, or cancel it, before retrying this one.' } })
+    retried = true
+    return route.fulfill({ json: { id: 55, status: 'Queued' } })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /^Skipped/ }).click()
+  await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('link', { name: 'Films → Which files' })).toHaveCount(0)
+  const tryAgain = dialog.getByRole('button', { name: 'Try again', exact: true })
+
+  await tryAgain.click()
+  await expect(dialog.getByRole('alert')).toContainText('already has an active job')
+  await expect(tryAgain).toBeEnabled()
+
+  refuse = false
+  await tryAgain.click()
+
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-inventory-retried]')).toContainText('Added to the queue')
+})
+
+test('a file that has not been probed says to probe it before it can be optimised', async ({ page }) => {
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /01 - A very long/ }).click()
+  const optimise = page.getByRole('dialog').getByRole('button', { name: 'Optimise this file…', exact: true })
+
+  await expect(optimise).toBeDisabled()
+  await expect(optimise).toHaveAccessibleDescription('Probe this file to evaluate it against the library rules.')
+})
+
+test('the detail actions wrap instead of overflowing on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 })
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  const footer = dialog.locator('.detail-actions')
+
+  for (const name of ['Re-probe', 'Preview']) await expect(footer.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
+  await expect(footer.getByRole('link', { name: 'Optimise this file…', exact: true })).toBeInViewport({ ratio: 1 })
+  expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+  expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
 })

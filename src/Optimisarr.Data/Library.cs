@@ -1,3 +1,4 @@
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 
@@ -92,6 +93,12 @@ public sealed class Library
     /// </summary>
     public bool OptimiseDolbyVision { get; set; }
 
+    /// <summary>Deinterlace sources reported as interlaced instead of leaving them untouched.</summary>
+    public bool DeinterlaceVideo { get; set; }
+
+    /// <summary>How strongly video re-encodes reduce noise. Off by default.</summary>
+    public NoiseReduction NoiseReduction { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 
@@ -112,6 +119,31 @@ public sealed class Library
     /// simply never fires, so an unrecognised entry cannot exclude something unexpected.
     /// </summary>
     public string? SkipSourceCodecs { get; set; }
+
+    /// <summary>
+    /// When true, eligible video jobs in this library run through the Real-CUGAN super-resolution
+    /// pipeline before the usual verification and replacement gates. Off by default, and off on
+    /// upgrade, so no existing library's jobs change behaviour until an operator opts this
+    /// library in. The engine configuration itself is global (the <c>realcugan.*</c> settings);
+    /// this flag only decides which libraries route video through it.
+    /// </summary>
+    public bool SuperResolutionEnabled { get; set; }
+
+    /// <summary>
+    /// The engine this library's content calls for. Null means Real-CUGAN with the server's settings,
+    /// which is what every library did before there was a choice.
+    /// </summary>
+    public string? SuperResolutionEngine { get; set; }
+
+    /// <summary>The chosen engine's model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public string? SuperResolutionModel { get; set; }
+
+    /// <summary>The upscale factor for that model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public int? SuperResolutionScale { get; set; }
+
+    /// <summary>How this library judges its upscaled results; see <see cref="Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck"/>.</summary>
+    public Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck SuperResolutionQualityCheck { get; set; }
+        = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly;
 
     /// <summary>
     /// Portable content tune for video re-encodes ("Animation" or "Grain"). Null (the default)
@@ -193,6 +225,19 @@ public sealed class Library
     /// remapped, or dropped. Defaults to true.
     /// </summary>
     public bool NormalizeOpusChannelLayout { get; set; } = true;
+
+    /// <summary>
+    /// When true, a music file's silence at its very start and very end is trimmed, keeping a
+    /// quarter of a second at each edge. Silence inside the track is never cut. Off by default:
+    /// an album with deliberate pauses between tracks would lose them.
+    /// </summary>
+    public bool TrimAudioSilence { get; set; }
+
+    /// <summary>Audio quieter than this, in dBFS, counts as silence when trimming. Defaults to -60.</summary>
+    public double AudioSilenceThresholdDb { get; set; } = -60;
+
+    /// <summary>The shortest silence, in seconds, that is trimmed from an edge. Defaults to 2.</summary>
+    public double AudioSilenceMinimumSeconds { get; set; } = 2;
 
     /// <summary>
     /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
@@ -357,6 +402,24 @@ public sealed class Library
 
     /// <summary>When the library was last auto-enqueued; null means never.</summary>
     public DateTimeOffset? LastAutoEnqueueAt { get; set; }
+
+    // --- Automatic duplicate cleanup. Off by default: once a day it scans for exact copies and moves
+    // the spare copies that cleanup can safely move into quarantine, where they can be restored. ---
+
+    /// <summary>When true, exact copies are found and their spares quarantined once a day.</summary>
+    public bool AutoDedupeEnabled { get; set; }
+
+    /// <summary>When the last automatic duplicate cleanup started; null means never.</summary>
+    public DateTimeOffset? LastAutoDedupeAt { get; set; }
+
+    /// <summary>What the last automatic duplicate cleanup did.</summary>
+    public AutoDedupeOutcome? LastAutoDedupeOutcome { get; set; }
+
+    /// <summary>Copies the last automatic cleanup moved into quarantine.</summary>
+    public int LastAutoDedupeMoved { get; set; }
+
+    /// <summary>Bytes the last automatic cleanup moved into quarantine.</summary>
+    public long LastAutoDedupeBytes { get; set; }
 
     /// <summary>
     /// When true, a job in this library that passes every verification gate is replaced

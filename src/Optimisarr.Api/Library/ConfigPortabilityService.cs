@@ -1,6 +1,9 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Queue;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Verification;
@@ -34,7 +37,11 @@ public sealed record ConfigImportResult(
 /// deletes existing configuration. The exported file contains credentials and must
 /// be treated as sensitive backup material.
 /// </summary>
-public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsStore settings, TimeProvider clock)
+public sealed class ConfigPortabilityService(
+    OptimisarrDbContext db,
+    SettingsStore settings,
+    TimeProvider clock,
+    IHostEnvironment? environment = null)
 {
     private const string LegacyVmafEnabled = "verification.qualityGateEnabled";
     private const string LegacyVmafHarmonic = "verification.minimumVmafHarmonicMean";
@@ -91,6 +98,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
+        var refusedFolders = await RefusedSaveFoldersAsync(materialisedLibraries, cancellationToken);
+        if (refusedFolders.Count > 0)
+        {
+            return new ConfigImportResult(false, refusedFolders, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(
@@ -112,6 +125,53 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             targetsCreated, targetsUpdated,
             arrCreated, arrUpdated,
             settingsApplied);
+    }
+
+    /// <summary>
+    /// The save-folder rule the library editor applies, applied to a backup: a folder inside any
+    /// library this server would have after the import, its working space or Quarantine is
+    /// refused, so an import cannot bring in what Save would not accept.
+    /// </summary>
+    private async Task<List<string>> RefusedSaveFoldersAsync(
+        IReadOnlyList<LibrarySnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        var saving = snapshots.Where(snapshot => snapshot.MoveOnComplete && !string.IsNullOrWhiteSpace(snapshot.TargetFolder)).ToList();
+        if (saving.Count == 0)
+        {
+            return [];
+        }
+
+        var imported = snapshots.Select(snapshot => new LibraryFolder(snapshot.Name.Trim(), snapshot.Path.Trim())).ToList();
+        var kept = (await db.Libraries.AsNoTracking()
+                .Select(library => new LibraryFolder(library.Name, library.Path))
+                .ToListAsync(cancellationToken))
+            .Where(saved => imported.All(incoming => incoming.Path != saved.Path));
+        var libraries = imported.Concat(kept)
+            .Where(library => TargetFolderRule.IsUsablePath(library.Path))
+            .Select(library => library with { Path = TargetFolderRule.ResolveLinks(library.Path) })
+            .ToList();
+        var workRoot = environment is null ? string.Empty : TargetFolderRule.ResolveLinks(WorkPaths.Resolve(environment));
+        var quarantineRoot = environment is null ? string.Empty : TargetFolderRule.ResolveLinks(TrashPaths.Resolve(environment));
+
+        var errors = new List<string>();
+        foreach (var snapshot in saving)
+        {
+            var folder = snapshot.TargetFolder!.Trim();
+            if (!TargetFolderRule.IsUsablePath(folder))
+            {
+                errors.Add($"Library '{snapshot.Name}': the target folder is not a path this server can use.");
+                continue;
+            }
+
+            var verdict = TargetFolderRule.Check(TargetFolderRule.ResolveLinks(folder), libraries, workRoot, quarantineRoot);
+            if (!verdict.IsAllowed)
+            {
+                errors.Add($"Library '{snapshot.Name}': {verdict.Describe(folder)}");
+            }
+        }
+
+        return errors;
     }
 
     private async Task<(int Created, int Updated)> ImportLibrariesAsync(
@@ -152,6 +212,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.TargetContainer = snapshot.TargetContainer;
             library.HdrHandling = snapshot.HdrHandling is null ? null : ParseEnum<HdrHandling>(snapshot.HdrHandling);
             library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
+            library.DeinterlaceVideo = snapshot.DeinterlaceVideo ?? false;
+            library.NoiseReduction = snapshot.NoiseReduction is null ? NoiseReduction.Off : ParseEnum<NoiseReduction>(snapshot.NoiseReduction);
+            library.TrimAudioSilence = snapshot.TrimAudioSilence ?? false;
+            library.AudioSilenceThresholdDb = snapshot.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb;
+            library.AudioSilenceMinimumSeconds = snapshot.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds;
+            library.AutoDedupeEnabled = snapshot.AutoDedupeEnabled ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
             library.SkipSourceCodecs = snapshot.SkipSourceCodecs;
@@ -245,6 +311,15 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             // A backup taken before the setting existed leaves it out, which means the library
             // keeps its stored choice.
             library.NormalizeOpusChannelLayout = snapshot.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout;
+            // A backup taken before the Real-CUGAN pipeline existed leaves the per-library switch
+            // out, which means the library keeps its stored choice either way.
+            library.SuperResolutionEnabled = snapshot.SuperResolutionEnabled ?? library.SuperResolutionEnabled;
+            library.SuperResolutionQualityCheck = snapshot.SuperResolutionQualityCheck is null
+                ? library.SuperResolutionQualityCheck
+                : ParseEnum<Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck>(snapshot.SuperResolutionQualityCheck);
+            library.SuperResolutionEngine = snapshot.SuperResolutionEngine;
+            library.SuperResolutionModel = snapshot.SuperResolutionModel;
+            library.SuperResolutionScale = snapshot.SuperResolutionScale;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -261,7 +336,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
-            library.AutoReplace = snapshot.AutoReplace;
+            // Saving elsewhere and replacing must not both be on; saving elsewhere wins, as on Save.
+            library.AutoReplace = AutoReplacePolicy.ReplacesAutomatically(snapshot.AutoReplace, snapshot.MoveOnComplete);
         }
 
         return (created, updated);
@@ -483,7 +559,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Name == name, cancellationToken);
             if (connection is null)
             {
-                connection = new ArrConnection { Name = name };
+                // A backup from before the setting existed recreates the connection with it off, the
+                // same as the migration left every connection that was saved then.
+                connection = new ArrConnection { Name = name, RescanAfterChanges = false };
                 db.ArrConnections.Add(connection);
                 created++;
             }
@@ -500,6 +578,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 connection.ApiKey = snapshot.ApiKey;
             }
             connection.Enabled = snapshot.Enabled;
+            connection.RescanAfterChanges = snapshot.RescanAfterChanges ?? connection.RescanAfterChanges;
         }
 
         return (created, updated);
@@ -584,7 +663,18 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
         library.NormalizeOpusChannelLayout,
-        library.AdaptiveSoundtrackQuality);
+        library.AdaptiveSoundtrackQuality,
+        library.SuperResolutionEnabled,
+        library.SuperResolutionQualityCheck.ToString(),
+        library.SuperResolutionEngine,
+        library.SuperResolutionModel,
+        library.SuperResolutionScale,
+        library.DeinterlaceVideo,
+        library.NoiseReduction.ToString(),
+        library.AutoDedupeEnabled,
+        library.TrimAudioSilence,
+        library.AudioSilenceThresholdDb,
+        library.AudioSilenceMinimumSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
@@ -614,7 +704,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         connection.Type.ToString(),
         connection.BaseUrl,
         connection.Enabled,
-        connection.ApiKey);
+        connection.ApiKey,
+        connection.RescanAfterChanges);
 
     // Snapshots are validated before import, so these parses cannot fail here.
     private static T ParseEnum<T>(string value) where T : struct, Enum =>

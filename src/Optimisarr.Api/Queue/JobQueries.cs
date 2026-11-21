@@ -2,6 +2,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Workers;
+using Optimisarr.Api.Library;
+using Optimisarr.Api.Replacement;
+using Optimisarr.Core.Domain;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -27,6 +31,7 @@ public sealed record JobDto(
     int? EffectiveVideoQuality,
     string? VideoQualityMode,
     int QualityRetryCount,
+    string? SuperResolutionRun,
     long? SourceSizeBytes,
     long? OutputSizeBytes,
     bool? VerificationPassed,
@@ -56,7 +61,21 @@ public sealed record JobDto(
     /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
     bool WaitingForResources = false,
     /// <summary>Per-soundtrack bitrate search evidence while final verification has not produced its own report.</summary>
-    string? SoundtrackSearchJson = null);
+    string? SoundtrackSearchJson = null,
+    /// <summary>Video, Audio, Image or Unknown, so the original and the output can be compared in the right viewer.</summary>
+    string? MediaKind = null,
+    /// <summary>When a person accepted this output although its picture-quality score missed the target.</summary>
+    DateTimeOffset? AcceptedBelowTargetAt = null,
+    /// <summary>For a failed job: whether a person may accept it below target, and the scores that fell short.</summary>
+    BelowTargetDto? BelowTarget = null);
+
+/// <summary>
+/// Whether a failed job's output may be accepted below its picture-quality target. Dry-run is not
+/// applied here: the page already locks Replace while it is on, and the server refuses either way.
+/// </summary>
+public sealed record BelowTargetDto(bool Eligible, string Refusal, IReadOnlyList<BelowTargetShortfallDto> Shortfalls);
+
+public sealed record BelowTargetShortfallDto(string Target, double Score, double Minimum);
 
 public static class JobQueries
 {
@@ -160,6 +179,7 @@ public static class JobQueries
                 job.EffectiveVideoQuality,
                 job.VideoQualityMode,
                 job.QualityRetryCount,
+                job.SuperResolutionRun,
                 job.SourceSizeBytes,
                 job.OutputSizeBytes,
                 job.VerificationPassed,
@@ -181,7 +201,10 @@ public static class JobQueries
                 job.VerificationReportJson == null ? job.PerceptualSearchJson : null,
                 job.AppliedAudioFilter,
                 false,
-                job.VerificationReportJson == null ? job.SoundtrackSearchJson : null))
+                job.VerificationReportJson == null ? job.SoundtrackSearchJson : null,
+                job.MediaFile != null ? job.MediaFile.MediaKind.ToString() : null,
+                job.AcceptedBelowTargetAt,
+                null))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();
@@ -190,6 +213,7 @@ public static class JobQueries
             .Select(replacement => replacement.JobId).ToListAsync(cancellationToken)).ToHashSet();
         var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
         var waiting = await WaitingForWorkerAsync(db, jobs, availability, cancellationToken);
+        var belowTarget = await BelowTargetAsync(db, jobs, cancellationToken);
 
         var ordered = jobs
             .Select(job => job with
@@ -201,10 +225,47 @@ public static class JobQueries
                 RemoteStage = remote.GetValueOrDefault(job.Id).Stage,
                 WaitingForWorker = waiting.Contains(job.Id),
                 SidecarVerification = remote.GetValueOrDefault(job.Id).SidecarVerification,
+                BelowTarget = belowTarget.GetValueOrDefault(job.Id),
             })
             .ToList();
 
         return new JobQueryResult(ordered, total);
+    }
+
+    /// <summary>
+    /// The accept-below-target decision for each failed job on the page whose only failed check is
+    /// picture quality. Other jobs carry none, so the page offers nothing it would then refuse.
+    /// </summary>
+    private static async Task<Dictionary<int, BelowTargetDto>> BelowTargetAsync(
+        OptimisarrDbContext db, IReadOnlyList<JobDto> jobs, CancellationToken cancellationToken)
+    {
+        var failedIds = jobs.Where(job => job.Status == nameof(JobStatus.Failed) && job.VerificationReportJson != null)
+            .Select(job => job.Id).ToList();
+        if (failedIds.Count == 0) return [];
+        // Only the fields the rule reads: this runs on every queue poll, and a failed job's log can be large.
+        var failed = await db.Jobs.AsNoTracking()
+            .Where(job => failedIds.Contains(job.Id) && job.MediaFile != null)
+            .Select(job => new
+            {
+                Job = new Job
+                {
+                    Id = job.Id, Type = job.Type, Status = job.Status, SuperResolutionApplied = job.SuperResolutionApplied,
+                    VerifiedSourceSha256 = job.VerifiedSourceSha256, VerifiedOutputSha256 = job.VerifiedOutputSha256,
+                    WorkOutputPath = job.WorkOutputPath, VerificationReportJson = job.VerificationReportJson,
+                },
+                job.MediaFile!.MediaKind,
+                SavesElsewhere = job.MediaFile.Library != null && job.MediaFile.Library.MoveOnComplete,
+            })
+            .ToListAsync(cancellationToken);
+        var decisions = new Dictionary<int, BelowTargetDto>();
+        foreach (var (job, kind, savesElsewhere) in failed.Select(row => (row.Job, row.MediaKind, row.SavesElsewhere)))
+        {
+            var decision = BelowTargetEligibility.Decide(job, kind, savesElsewhere, dryRun: false);
+            if (decision.Shortfalls.Count == 0) continue;
+            decisions[job.Id] = new BelowTargetDto(decision.Eligible, decision.Refusal.ToString(),
+                [.. decision.Shortfalls.Select(s => new BelowTargetShortfallDto(s.Target.ToString(), s.Score, s.Minimum))]);
+        }
+        return decisions;
     }
 
     /// <summary>
@@ -285,16 +346,34 @@ public static class JobQueries
             return [];
         }
 
-        var placements = await db.Libraries
+        var libraries = await db.Libraries
             .AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement })
-            .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, cancellationToken);
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction })
+            .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
+        var ids = queued.Select(job => job.Id).ToList();
+        var facts = await db.Jobs
+            .AsNoTracking()
+            .Where(job => ids.Contains(job.Id))
+            .Select(job => new
+            {
+                job.Id,
+                job.Type,
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null,
+            })
+            .ToDictionaryAsync(job => job.Id, job => job, cancellationToken);
+        var superResolutionOn = (await new SettingsStore(db).GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
 
         var now = DateTimeOffset.UtcNow;
         return queued
-            .Where(job => placements.TryGetValue(job.LibraryId!.Value, out var placement)
+            .Where(job => libraries.TryGetValue(job.LibraryId!.Value, out var library)
+                && facts.TryGetValue(job.Id, out var fact)
                 && !WorkPlacementPolicy.MayRunLocally(
-                    placement, availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
+                    QueueDispatcher.EffectivePlacement(library.WorkPlacement,
+                        SuperResolutionRouting.Applies(superResolutionOn, library.SuperResolutionEnabled, fact.Kind, replaceBound: fact.Type == JobType.Normal)
+                        || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, fact.FieldOrder)
+                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, fact.Kind)),
+                    availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
             .Select(job => job.Id)
             .ToHashSet();
     }

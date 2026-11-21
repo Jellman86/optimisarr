@@ -1,11 +1,7 @@
 # Perceptual quality for audio and still images
 
-Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **14 October 2026**.
-Status: **existing audio/soundtrack reports and explicit gates are implemented in development. Draft PR #415 adds bounded standalone audio/image selection, shared native execution and resource/input hardening. Full parity remains incomplete; work is paused at the operator's request, with no merge, deployment or protocol-11 activation. Adaptive retained soundtracks, package/restart qualification, broader coverage and calibrated defaults remain open**.
-Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
-The operator prioritised [full quality-first parity](adaptive-audio-image-parity.md) on
-13 October. Its implementation/qualification matrix is the current work plan; a local
-search alone does not complete that scope.
+Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
+Status: **historical research and planning. The work shipped experimentally in 0.2.24 and 0.2.25, and [issue #332](https://github.com/Jellman86/optimisarr/issues/332) is closed. Status statements below describe the plan as it stood; the [closing checkpoint](adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records what shipped and the limits that stay.**
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
 

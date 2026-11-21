@@ -4,14 +4,18 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Active checkpoint, 28 October 2026
+## Closing checkpoint, 5 November 2026
 
-Soundtrack delivery status below was reconciled against current dev on **2 November 2026**.
+[#332](https://github.com/Jellman86/optimisarr/issues/332) is complete for the supported domain and
+closed. What follows records what shipped and the limits that stay. The workflows remain
+experimental and opt-in. Later sections, including the "required before parity" column of the table
+below, are the original completion contract and describe the plan as it stood; where they disagree
+with this checkpoint, this checkpoint is current.
 
 Experimental standalone audio/image quality-first workflows shipped in
 [0.2.24](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
-#415 merged, protocol 11 is enabled for compatible workers, and #332 remains open
-for the parity obligations below. No target is calibrated as a universal default.
+#415 merged and protocol 11 is enabled for compatible workers. No target is calibrated as a
+universal default.
 
 The [published qualification record](https://github.com/Jellman86/optimisarr/releases/download/v0.2.24/Optimisarr-0.2.24-qualification.json)
 binds the exact tag to downloadable packages and hashes. Windows/NVIDIA,
@@ -29,17 +33,40 @@ OS adapters/bootstrap were archived in #434. Reimplementing those adapters is no
 an active requirement. Existing owned-scratch recovery, live admission and Mac
 anchored accounting remain in place.
 
-Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
-encodes, including supported stereo-downmix references. The search runs on the server; the final
-candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-retry/reconnect, history/export and package-lifetime qualification remain open.
+Released in [0.2.25](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.25): opt-in
+per-soundtrack bitrate selection for local and worker video encodes (protocol 14), including
+surround and mono tracks a library downmixes to stereo. The search runs on the server; a worker
+receives fixed per-track rates and its own soundtrack gate measures the file it produces. The
+0.2.25 qualification record covers the soundtrack cases on the Mac and Windows release workers.
+Surround kept without a downmix stays unassessable and is a recorded limit, not open work.
 
-Current remaining work is:
+On dev since 0.2.25: previews state which quality searches they left out, and startup recovery
+reclaims the sample workspace of a search interrupted by a restart. A container acceptance case
+restarts the server during soundtrack selection and proves the job is requeued, selects again, leaves
+no scratch, and replaces and rolls back with the original unchanged.
 
-- Preview/calibration/target guidance and broader source, retry, interrupted-attempt
-  history and export parity.
-- Wider exact-package restart/reconnect/resource-exhaustion acceptance, with
-  reboot/remount and physical Linux ARM64 coverage kept explicitly unqualified.
+Recorded limits, not open work:
+
+- **Targets:** no audio or image target is a calibrated universal default. Choosing one needs human
+  listening and viewing, so the operator sets it explicitly.
+- **Surround:** surround kept without a stereo downmix is unassessable, and an enabled gate blocks
+  replacement.
+- **Previews and calibration:** they keep their fixed settings and do not run the audio, image or
+  soundtrack searches. Previews say so.
+- **Soundtrack search location:** the search runs on the server. Workers receive fixed per-track
+  rates and measure their own output; they do not search.
+- **History and export:** startup recovery does not archive an interrupted search, and the next
+  attempt clears its partial search evidence, so there is no complete history of interrupted
+  searches. Attempt history keeps the last eight archived retries with any verification report,
+  commands and bounded logs. Diagnostic exports carry report summaries, not raw candidate-search
+  evidence.
+- **Restart coverage:** a local restart during soundtrack selection is covered in the container
+  acceptance suite. Other search types share the same recovery but have no case of their own.
+- **Unqualified inputs and faults:** broader unsupported-input and retry combinations, and
+  exact-package reconnect and resource-exhaustion behaviour, have not been exercised beyond the
+  selected cases above. Each fails towards keeping the original, but none is claimed as qualified.
+- **Unqualified hosts and events:** power loss, reboot and remount, physical Linux ARM64, and other
+  hardware and source combinations beyond the selected release matrix.
 
 The [#441 UI acceptance follow-up](../reviews/2026-10-28-personal-quality-check-acceptance.md)
 records keyboard/focus and recovery fixes, automated accessibility checks, enlarged
@@ -58,10 +85,8 @@ tracks are excluded. The server performs bounded sample searches before a local 
 applies the selected rates to their exact output tracks. Selection cannot approve the finished file:
 every configured final gate still applies.
 
-Continue qualification of mixed retained/removed/copied tracks, identity/timing mismatches,
-unavailable evidence, retries, cancellation and reconnect. Original preservation and exact rollback
-remain acceptance criteria on each supported execution host. This delivery does not complete full
-#332 parity or wider hardware/lifetime acceptance.
+Original preservation and exact rollback remain acceptance criteria on each supported execution
+host, and later changes to these workflows requalify against them.
 
 ## Historical checkpoint, 20 October 2026
 
@@ -228,7 +253,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Broader source, boundary and failure cases beyond the selected per-host release matrix |
 | Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests; signed Swift JPEG/WebP jobs pass live admission, verification and rollback on disk and RAM; selected release packages pass advertisement/placement | Broader packaged image job/restart and source coverage |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims pass all three codecs under live memory admission and selected released packages pass placement | Longer-track and difficult-passage qualification |
-| Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
+| Soundtracks | 0.2.25: server-side bitrate selection for retained mono/stereo and downmixed tracks on local and worker encodes, frozen stream mapping, copied/removed tracks excluded, library-bitrate fallback; the soundtrack gate judges every final file | Restart during a selection; surround kept without a downmix remains a recorded limit |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
 | Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Broader reconnect acceptance, interrupted-attempt history and export qualification |

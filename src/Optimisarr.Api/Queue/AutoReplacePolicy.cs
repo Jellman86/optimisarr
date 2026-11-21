@@ -11,17 +11,27 @@ namespace Optimisarr.Api.Queue;
 /// </summary>
 public static class AutoReplacePolicy
 {
+    /// <summary>
+    /// Whether a library replaces originals without asking. A library that saves its optimised
+    /// files in another folder never replaces, even when an older saved row still has both
+    /// switches on: saving elsewhere wins, and the two must not both act.
+    /// </summary>
+    public static bool ReplacesAutomatically(bool autoReplace, bool moveOnComplete) => autoReplace && !moveOnComplete;
+
     public static bool ShouldReconcile(
         JobStatus status,
         bool? verificationPassed,
         bool libraryAutoReplace,
         bool dryRunMode,
-        bool manuallyPaused = false) =>
+        bool manuallyPaused = false,
+        bool superResolutionApplied = false) =>
         status == JobStatus.ReadyToReplace
         && verificationPassed == true
         && libraryAutoReplace
         && !dryRunMode
-        && !manuallyPaused;
+        && !manuallyPaused
+        // No metric can prove an AI upscale looks better, so a person approves every one.
+        && !superResolutionApplied;
 
     /// <summary>
     /// Whether a reconciled replacement outcome is a problem worth a warning, or an expected

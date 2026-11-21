@@ -12,6 +12,8 @@ public sealed record DedupePreparation(Guid Id, int LibraryId, string ReviewKey,
 public static class DedupePreparationPolicy
 {
     public const string Contract = "exact-quarantine-journal-v1";
+    // Recorded in every plan's signature, so it stays as it is. Copies now also end when the shared
+    // quarantine retention purges them, or when an operator deletes them.
     public const string Retention = "UntilRestored";
 
     public static bool IsValid(DedupePreparation plan) => plan.Id != Guid.Empty && plan.LibraryId > 0
@@ -24,9 +26,37 @@ public static class DedupePreparationPolicy
         && plan.Files.Select(f => (f.SizeBytes, f.Sha256)).Distinct().Count() == 1
         && plan.Files.Select(f => f.Identity).Distinct(StringComparer.Ordinal).Count() == plan.Files.Count;
 
+    /// <summary>
+    /// Every path is absolute and canonical inside its library root, sources are distinct, and each
+    /// copy has its own quarantine destination that is not any planned source.
+    /// </summary>
+    public static bool HasValidPaths(DedupePreparation plan)
+    {
+        try
+        {
+            var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+            var sources = plan.Files.Select(f => f.Path).ToHashSet(comparer);
+            var destinations = plan.Files.Where(f => !f.IsKeeper).Select(f => f.QuarantinePath!).ToArray();
+            return sources.Count == plan.Files.Count && destinations.Distinct(comparer).Count() == destinations.Length
+                && destinations.All(p => !sources.Contains(p)) && plan.Files.All(f =>
+                    Canonical(f.Root) && Canonical(f.Path) && Within(f.Root, f.Path)
+                    && (f.QuarantinePath is null || Canonical(f.QuarantinePath) && Within(f.Root, f.QuarantinePath)));
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return false; }
+    }
+
     public static string Signature(DedupePreparation plan) => Convert.ToHexStringLower(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(new { Contract, Retention, plan.Id, plan.LibraryId, plan.ReviewKey,
             plan.ScopeKey, Files = plan.Files.OrderBy(f => f.MediaFileId) })));
+
+    private static bool Canonical(string path) => Path.IsPathFullyQualified(path) && Path.GetFullPath(path) == path;
+
+    private static bool Within(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative != "." && relative != ".." && !Path.IsPathRooted(relative)
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
 
     private static bool IsHash(string value) => value.Length == 64 && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
     private static bool ValidText(string? value, int maximum) => !string.IsNullOrWhiteSpace(value)

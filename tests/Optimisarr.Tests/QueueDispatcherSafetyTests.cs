@@ -23,7 +23,7 @@ public sealed class QueueDispatcherSafetyTests
     {
         var now = DateTimeOffset.UtcNow;
         var job = new Job { Status = JobStatus.Probing, SourceSha256 = new string('a', 64) };
-        SizePredictionFailure.Apply(job, 20, "Size saving prediction: samples project 125%. The full encode was not run.", now);
+        SizePredictionFailure.Apply(job, 20, "Size saving prediction: samples project 125%. The full encode was not run.", now, rejectedOn: "libx265");
         Assert.Equal(JobStatus.Failed, job.Status);
         Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
         Assert.Equal(now, job.FinishedAt);
@@ -49,6 +49,33 @@ public sealed class QueueDispatcherSafetyTests
         Assert.Null(job.VerifiedOutputSha256);
         Assert.Null(job.VerificationPassed);
         Assert.Null(job.VerifiedAt);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_verdict_keeps_the_identity_of_the_files_it_judged_whether_or_not_they_passed(bool passed)
+    {
+        var job = new Job();
+        var outcome = new VerificationOutcome(new Optimisarr.Core.Verification.VerificationReport(
+            [new("Perceptual quality (VMAF)", passed ? Optimisarr.Core.Verification.CheckOutcome.Passed : Optimisarr.Core.Verification.CheckOutcome.Failed, "94")]),
+            OutputSizeBytes: 10);
+
+        QueueDispatcher.RecordVerdict(job, outcome, "{}", new string('a', 64), new string('b', 64), DateTimeOffset.UtcNow);
+
+        Assert.Equal(passed, job.VerificationPassed);
+        Assert.Equal(new string('a', 64), job.VerifiedSourceSha256);
+        Assert.Equal(new string('b', 64), job.VerifiedOutputSha256);
+    }
+
+    [Fact]
+    public void A_new_attempt_forgets_an_earlier_acceptance()
+    {
+        var job = new Job { AcceptedBelowTargetAt = DateTimeOffset.UtcNow };
+
+        QueueDispatcher.PrepareForAttempt(job, DateTimeOffset.UtcNow);
+
+        Assert.Null(job.AcceptedBelowTargetAt);
     }
 
     [Theory]
@@ -137,5 +164,31 @@ public sealed class QueueDispatcherSafetyTests
             hasVideoQuality: true,
             hasAdaptiveQuality: false,
             isCalibration: false));
+    }
+
+    [Theory]
+    [InlineData(WorkPlacement.Anywhere)]
+    [InlineData(WorkPlacement.PreferWorker)]
+    [InlineData(WorkPlacement.WorkerOnly)]
+    [InlineData(WorkPlacement.LocalOnly)]
+    public void Super_resolution_work_runs_on_this_server_only(WorkPlacement placement)
+    {
+        // The engine runs on the server's frames, and a worker lease carries only ffmpeg
+        // arguments: offered to a worker, the job would come back as an ordinary source-sized
+        // encode that silently replaces the original without the super-resolution that was
+        // asked for. Local-only is the only placement that keeps the promise honest.
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(placement, superResolution: true));
+    }
+
+    [Theory]
+    [InlineData(WorkPlacement.Anywhere)]
+    [InlineData(WorkPlacement.PreferWorker)]
+    [InlineData(WorkPlacement.WorkerOnly)]
+    [InlineData(WorkPlacement.LocalOnly)]
+    public void Work_that_is_not_super_resolution_keeps_the_operators_placement(WorkPlacement placement)
+    {
+        // Covers an opted-in library with the feature off, and its previews and calibration
+        // samples: none of them use the engine, so none of them may be pinned to this server.
+        Assert.Equal(placement, QueueDispatcher.EffectivePlacement(placement, superResolution: false));
     }
 }

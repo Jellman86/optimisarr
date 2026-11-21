@@ -1,5 +1,6 @@
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Setup;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
@@ -41,6 +43,7 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("GET", "/api/libraries/1/duplicates")]
     [InlineData("POST", "/api/libraries/1/duplicates")]
     [InlineData("DELETE", "/api/libraries/1/duplicates")]
+    [InlineData("PUT", "/api/libraries/1/duplicates/schedule")]
     [InlineData("PUT", "/api/settings")]
     [InlineData("GET", "/api/settings/cleanup")]
     [InlineData("POST", "/api/settings/cleanup")]
@@ -56,6 +59,9 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/setup/apply")]
     [InlineData("POST", "/api/setup/restart")]
     [InlineData("POST", "/api/libraries")]
+    [InlineData("POST", "/api/libraries/target-folder-check")]
+    [InlineData("GET", "/api/media/1/plan")]
+    [InlineData("GET", "/api/settings/dry-run-unlock")]
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]
@@ -98,6 +104,87 @@ public sealed class AdminTokenAuthEndpointTests
             .SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_new_manager_connection_rescans_by_default_and_an_update_without_the_field_keeps_the_choice()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        // Disabled so no other test asks this made-up manager anything.
+        var fields = new { name = "Rescan default test", type = "Radarr", baseUrl = "http://rescan-test:7878", apiKey = "k", enabled = false };
+        var created = await client.PostAsJsonAsync("/api/arr-connections", fields);
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        try
+        {
+            Assert.True(dto.GetProperty("rescanAfterChanges").GetBoolean());
+            var off = await client.PutAsJsonAsync($"/api/arr-connections/{id}", new
+            {
+                fields.name, fields.type, fields.baseUrl, fields.enabled, rescanAfterChanges = false
+            });
+            Assert.False((await off.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rescanAfterChanges").GetBoolean());
+            var kept = await client.PutAsJsonAsync($"/api/arr-connections/{id}", fields);
+            Assert.False((await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rescanAfterChanges").GetBoolean());
+        }
+        finally
+        {
+            await client.DeleteAsync($"/api/arr-connections/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Automatic_duplicate_cleanup_starts_off_and_only_film_and_tv_libraries_can_turn_it_on()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        async Task<int> CreateAsync(string mediaType)
+        {
+            var root = Path.Combine(_api.LibraryDirectory, "auto-dedupe-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+            var created = await client.PostAsJsonAsync("/api/libraries", new { name = "Auto dedupe " + mediaType + Guid.NewGuid(), path = root,
+                mediaType, ruleProfile = "ConservativeHevc", enabled = false });
+            created.EnsureSuccessStatusCode();
+            return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        }
+        var film = await CreateAsync("Film");
+        var music = await CreateAsync("Music");
+
+        var initial = await client.GetFromJsonAsync<JsonElement>($"/api/libraries/{film}/duplicates/schedule");
+        Assert.False(initial.GetProperty("enabled").GetBoolean());
+        Assert.True(initial.GetProperty("supported").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, initial.GetProperty("nextRunAfter").ValueKind);
+
+        var on = await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { enabled = true });
+        on.EnsureSuccessStatusCode();
+        var schedule = await on.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(schedule.GetProperty("enabled").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, schedule.GetProperty("nextRunAfter").ValueKind);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/libraries/{music}/duplicates/schedule", new { enabled = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { })).StatusCode);
+        (await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { enabled = false })).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Noise_reduction_starts_off_an_update_without_it_keeps_the_choice_and_unknown_levels_are_refused()
+    {
+        var root = Path.Combine(_api.LibraryDirectory, "noise-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var fields = new { name = "Noise test " + Guid.NewGuid(), path = root, mediaType = "Film", ruleProfile = "ConservativeHevc", enabled = false };
+        var created = await client.PostAsJsonAsync("/api/libraries", fields);
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        Assert.Equal("Off", dto.GetProperty("noiseReduction").GetString());
+
+        var strong = await client.PutAsJsonAsync($"/api/libraries/{id}", new { fields.name, fields.path, fields.mediaType, fields.ruleProfile, fields.enabled, noiseReduction = "strong" });
+        Assert.Equal("Strong", (await strong.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noiseReduction").GetString());
+        var kept = await client.PutAsJsonAsync($"/api/libraries/{id}", fields);
+        Assert.Equal("Strong", (await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noiseReduction").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync($"/api/libraries/{id}", new { fields.name, fields.path, fields.mediaType, fields.ruleProfile, fields.enabled, noiseReduction = "2" })).StatusCode);
     }
 
     [Fact]
@@ -254,7 +341,9 @@ public sealed class AdminTokenAuthEndpointTests
                 MediaFileId = mediaId,
                 Status = JobStatus.Failed,
                 AdaptiveVideoQuality = 22,
-                ErrorMessage = "Output exceeded its size budget."
+                ErrorMessage = "Output exceeded its size budget.",
+                // A stale acceptance left by an interrupted Accept anyway must not label the next attempt.
+                AcceptedBelowTargetAt = DateTimeOffset.UtcNow,
             };
             db.Jobs.Add(job);
             await db.SaveChangesAsync();
@@ -272,6 +361,7 @@ public sealed class AdminTokenAuthEndpointTests
             var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
             Assert.Equal(JobStatus.Queued, persisted.Status);
             Assert.Null(persisted.AdaptiveVideoQuality);
+            Assert.Null(persisted.AcceptedBelowTargetAt);
         }
         finally
         {
@@ -429,6 +519,18 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task Library_options_say_how_far_hardware_encoders_move_the_quality_number()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        var options = JsonNode.Parse(await client.GetStringAsync("/api/library-options"))!.AsObject();
+
+        var headroom = options["hardwareQualityHeadroom"]!.GetValue<int>();
+        Assert.Equal(EncoderQualityPolicy.Resolve("hevc_qsv", 24, retryCount: 0).Effective, 24 - headroom);
+    }
+
+    [Fact]
     public async Task Library_options_expose_the_complete_server_owned_video_preset_bundles()
     {
         var client = _api.CreateClient();
@@ -578,6 +680,59 @@ public sealed class AdminTokenAuthEndpointTests
         using var restart = await client.PostAsync("/api/setup/restart", content: null);
         Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
         Assert.Contains("\"currentStep\":1", await restart.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Setup_cannot_finish_while_a_required_tool_is_missing()
+    {
+        await using var withoutFfmpeg = _api.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IRequiredToolsGate>();
+            services.AddSingleton<IRequiredToolsGate>(new FixedRequiredTools(["FFmpeg", "ffprobe"]));
+        }));
+        var client = withoutFfmpeg.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var library = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Setup plan library",
+            path = _api.LibraryDirectory,
+            mediaType = "Film",
+            ruleProfile = "ConservativeHevc"
+        });
+        Assert.True(
+            library.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict,
+            await library.Content.ReadAsStringAsync());
+        using var restart = await client.PostAsync("/api/setup/restart", content: null);
+        Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
+        foreach (var completedStep in new[] { 1, 2, 3, 4 })
+        {
+            using var progress = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep });
+            Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        }
+        var settings = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        var concurrency = settings["maxConcurrentJobs"]!.GetValue<int>();
+        var changed = settings.DeepClone().AsObject();
+        changed["maxConcurrentJobs"] = concurrency + 1;
+
+        using var applied = await client.PostAsJsonAsync("/api/setup/apply", new
+        {
+            settings = changed,
+            useRecommendedEncoder = false,
+            applyRecommendedVmaf = false,
+            applyRecommendedSchedule = false
+        });
+        using var completed = await client.PostAsync("/api/setup/complete", content: null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, applied.StatusCode);
+        var refusal = await applied.Content.ReadAsStringAsync();
+        Assert.Contains("setup.tools.required", refusal);
+        Assert.Contains("FFmpeg, ffprobe", refusal);
+        Assert.Equal(HttpStatusCode.BadRequest, completed.StatusCode);
+        Assert.Contains("setup.tools.required", await completed.Content.ReadAsStringAsync());
+        // Nothing of the refused plan was saved, and setup is still open.
+        var saved = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        Assert.Equal(concurrency, saved["maxConcurrentJobs"]!.GetValue<int>());
+        Assert.Contains("\"completed\":false", await client.GetStringAsync("/api/setup"));
     }
 
     [Fact]
@@ -1290,6 +1445,11 @@ public sealed class AdminTokenAuthEndpointTests
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.
     /// </summary>
+    private sealed class FixedRequiredTools(IReadOnlyList<string> missing) : IRequiredToolsGate
+    {
+        public Task<IReadOnlyList<string>> MissingAsync(CancellationToken cancellationToken) => Task.FromResult(missing);
+    }
+
     public sealed class TokenedApi : WebApplicationFactory<Program>
     {
         public const string Token = "test-admin-token-0123456789";
@@ -1340,6 +1500,9 @@ public sealed class AdminTokenAuthEndpointTests
                 {
                     services.Remove(windowBytes);
                 }
+                // Finishing setup needs FFmpeg and ffprobe; a test host must not depend on either being installed.
+                services.RemoveAll<IRequiredToolsGate>();
+                services.AddSingleton<IRequiredToolsGate>(new FixedRequiredTools([]));
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
                 services.AddSingleton<IWorkerSampleSource, FixtureWorkerSampleSource>();
@@ -1413,6 +1576,8 @@ public sealed class AdminTokenAuthEndpointTests
         {
             public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
             {
+                if (Path.GetFileName(path).Contains("probe-fails", StringComparison.Ordinal))
+                    return Task.FromResult(MediaProbeResult.Failure("the fixture's probe failed"));
                 var tenBit = Path.GetFileName(path).Contains("ten-bit", StringComparison.Ordinal);
                 return Task.FromResult(MediaProbeService.Parse($$"""
                     {
@@ -1423,6 +1588,7 @@ public sealed class AdminTokenAuthEndpointTests
                           "width": 1920,
                           "height": 1080,
                           "pix_fmt": "{{(tenBit ? "yuv420p10le" : "yuv420p")}}",
+                          "field_order": "{{(Path.GetFileName(path).Contains("interlaced", StringComparison.Ordinal) ? "tt" : "unknown")}}",
                           "profile": "High",
                           "bits_per_raw_sample": "{{(tenBit ? "10" : "8")}}",
                           "r_frame_rate": "{{(Path.GetFileName(path).Contains("high-fps", StringComparison.Ordinal) ? "60/1" : "24000/1001")}}",

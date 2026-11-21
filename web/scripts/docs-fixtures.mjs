@@ -129,8 +129,8 @@ export const files = titles.map((title, i) => ({ id: i + 1, libraryId: 1, relati
 export const checks = [
   { name: 'Decode health', outcome: 'Passed', detail: 'Complete decode finished without errors.' },
   { name: 'Duration', outcome: 'Passed', detail: '4,200 seconds retained; difference below 1%.' },
-  { name: 'Stream policy', outcome: 'Passed', detail: 'Required audio and subtitle tracks retained.' },
-  { name: 'VMAF quality', outcome: 'Passed', detail: 'Harmonic mean 96.2 · fifth percentile 94.1 · minimum 88.4.' },
+  { name: 'Audio tracks', outcome: 'Passed', detail: 'Required audio and subtitle tracks retained.' },
+  { name: 'Perceptual quality (VMAF)', outcome: 'Passed', detail: 'Harmonic mean 96.2 · fifth percentile 94.1 · minimum 88.4.' },
   { name: 'Size saving', outcome: 'Passed', detail: 'Output is 62% smaller than the original.' },
 ]
 export const jobs = files.slice(0, 6).map((file, i) => ({ id: file.id, mediaFileId: file.id, libraryId: 1, relativePath: file.relativePath,
@@ -170,6 +170,22 @@ export const dailyResults = Array.from({ length: 30 }, (_, i) => ({
   files: i % 4 === 0 ? 0 : i % 5 + 1,
 }))
 export const replacements = files.slice(0,3).map((f,i) => ({id:f.id,jobId:f.id,mediaFileId:f.id, originalPath:'/data/films/'+f.relativePath, finalPath:'/data/films/'+f.relativePath.replace('.mkv','.mp4'), quarantinePath:`/trash/job-${f.id}/${titles[i]}.mkv`, originalSizeBytes:f.sizeBytes,newSizeBytes:Math.round(f.sizeBytes*.38),crossFilesystem:false,status:'Replaced',replacedAt:when,rolledBackAt:null,purgedAt:null,mediaKind:'Video',verificationPassed:true,verificationReportJson:JSON.stringify({checks})}))
+// What "Optimise this file…" shows for the first title: a re-encode into the preset's MP4, so the name changes.
+export const plan = {
+  mediaFileId: 1, libraryId: 1, eligible: true, reason: 'Video qualifies for the library’s HEVC target.',
+  kind: 'Video', action: 'Encode',
+  source: { relativePath: files[0].relativePath, sizeBytes: files[0].sizeBytes, container: 'matroska', videoCodec: 'h264', width: 1920, height: 1080,
+    durationSeconds: files[0].durationSeconds, isHdr: false, isDolbyVision: false, interlaced: false,
+    audioCodecs: 'eac3', maxAudioChannels: 6, audioTrackCount: 2, subtitleTrackCount: 2 },
+  picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+  image: null,
+  sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false },
+  audioTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: true }],
+  subtitleTracks: [{ index: 0, language: 'eng', kept: true }, { index: 1, language: 'fra', kept: true }],
+  file: { container: 'mp4', fileName: 'Lumen Coast.mp4', renamed: true, mayBecomeMatroska: true },
+}
+// What unlocking dry-run would start on the documentation server: nothing is pending.
+export const unlockEffects = { retentionDays: 14, originalsToDelete: 0, originalBytes: 0, duplicatesToDelete: 0, duplicateBytes: 0, librariesCleaningDuplicatesDaily: 0, jobsToReplace: 0, needsConfirmation: false }
 export const candidates = files.map(f => ({ mediaFileId:f.id, libraryId:1, relativePath:f.relativePath,sizeBytes:f.sizeBytes,videoCodec:f.videoCodec,ruleProfile:'ConservativeHevc',eligible:f.id!==3,reason:f.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.',mediaKind:'Video' }))
 export const workers = ['Studio Mac', 'Studio PC'].map((name,i)=>({id:i+1,name,operatingSystem:i?'Windows':'macOS',architecture:i?'x64':'arm64',protocolVersion:5,sidecarVersion:applicationVersion,cpuBusyFraction:.12,gpuBusyFraction:.08,loadReportedAt:when,videoEncoders:[i?'hevc_nvenc':'hevc_videotoolbox'],audioEncoders:['aac'],hardwareDecoders:[i?'cuda':'videotoolbox'],vmaf:'Cpu',freeScratchBytes:400e9,maxConcurrency:1,pairedAt:when,lastSeenAt:when,revokedAt:null,online:true,drainRequestedAt:null,heldLeases:0,activeJobs:[],lastProblem:null,lastProblemAt:null}))
 // Original vector illustrations created for documentation, not posters from a media provider.

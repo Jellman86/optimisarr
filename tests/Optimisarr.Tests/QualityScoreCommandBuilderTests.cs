@@ -307,6 +307,37 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Counted_frames_place_a_late_window_inside_a_variable_frame_rate_file()
+    {
+        // A Pokémon SD episode reports 29.97 fps but holds 37,635 pictures over 1,474.6 s, about
+        // 25.5 a second. At the reported rate its late window started at frame 39,171, after the
+        // last one, so libvmaf scored nothing and strict verification failed the job.
+        var context = Legacy(new QualityMeasurementContext(640, 480, false, false,
+            ReferenceStartSeconds: 1307, ReferenceDurationSeconds: 1474.573, DistortedStartSeconds: 1307,
+            MeasureDurationSeconds: 40, ReferenceFrameRate: 30000 / 1001d, PairFramesByNumber: true));
+
+        var reported = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+        var counted = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { ReferenceFrameCount = 37635 }, 2);
+
+        Assert.Contains("trim=start_frame=39171:end_frame=40370", reported.FilterGraph);
+        Assert.Equal(2, counted.FilterGraph.Split("trim=start_frame=33358:end_frame=34379").Length - 1);
+    }
+
+    [Fact]
+    public void A_frame_window_that_would_run_past_the_last_frame_ends_on_it_instead()
+    {
+        var context = Legacy(new QualityMeasurementContext(640, 480, false, false,
+            ReferenceStartSeconds: 90, ReferenceDurationSeconds: 100, DistortedStartSeconds: 90,
+            MeasureDurationSeconds: 40, ReferenceFrameRate: 25, PairFramesByNumber: true,
+            ReferenceFrameCount: 2_400));
+
+        var command = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+
+        Assert.Equal(2, command.FilterGraph.Split("trim=start_frame=1440:end_frame=2400").Length - 1);
+    }
+
+    [Fact]
     public void Frame_pairing_needs_a_frame_rate_and_a_window_and_leaves_cut_clips_alone()
     {
         QualityMeasurementContext Context(bool pair, double? rate = 24000d / 1001d, int? duration = 40, bool cutClip = false) =>
@@ -573,6 +604,60 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Contains(@"[1:v]select=not(mod(round(t*60)\,2)),settb=AVTB,setpts=PTS-STARTPTS,fps=fps=30", command.FilterGraph);
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=fps=30", command.FilterGraph);
         Assert.DoesNotContain("[0:v]select", command.FilterGraph);
+    }
+
+    [Fact]
+    public void A_denoised_encode_is_judged_against_a_reference_cleaned_the_same_way_after_any_deinterlace()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceFrameRate: 25,
+                ReferenceDeinterlace: true,
+                ReferenceDenoise: Optimisarr.Core.Queue.NoiseReduction.Light)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.StartsWith("[1:v]" + Optimisarr.Core.Domain.VideoFieldOrder.DeinterlaceFilter + ","
+            + Optimisarr.Core.Queue.NoiseReductionFilter.For(Optimisarr.Core.Queue.NoiseReduction.Light) + ",", reference);
+        var distorted = command.FilterGraph[..command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)];
+        Assert.DoesNotContain("hqdn3d", distorted);
+    }
+
+    [Fact]
+    public void A_capped_and_denoised_reference_is_cleaned_from_every_frame_before_it_is_thinned_and_the_report_says_so()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceFrameRate: 50,
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(50, 25, 2),
+                ReferenceDenoise: Optimisarr.Core.Queue.NoiseReduction.Strong)),
+            threads: 4);
+
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.True(reference.IndexOf("hqdn3d", StringComparison.Ordinal) < reference.IndexOf("select", StringComparison.Ordinal));
+        Assert.Contains("reference noise-reduced (strong)", command.Preprocessing);
+    }
+
+    [Fact]
+    public void A_deinterlaced_encode_is_judged_against_a_reference_deinterlaced_the_same_way()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceFrameRate: 25,
+                ReferenceDeinterlace: true)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.StartsWith("[1:v]" + Optimisarr.Core.Domain.VideoFieldOrder.DeinterlaceFilter + ",", reference);
+        var distorted = command.FilterGraph[..command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)];
+        Assert.DoesNotContain("bwdif", distorted);
     }
 
     [Fact]

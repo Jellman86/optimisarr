@@ -36,7 +36,7 @@ for (const width of [375, 1440]) for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Find exact copies' }).click()
     await expect(page.getByText('Copies/Orbit.mkv', { exact: true })).toBeVisible()
     await expect(page.getByText('Extra disk space is unknown', { exact: true })).toBeVisible()
-    await expect(page.getByText('Nothing is removed or changed.')).toBeVisible()
+    await expect(page.getByText('Scanning changes nothing. Only cleaning up moves copies, to Quarantine.')).toBeVisible()
     await expect(page.getByRole('button', { name: /delete|remove|keep this/i })).toHaveCount(0)
     expect(await page.locator('main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     await page.getByRole('link', { name: 'Inventory', exact: true }).last().click()

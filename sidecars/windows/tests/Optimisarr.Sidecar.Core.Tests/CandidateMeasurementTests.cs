@@ -222,6 +222,46 @@ public sealed class CandidateMeasurementTests : IDisposable
         Assert.NotNull(server.QualityBody);
     }
 
+    [Fact]
+    public async Task A_frame_window_past_the_counted_source_frames_is_measured_by_timestamp()
+    {
+        // A variable-frame-rate source holds fewer pictures than its reported rate implies. The
+        // server placed the late window at that rate, after the last frame, and frame pairing
+        // there scored nothing. The windows that fit keep frame pairing.
+        var server = new FakeWorkerServer(SourceBytes, Sha256(SourceBytes));
+        var http = new HttpClient(server);
+        var transcoder = new FakeMeasuringTranscoder
+        {
+            WriteVmafLogs = true,
+            AnswerProbe = arguments => arguments.Contains("-count_frames") ? "37635" : "30000/1001",
+        };
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http), transcoder, FfmpegBesideAProbe(), _scratch, () => null);
+        IReadOnlyList<string> Command(string pairing) =>
+        [
+            "-nostdin", "-v", "error", "-i", "{{distorted}}", "-i", "{{reference}}", "-lavfi",
+            $"[0:v]setpts=PTS-{{{{distortedShift}}}}*1000000,{pairing}[d];[1:v]null[r];[d][r]libvmaf=log_path={{{{log}}}}:shortest=1",
+            "-f", "null", "-"
+        ];
+        var assignment = Measured();
+        assignment = assignment with { Quality = assignment.Quality with
+        {
+            Commands = [Command("fps=fps=early"), Command("fps=fps=late")],
+            FramePairedCommands = [Command("trim=start_frame=3596:end_frame=4795"), Command("trim=start_frame=39171:end_frame=40370")],
+        } };
+
+        await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        var filters = transcoder.AllRuns
+            .Select(run => run.SingleOrDefault(a => a.Contains("libvmaf", StringComparison.Ordinal)))
+            .Where(filter => filter is not null)
+            .ToList();
+        Assert.Contains(filters, filter => filter!.Contains("trim=start_frame=3596:end_frame=4795", StringComparison.Ordinal));
+        Assert.Contains(filters, filter => filter!.Contains("fps=fps=late", StringComparison.Ordinal));
+        Assert.DoesNotContain(filters, filter => filter!.Contains("end_frame=40370", StringComparison.Ordinal));
+        Assert.NotNull(server.QualityBody);
+    }
+
     private static bool IsProbe(IReadOnlyList<string> run)
     {
         var limit = run.ToList().LastIndexOf("-t");

@@ -14,6 +14,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -69,6 +70,82 @@ internal static class MediaAndQueueEndpoints
             return Results.Ok(result.Items);
         })
         .WithName("ListMedia");
+
+        app.MapPost("/api/media/{id:int}/enqueue", async (
+            int id,
+            JobEnqueueService enqueue,
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await enqueue.EnqueueFileAsync(id, cancellationToken);
+            switch (result.Outcome)
+            {
+                case FileEnqueueOutcome.NotFound:
+                    return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
+                case FileEnqueueOutcome.Enqueued:
+                    dispatcher.Wake();
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: false));
+                case FileEnqueueOutcome.AlreadyActive:
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: true));
+                default:
+                    return ApiErrors.Conflict(result.Outcome switch
+                    {
+                        FileEnqueueOutcome.NeedsProbe => "media.enqueue.needsProbe",
+                        FileEnqueueOutcome.Importing => "media.enqueue.importing",
+                        _ => "media.enqueue.ineligible",
+                    }, result.Reason!);
+            }
+        })
+        .WithName("EnqueueMediaFile")
+        .Produces<FileEnqueueDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        // What queueing this file would do, by its library's settings as they are now. Read-only:
+        // the same verdict and resolver the queue uses, with nothing queued and no FFmpeg run.
+        app.MapGet("/api/media/{id:int}/plan", async (
+            int id,
+            OptimisarrDbContext db,
+            CandidateService candidates,
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
+        {
+            var file = await db.MediaFiles.AsNoTracking().Include(f => f.Library)
+                .SingleOrDefaultAsync(f => f.Id == id, cancellationToken);
+            if (file is null)
+            {
+                return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
+            }
+
+            if (file.Status != MediaFileStatus.Probed)
+            {
+                return ApiErrors.Conflict("media.enqueue.needsProbe", "Probe this file before queueing it.");
+            }
+
+            var candidate = (await candidates.EvaluateAsync(file.LibraryId, cancellationToken))
+                .FirstOrDefault(c => c.MediaFileId == id);
+            var saved = LibraryRuleResolution.Resolve(file.Library);
+            // The same two facts the dispatcher works out before it plans a job: whether this file
+            // would be upscaled, which copies its audio, and whether its audio fits in MP4.
+            var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var upscales = saved.TargetVideoCodec is not null && SuperResolutionRouting.Applies(
+                superResolution.Enabled, file.Library?.SuperResolutionEnabled == true, file.MediaKind, replaceBound: true);
+            var rules = QueueDispatcher.SuperResolutionRules(saved, upscales);
+            var mp4IncompatibleAudio = file.MediaKind == MediaKind.Video
+                && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, file.Path))
+                && AudioContainerCompatibility.ContainsMp4Incompatible(file.AudioCodecs);
+            var plan = OptimisationPlanner.Plan(
+                CandidateService.PropertiesOf(file),
+                rules,
+                file.Library?.QualityCrf ?? rules.DefaultCrf,
+                mp4IncompatibleAudio,
+                upscales);
+            return Results.Ok(MediaPlanDto.From(file, candidate, plan));
+        })
+        .WithName("GetMediaPlan")
+        .Produces<MediaPlanDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         app.MapPost("/api/media/{id:int}/probe", async (
             int id,
@@ -242,6 +319,27 @@ internal static class MediaAndQueueEndpoints
             return FileServing.ServeFile(path);
         })
         .WithName("GetPreviewContent");
+
+        // Streams an output that Replace or Accept anyway could put in place of its original, so the two
+        // can be compared before either is pressed: a verified output waiting to replace, or a failed
+        // one whose only fault is a picture-quality score under target. Anything else has nothing to compare.
+        app.MapGet("/api/jobs/{id:int}/output/content", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var job = await db.Jobs.AsNoTracking().Include(row => row.MediaFile).ThenInclude(file => file!.Library)
+                .FirstOrDefaultAsync(row => row.Id == id && row.Type == JobType.Normal, cancellationToken);
+            var comparable = job switch
+            {
+                { Status: JobStatus.ReadyToReplace, VerificationPassed: true } => true,
+                { Status: JobStatus.Failed, MediaFile: { } media } => BelowTargetEligibility.Decide(
+                    job, media.MediaKind, media.Library?.MoveOnComplete == true, dryRun: false).Eligible,
+                _ => false
+            };
+            return FileServing.ServeFile(comparable ? job!.WorkOutputPath : null);
+        })
+        .WithName("GetJobOutputContent");
 
         app.MapGet("/api/preview/{jobId:int}/reference", async (
             int jobId, PreviewService preview, CancellationToken cancellationToken) =>
@@ -527,7 +625,7 @@ internal static class MediaAndQueueEndpoints
             }
 
             job.BypassSizePreflight = true;
-            job.AdaptiveVideoQuality = null;
+            job.ClearAdaptiveVideoQuality();
             job.AdaptiveAudioBitrateKbps = null;
             job.AdaptiveImageQuality = null;
             job.PerceptualSearchJson = null;
@@ -585,6 +683,7 @@ internal static class MediaAndQueueEndpoints
                 JobOperationFailure.NotFound => ApiErrors.NotFound("job.notFound", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.InvalidState => ApiErrors.BadRequest("job.retry.invalidState", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.Excluded => ApiErrors.Conflict("job.retry.excluded", outcome.Message),
+                JobOperationFailure.AlreadyActive => ApiErrors.Conflict("job.retry.alreadyActive", outcome.Message),
                 JobOperationFailure.RecoveryPending => ApiErrors.Conflict("job.recoveryPending", outcome.Message),
                 _ => ApiErrors.Conflict("job.workCleanupFailed", outcome.Message),
             };
@@ -618,5 +717,102 @@ internal static class MediaAndQueueEndpoints
             return ReplacementResults.ToHttp(result);
         })
         .WithName("ReplaceFromJob");
+
+        // The one exception to "every check must pass": a person accepts a failed output whose only
+        // fault is a picture-quality score under target. The original is quarantined as for Replace.
+        app.MapPost("/api/jobs/{id:int}/accept-below-target", async (
+            int id,
+            AcceptBelowTargetRequest request,
+            ReplacementService replacement,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await replacement.AcceptBelowTargetAsync(id, request.ExecutionAttempt, cancellationToken);
+            return ReplacementResults.ToHttp(result);
+        })
+        .WithName("AcceptJobBelowTarget");
     }
 }
+
+/// <summary>The attempt the person looked at, so a job retried since is not accepted on stale evidence.</summary>
+internal sealed record AcceptBelowTargetRequest(int ExecutionAttempt);
+
+internal sealed record FileEnqueueDto(int JobId, bool AlreadyQueued);
+
+/// <summary>
+/// What optimising one file would do, with the verdict the queue would give it. Enumerations are
+/// sent by name, as everywhere else in the API.
+/// </summary>
+internal sealed record MediaPlanDto(
+    int MediaFileId,
+    int? LibraryId,
+    bool Eligible,
+    string Reason,
+    string Kind,
+    string Action,
+    MediaPlanSourceDto Source,
+    MediaPlanPictureDto? Picture,
+    PlannedSound? Sound,
+    IReadOnlyList<PlannedTrack>? AudioTracks,
+    IReadOnlyList<PlannedTrack>? SubtitleTracks,
+    PlannedFile File,
+    MediaPlanImageDto? Image,
+    int? RetryJobId)
+{
+    public static MediaPlanDto From(MediaFile file, Candidate? candidate, OptimisationPlan plan) => new(
+        file.Id,
+        file.LibraryId,
+        candidate?.Eligible ?? false,
+        candidate?.Reason ?? "This file can't be optimised.",
+        plan.Kind.ToString(),
+        plan.Action,
+        new MediaPlanSourceDto(
+            file.RelativePath, file.SizeBytes, file.Container, file.VideoCodec, file.Width, file.Height,
+            file.DurationSeconds, file.IsHdr, file.IsDolbyVision, VideoFieldOrder.IsInterlaced(file.FieldOrder),
+            file.AudioCodecs, file.MaxAudioChannels, file.AudioTrackCount, file.SubtitleTrackCount),
+        plan.Picture is { } picture
+            ? new MediaPlanPictureDto(
+                picture.Codec, picture.Crf, picture.Width, picture.Height, picture.ShrinkToHeight, picture.FrameRateCap,
+                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales)
+            : null,
+        plan.Sound,
+        plan.AudioTracks,
+        plan.SubtitleTracks,
+        plan.File,
+        plan.Image is { } image
+            ? new MediaPlanImageDto(image.Format, image.Quality, image.ResizeMode.ToString(), image.ResizeValue, image.RecompressesLossy)
+            : null,
+        candidate?.RetryJobId);
+}
+
+/// <summary>The file as it is now: the "before" side of the plan, from what the last probe recorded.</summary>
+internal sealed record MediaPlanSourceDto(
+    string RelativePath,
+    long SizeBytes,
+    string? Container,
+    string? VideoCodec,
+    int? Width,
+    int? Height,
+    double? DurationSeconds,
+    bool IsHdr,
+    bool IsDolbyVision,
+    bool Interlaced,
+    string? AudioCodecs,
+    int MaxAudioChannels,
+    int? AudioTrackCount,
+    int? SubtitleTrackCount);
+
+internal sealed record MediaPlanPictureDto(
+    string Codec,
+    int? Crf,
+    int? Width,
+    int? Height,
+    int? ShrinkToHeight,
+    int? FrameRateCap,
+    bool TonemapToSdr,
+    bool Deinterlace,
+    bool CropBlackBars,
+    string NoiseReduction,
+    bool Upscales);
+
+/// <summary>Enums are sent as their names, as the rest of the API sends them.</summary>
+internal sealed record MediaPlanImageDto(string Format, int Quality, string ResizeMode, int ResizeValue, bool RecompressesLossy);

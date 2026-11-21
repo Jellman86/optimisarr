@@ -103,7 +103,26 @@ public sealed record LibrarySnapshot(
     bool? AdaptiveImageQuality = null,
     // Absent from backups made before the setting existed; importing those keeps the stored choice.
     bool? NormalizeOpusChannelLayout = null,
-    bool? AdaptiveSoundtrackQuality = null);
+    bool? AdaptiveSoundtrackQuality = null,
+    // Same: null on an older snapshot keeps the stored per-library switch — the Real-CUGAN
+    // super-resolution pipeline must not silently activate (or deactivate) on a config restore.
+    bool? SuperResolutionEnabled = null,
+    // Null on an older snapshot keeps the stored check.
+    string? SuperResolutionQualityCheck = null,
+    // A library's model choice travels with it, unlike the engine's location on this machine.
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
+    // Null on an older snapshot means off, as those libraries left interlaced files untouched.
+    bool? DeinterlaceVideo = null,
+    // Null on an older snapshot means off, as those libraries never reduced noise.
+    string? NoiseReduction = null,
+    // Null on an older snapshot means off, as those libraries never cleaned duplicates on a schedule.
+    bool? AutoDedupeEnabled = null,
+    // Null on an older snapshot means off with the default threshold and length.
+    bool? TrimAudioSilence = null,
+    double? AudioSilenceThresholdDb = null,
+    double? AudioSilenceMinimumSeconds = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(
@@ -132,4 +151,5 @@ public sealed record ArrConnectionSnapshot(
     string Type,
     string BaseUrl,
     bool Enabled,
-    string? ApiKey = null);
+    string? ApiKey = null,
+    bool? RescanAfterChanges = null);
