@@ -6,13 +6,14 @@
   import type { Snippet } from 'svelte'
 
   let { kind = 'info', class: className = '', children }: {
-    kind?: 'error' | 'success' | 'info'
+    kind?: 'error' | 'success' | 'info' | 'warn'
     class?: string
     children: Snippet
   } = $props()
 
   const styles = {
     error: { icon: 'warning', tone: 'tone-bad', ink: 'text-bad' },
+    warn: { icon: 'warning', tone: 'tone-warn', ink: 'text-warn' },
     success: { icon: 'check', tone: 'tone-ok', ink: 'text-ok' },
     info: { icon: 'info', tone: 'tone-accent', ink: 'text-accent' },
   } as const

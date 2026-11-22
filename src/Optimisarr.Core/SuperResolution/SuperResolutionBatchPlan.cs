@@ -35,4 +35,29 @@ public static class SuperResolutionBatchPlan
         var frames = available / WorstCaseBytesPerFrame(source, scale);
         return frames < MinimumFrames ? null : (int)Math.Min(frames, MaximumFrames);
     }
+
+    /// <summary>
+    /// Returns the probed frame count when the container provides one, otherwise estimates it from
+    /// duration and frame rate so Matroska files without a NUMBER_OF_FRAMES statistics tag still
+    /// report super-resolution progress instead of staying at 0%.
+    /// </summary>
+    public static int? EstimateExpectedFrames(int? probedFrameCount, double? durationSeconds, double? frameRate)
+    {
+        if (probedFrameCount is > 0)
+        {
+            return probedFrameCount.Value;
+        }
+
+        if (durationSeconds is > 0 and var duration && double.IsFinite(duration)
+            && frameRate is > 0 and var fps && double.IsFinite(fps))
+        {
+            var estimated = Math.Round(duration * fps, MidpointRounding.AwayFromZero);
+            if (estimated >= 1 && estimated <= int.MaxValue)
+            {
+                return (int)estimated;
+            }
+        }
+
+        return null;
+    }
 }

@@ -976,3 +976,41 @@ test('switching engines while a check runs never shows the other engines answer'
   await expect(page.getByText('Not installed — the engine executable was not found.')).toBeVisible()
   await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toHaveCount(0)
 })
+
+test('the super-resolution probe warns clearly on software Vulkan and names the GPU when hardware runs', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  await page.route('**/api/system/super-resolution/realcugan/probe', route =>
+    json(route, {
+      success: true,
+      exitCode: 0,
+      error: null,
+      outputTail: '[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]',
+      deviceUsed: 'auto',
+      detectedDevice: 'llvmpipe (LLVM 20.1.2, 256 bits)',
+      usingSoftwareVulkan: true,
+      warning: "Upscaling ran on software Vulkan (llvmpipe (LLVM 20.1.2, 256 bits)) on the CPU instead of a GPU. Add 'graphics' to NVIDIA_DRIVER_CAPABILITIES.",
+    }))
+  await page.goto('/#/settings/super-resolution')
+
+  await page.getByRole('button', { name: 'Test with a real sample run' }).click()
+  const warnBanner = page.locator('.tone-warn')
+  await expect(warnBanner).toContainText('llvmpipe')
+  await expect(warnBanner).toContainText('NVIDIA_DRIVER_CAPABILITIES')
+  await expect(page.locator('.tone-ok')).toHaveCount(0)
+
+  await page.route('**/api/system/super-resolution/realcugan/probe', route =>
+    json(route, {
+      success: true,
+      exitCode: 0,
+      error: null,
+      outputTail: '[0 NVIDIA GeForce GTX 1050]  queueC=0[1]',
+      deviceUsed: 'auto',
+      detectedDevice: 'NVIDIA GeForce GTX 1050',
+      usingSoftwareVulkan: false,
+      warning: null,
+    }))
+  await page.getByRole('button', { name: 'Test with a real sample run' }).click()
+  await expect(page.locator('.tone-ok')).toContainText('NVIDIA GeForce GTX 1050')
+})
