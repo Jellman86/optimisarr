@@ -425,7 +425,15 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         var batches = new List<(int Batch, int Written, int? Expected)>();
         var hooks = Hooks() with
         {
-            ReportEngineOutput = log => reportedLogs.Add(log),
+            TryReportEngineOutput = log =>
+            {
+                if (!log.Contains("llvmpipe"))
+                {
+                    return false;
+                }
+                reportedLogs.Add(log);
+                return true;
+            },
             ReportBatchCompleted = (batch, written, expected) => batches.Add((batch, written, expected)),
         };
 

@@ -188,19 +188,24 @@ public sealed partial class QueueDispatcher
             processId => TrackProcess(processId, hardwareEncoder: false),
             fraction => UpdateProgressAsync(jobId, fraction),
             TrackEncoder: processId => TrackProcess(processId, IsHardwareEncoder(work.VideoEncoder)),
-            ReportEngineOutput: log =>
+            TryReportEngineOutput: log =>
             {
                 var devices = SuperResolutionVulkanDevice.ParseDevices(log);
                 var selected = SuperResolutionVulkanDevice.ResolveSelectedDevice(devices, options);
+                if (selected is null)
+                {
+                    return false;
+                }
                 if (SuperResolutionVulkanDevice.SoftwareFallbackWarning(selected, options) is { } warning)
                 {
                     logger.LogWarning("Job {JobId}: {Warning}", jobId, warning);
                 }
-                else if (selected is not null)
+                else
                 {
                     logger.LogInformation("Job {JobId}: super-resolution using Vulkan device [{Index}] {DeviceName}",
                         jobId, selected.Index, selected.Name);
                 }
+                return true;
             },
             ReportBatchCompleted: (batch, written, expected) =>
             {

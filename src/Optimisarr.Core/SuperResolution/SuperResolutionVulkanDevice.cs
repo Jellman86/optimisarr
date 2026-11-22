@@ -71,8 +71,8 @@ public sealed partial record SuperResolutionVulkanDevice(int Index, string Name,
             return devices.FirstOrDefault(device => device.Index == index);
         }
 
-        // ncnn-vulkan's automatic mode selects Vulkan device 0 when no -g flag is passed.
-        return devices.FirstOrDefault(device => device.Index == 0) ?? devices[0];
+        // ncnn-vulkan's automatic mode prefers hardware GPUs over software CPU renderers such as llvmpipe.
+        return devices.FirstOrDefault(device => !device.IsSoftware) ?? devices[0];
     }
 
     /// <summary>

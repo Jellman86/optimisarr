@@ -57,6 +57,23 @@ public sealed class SuperResolutionVulkanDeviceTests
     }
 
     [Fact]
+    public void ResolveSelectedDevice_prefers_hardware_gpu_over_llvmpipe_in_auto_mode_regardless_of_index()
+    {
+        const string reversedOutput = """
+            [0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]  queueG=0[1]  queueT=0[1]
+            [1 NVIDIA GeForce GTX 1050]  queueC=0[1]  queueG=0[1]  queueT=0[1]
+            """;
+        var devices = SuperResolutionVulkanDevice.ParseDevices(reversedOutput);
+        var autoOptions = SuperResolutionOptions.Defaults with { Device = "auto" };
+
+        var selected = SuperResolutionVulkanDevice.ResolveSelectedDevice(devices, autoOptions);
+
+        Assert.Equal(1, selected?.Index);
+        Assert.False(selected!.IsSoftware);
+        Assert.Null(SuperResolutionVulkanDevice.SoftwareFallbackWarning(selected, autoOptions));
+    }
+
+    [Fact]
     public void SoftwareFallbackWarning_warns_with_actionable_fix_when_auto_or_gpu_lands_on_software_vulkan()
     {
         var devices = SuperResolutionVulkanDevice.ParseDevices(LlvmpipeOnlyOutput);

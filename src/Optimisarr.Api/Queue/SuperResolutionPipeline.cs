@@ -45,7 +45,7 @@ internal sealed record SuperResolutionRunHooks(
     Func<int, IDisposable?> TrackProcess,
     Func<double, Task> ReportProgress,
     Func<int, IDisposable?>? TrackEncoder = null,
-    Action<string>? ReportEngineOutput = null,
+    Func<string, bool>? TryReportEngineOutput = null,
     Action<int, int, int?>? ReportBatchCompleted = null);
 
 /// <summary>
@@ -201,19 +201,14 @@ internal static class SuperResolutionPipeline
     {
         var engine = Start(processes, request.EnginePath, request.EngineArguments(input, output), hooks, readStdout: false, writeStdin: false);
         var produced = 0;
-        var deviceReported = !reportDevice || hooks.ReportEngineOutput is null;
+        var deviceReported = !reportDevice || hooks.TryReportEngineOutput is null;
         while (!engine.HasExited)
         {
             await Task.WhenAny(engine.WaitAsync(token), Task.Delay(WatchdogInterval, token));
             token.ThrowIfCancellationRequested();
             if (!deviceReported)
             {
-                var log = engine.Log;
-                if (SuperResolutionVulkanDevice.ParseDevices(log).Count > 0)
-                {
-                    deviceReported = true;
-                    hooks.ReportEngineOutput!.Invoke(log);
-                }
+                deviceReported = hooks.TryReportEngineOutput!.Invoke(engine.Log);
             }
             var count = Directory.EnumerateFiles(output, "*.png").Count();
             if (count > produced)
@@ -232,11 +227,7 @@ internal static class SuperResolutionPipeline
         await engine.DisposeAsync();
         if (!deviceReported)
         {
-            var log = engine.Log;
-            if (SuperResolutionVulkanDevice.ParseDevices(log).Count > 0)
-            {
-                hooks.ReportEngineOutput!.Invoke(log);
-            }
+            hooks.TryReportEngineOutput!.Invoke(engine.Log);
         }
         return engine.ExitCode == 0 ? null
             : new QueueDispatcher.FfmpegRun(engine.ExitCode, $"The super-resolution engine exited with code {engine.ExitCode}.", engine.Log);
