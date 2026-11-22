@@ -400,7 +400,13 @@ internal sealed class OwnedProcess : IAsyncDisposable
         };
     }
 
-    public Task WaitAsync(CancellationToken token) => _process.WaitForExitAsync(token);
+    public async Task WaitAsync(CancellationToken token)
+    {
+        await _process.WaitForExitAsync(token);
+        // Drain captured stderr before callers inspect Log on exit; WaitForExitAsync returns
+        // before the background reader task finishes appending the final pipe buffer.
+        try { await _stderr.WaitAsync(token); } catch (Exception error) when (error is IOException or ObjectDisposedException) { }
+    }
 
     private bool _disposed;
 
