@@ -1268,9 +1268,9 @@ let settings = $state<Settings>({
           </div>
         {/if}
         {#if engineProbe}
-          <Banner kind={engineProbe.success ? 'success' : 'error'}>{engineProbe.success
-            ? tr(i18n.m.settings.sr_probe_ok, { device: engineProbe.deviceUsed ?? '' })
-            : (engineProbe.error ?? i18n.m.settings.sr_probe_failed)}</Banner>
+          <Banner kind={!engineProbe.success ? 'error' : engineProbe.warning ? 'warn' : 'success'}>{!engineProbe.success
+            ? (engineProbe.error ?? i18n.m.settings.sr_probe_failed)
+            : (engineProbe.warning ?? tr(i18n.m.settings.sr_probe_ok, { device: engineProbe.detectedDevice || engineProbe.deviceUsed || '' }))}</Banner>
         {/if}
         <div class="flex gap-3">
           <button type="button" class="btn btn-ghost min-h-11" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>

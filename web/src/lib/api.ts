@@ -354,6 +354,9 @@ export type SuperResolutionProbe = {
   error: string | null
   outputTail: string | null
   deviceUsed: string | null
+  detectedDevice?: string | null
+  usingSoftwareVulkan?: boolean
+  warning?: string | null
 }
 
 export type Settings = {

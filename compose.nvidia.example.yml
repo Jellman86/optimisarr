@@ -16,6 +16,7 @@ services:
       OPTIMISARR_WORK_DIR: "${OPTIMISARR_WORK_DIR:-/data/.optimisarr/work}"
       OPTIMISARR_TRASH_DIR: "${OPTIMISARR_TRASH_DIR:-/data/.optimisarr/trash}"
       NVIDIA_VISIBLE_DEVICES: "all"
+      # Add ,graphics when enabling experimental AI super-resolution (Vulkan).
       NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
     volumes:
       - ./config:/config

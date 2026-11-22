@@ -41,4 +41,32 @@ public sealed class SuperResolutionBatchPlanTests
     {
         Assert.True(SuperResolutionBatchPlan.WorstCaseBytesPerFrame(new PictureSize(100, 100), 2) >= 100 * 100 * 3 + 200 * 200 * 3);
     }
+
+    [Fact]
+    public void Expected_frames_uses_probed_count_when_available()
+    {
+        Assert.Equal(42_000, SuperResolutionBatchPlan.EstimateExpectedFrames(42_000, durationSeconds: 1800, frameRate: 25));
+    }
+
+    [Fact]
+    public void Expected_frames_falls_back_to_duration_times_frame_rate_when_container_omits_frame_count()
+    {
+        // Matroska files without a NUMBER_OF_FRAMES statistics tag leave FrameCount null,
+        // so super-resolution progress falls back to duration * frame rate rather than staying at 0%.
+        Assert.Equal(90_000, SuperResolutionBatchPlan.EstimateExpectedFrames(null, durationSeconds: 3600, frameRate: 25));
+        Assert.Equal(1, SuperResolutionBatchPlan.EstimateExpectedFrames(0, durationSeconds: 0.04, frameRate: 25));
+    }
+
+    [Theory]
+    [InlineData(null, null, 25.0)]
+    [InlineData(null, 0.0, 25.0)]
+    [InlineData(null, -10.0, 25.0)]
+    [InlineData(null, 120.0, null)]
+    [InlineData(null, 120.0, 0.0)]
+    [InlineData(null, double.NaN, 25.0)]
+    [InlineData(null, double.PositiveInfinity, 25.0)]
+    public void Expected_frames_returns_null_when_duration_or_frame_rate_is_unusable(int? probed, double? duration, double? fps)
+    {
+        Assert.Null(SuperResolutionBatchPlan.EstimateExpectedFrames(probed, duration, fps));
+    }
 }

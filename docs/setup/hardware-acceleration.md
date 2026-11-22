@@ -75,7 +75,9 @@ completed output may replace its original.
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and
 `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. The `video` capability is
-required for NVENC and NVDEC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
+required for NVENC and NVDEC. If you also enable experimental AI super-resolution,
+add `graphics` (`compute,video,utility,graphics`) so Vulkan sees the NVIDIA GPU
+instead of falling back to CPU rendering (`llvmpipe`). Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
 and select a hardware mode only after Tools reports success.
 
 With **Hardware decoding** enabled (the default), an NVENC transcode uses FFmpeg's
