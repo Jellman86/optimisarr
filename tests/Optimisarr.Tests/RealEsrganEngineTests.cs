@@ -5,6 +5,11 @@ namespace Optimisarr.Tests;
 public sealed class RealEsrganEngineTests
 {
     private static readonly RealEsrganEngine Engine = RealEsrganEngine.Instance;
+    private const string Png = """
+        def png(path, w, h):
+            import struct
+            open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' + struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0) + b'\0' * 4)
+        """;
 
     private static SuperResolutionOptions Options(string model, int scale, string device = "auto") =>
         SuperResolutionOptions.Defaults with { EngineId = Engine.Name, Preset = model, Scale = scale, NoiseLevel = 0, Device = device };
@@ -146,11 +151,6 @@ public sealed class RealEsrganEngineTests
     public async Task A_sample_run_that_only_copied_the_picture_is_not_called_a_success()
     {
         using var dir = new TempDirectory();
-        const string Png = """
-            def png(path, w, h):
-                import struct
-                open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' + struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0) + b'\0' * 4)
-            """;
         var ffmpeg = Script(dir, "ffmpeg", Png + "\nimport sys\npng(sys.argv[-1], 64, 64)\n");
         var engine = Script(dir, Engine.BinaryName, Png + "\nimport sys, shutil\nshutil.copy(sys.argv[sys.argv.index('-i') + 1], sys.argv[sys.argv.index('-o') + 1])\n");
         Directory.CreateDirectory(Path.Combine(dir.Path, "models"));
@@ -162,6 +162,35 @@ public sealed class RealEsrganEngineTests
 
         Assert.False(probe.Success);
         Assert.Contains("128x128", probe.Error);
+    }
+
+    [PosixFact]
+    public async Task The_sample_run_reads_vulkan_devices_after_loader_diagnostics()
+    {
+        using var dir = new TempDirectory();
+        var ffmpeg = Script(dir, "ffmpeg", Png + "\nimport sys\npng(sys.argv[-1], 64, 64)\n");
+        var engine = Script(dir, Engine.BinaryName, Png + "\n" + """
+            import sys
+            print("DRIVER: Searching for driver manifest files", file=sys.stderr)
+            print("[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]", file=sys.stderr)
+            print("[1 NVIDIA GeForce RTX 4070]  queueC=0[1]", file=sys.stderr)
+            png(sys.argv[sys.argv.index('-o') + 1], 128, 128)
+            """);
+        var models = Directory.CreateDirectory(Path.Combine(dir.Path, "models"));
+        File.WriteAllText(Path.Combine(models.FullName, "realesr-animevideov3-x2.bin"), "");
+        File.WriteAllText(Path.Combine(models.FullName, "realesr-animevideov3-x2.param"), "");
+
+        var probe = await new SuperResolutionDetectionService(
+                Options(RealEsrganEngine.DrawnVideoModel, 2) with { BinaryPath = engine }, _ => true)
+            .ProbeAsync(ffmpeg, CancellationToken.None);
+
+        Assert.True(probe.Success);
+        Assert.Equal("NVIDIA GeForce RTX 4070", probe.DetectedDevice);
+        Assert.False(probe.UsingSoftwareVulkan);
+        Assert.Null(probe.Warning);
+        Assert.Contains("DRIVER: Searching for driver manifest files", probe.OutputTail);
+        Assert.Contains("[0 llvmpipe", probe.OutputTail);
+        Assert.Contains("[1 NVIDIA", probe.OutputTail);
     }
 
     private static string Script(TempDirectory dir, string name, string body)

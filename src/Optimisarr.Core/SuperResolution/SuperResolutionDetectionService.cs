@@ -228,7 +228,7 @@ public sealed class SuperResolutionDetectionService(SuperResolutionOptions optio
             }
 
             var arguments = options.Engine.BuildArguments(input, output, detection.ModelsRoot!, options);
-            var run = await Tools.BoundedToolProcess.RunAsync(
+            var run = await Tools.BoundedToolProcess.RunWithStandardErrorAsync(
                 detection.BinaryPath!, arguments, cancellationToken,
                 timeout: TimeSpan.FromMinutes(5));
             var tail = string.Join("\n", new[] { run.Output, run.Error }.Where(text => !string.IsNullOrEmpty(text)));

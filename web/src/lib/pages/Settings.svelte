@@ -1271,6 +1271,12 @@ let settings = $state<Settings>({
           <Banner kind={!engineProbe.success ? 'error' : engineProbe.warning ? 'warn' : 'success'}>{!engineProbe.success
             ? (engineProbe.error ?? i18n.m.settings.sr_probe_failed)
             : (engineProbe.warning ?? tr(i18n.m.settings.sr_probe_ok, { device: engineProbe.detectedDevice || engineProbe.deviceUsed || '' }))}</Banner>
+          {#if engineProbe.outputTail}
+            <details class="min-w-0 text-xs text-ink-3">
+              <summary class="focus-ring cursor-pointer rounded font-medium">{i18n.m.wizard.details}</summary>
+              <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-sunken p-3 font-mono text-ink-2">{engineProbe.outputTail}</pre>
+            </details>
+          {/if}
         {/if}
         <div class="flex gap-3">
           <button type="button" class="btn btn-ghost min-h-11" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>

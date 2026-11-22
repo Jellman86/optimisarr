@@ -977,7 +977,7 @@ test('switching engines while a check runs never shows the other engines answer'
   await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toHaveCount(0)
 })
 
-test('the super-resolution probe warns clearly on software Vulkan and names the GPU when hardware runs', async ({ page }) => {
+test('the super-resolution probe shows software Vulkan, driver diagnostics and hardware GPUs', async ({ page }) => {
   await mockSettings(page)
   const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
   await page.route('**/api/settings', route => json(route, enabled))
@@ -986,7 +986,7 @@ test('the super-resolution probe warns clearly on software Vulkan and names the 
       success: true,
       exitCode: 0,
       error: null,
-      outputTail: '[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]',
+      outputTail: 'DRIVER: Searching for driver manifest files\n[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]',
       deviceUsed: 'auto',
       detectedDevice: 'llvmpipe (LLVM 20.1.2, 256 bits)',
       usingSoftwareVulkan: true,
@@ -999,6 +999,10 @@ test('the super-resolution probe warns clearly on software Vulkan and names the 
   await expect(warnBanner).toContainText('llvmpipe')
   await expect(warnBanner).toContainText('NVIDIA_DRIVER_CAPABILITIES')
   await expect(page.locator('.tone-ok')).toHaveCount(0)
+  const driverTrace = page.getByText('DRIVER: Searching for driver manifest files', { exact: false })
+  await expect(driverTrace).toBeHidden()
+  await page.getByText('Technical details', { exact: true }).click()
+  await expect(driverTrace).toBeVisible()
 
   await page.route('**/api/system/super-resolution/realcugan/probe', route =>
     json(route, {
