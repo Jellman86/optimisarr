@@ -169,9 +169,11 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Keep the server as the default target for existing builds.
 FROM media-runtime AS runtime
 # Super-resolution runs on the server only. The engine needs the Vulkan loader and OpenMP; Mesa's
-# drivers cover Intel and AMD GPUs. NVIDIA needs its driver injected by the container runtime.
+# drivers cover Intel and AMD GPUs. NVIDIA injects its Vulkan ICD (libGLX_nvidia.so.0) through the
+# container runtime, which also requires libEGL.so.1 (libegl1) in the container to expose
+# vkCreateInstance instead of falling back to CPU llvmpipe.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libvulkan1 libgomp1 mesa-vulkan-drivers \
+    && apt-get install -y --no-install-recommends libegl1 libvulkan1 libgomp1 mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=realcugan-fetch /opt/realcugan/ /opt/realcugan/
 COPY --from=realcugan-fetch /licenses/ /app/licenses/realcugan/

@@ -22,6 +22,11 @@ for _ in {1..30}; do
     # Trace the synthetic commands: all inputs are fixed test fixtures and contain no secrets,
     # while a bare `sh -e` otherwise reports only exit 1 and hides which safety assertion failed.
     docker exec "$name" sh -exc '
+      # The NVIDIA injected Vulkan ICD (libGLX_nvidia.so.0) requires libEGL.so.1 in the container
+      # to expose vkCreateInstance; without libegl1 the loader silently falls back to CPU llvmpipe.
+      ldconfig -p | grep -Eq "libvulkan\.so\.1[[:space:]]"
+      ldconfig -p | grep -Eq "libEGL\.so\.1[[:space:]]"
+
       vmaf_log=/tmp/optimisarr-ci-vmaf.json
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
