@@ -56,7 +56,7 @@ public sealed class MachineLoadSampler(
 {
     private readonly Lock _gate = new();
     private readonly Func<CpuTicks?> _readCpu = readCpu ?? ReadSystemTimes;
-    private readonly Func<double?> _readGpu = readGpu ?? ReadNvidiaUtilisation;
+    private readonly Func<double?> _readGpu = readGpu ?? CompositeGpu;
     private CpuTicks? _previous;
 
     /// <summary>Null when neither figure could be read, so a caller sends nothing rather than a body of absences.</summary>
@@ -102,6 +102,91 @@ public sealed class MachineLoadSampler(
             ? new CpuTicks((ulong)idle, (ulong)kernel, (ulong)user)
             : null;
     }
+
+    /// <summary>
+    /// GPU utilisation across vendors: on Windows read the GPU Engine performance counters first
+    /// (published by the graphics stack for AMD, Intel and NVIDIA alike), and fall back to
+    /// nvidia-smi for NVIDIA-only locations where those counters are missing.
+    /// </summary>
+    private static double? CompositeGpu()
+    {
+        if (OperatingSystem.IsWindows()
+            && ReadWindowsGpuEngineUtilisation() is { } fromCounters)
+        {
+            return fromCounters;
+        }
+
+        return ReadNvidiaUtilisation();
+    }
+
+    /// <summary>
+    /// GPU utilisation on Windows from the built-in <c>GPU Engine</c> performance-counter
+    /// category, in the same 0..1 fraction as nvidia-smi. This is how Task Manager shows GPU busy:
+    /// per-engine percentages, published by the OS for every vendor's driver (no AMD/Intel tooling
+    /// needed). Only the engines an Optimisarr encode actually touches are considered, and the
+    /// busiest one wins — matching the whole-adapter semantics nvidia-smi reports on NVIDIA boxes.
+    /// Null when the category or any engine is unavailable, so the nvidia-smi fallback can try.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static double? ReadWindowsGpuEngineUtilisation()
+    {
+        try
+        {
+            var category = PerformanceCounterCategory.GetCategories()
+                .FirstOrDefault(c => c.CategoryName == "GPU Engine");
+            if (category is null || !category.CounterExists("Utilization Percentage"))
+            {
+                return null;
+            }
+
+            double best = -1;
+            foreach (var instance in category.GetInstanceNames())
+            {
+                if (!IsRelevantEngine(instance))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var counter = new PerformanceCounter(
+                        "GPU Engine", "Utilization Percentage", instance);
+                    counter.NextValue(); // prime the counter
+                    var a = counter.NextValue();
+                    var b = counter.NextValue();
+                    var value = Math.Max(a, b);
+                    if (value > best)
+                    {
+                        best = value;
+                    }
+                }
+                catch
+                {
+                    // An engine vanished between enumeration and read; ignore it.
+                }
+            }
+
+            return best < 0 ? null : Math.Clamp(best / 100, 0, 1);
+        }
+        catch
+        {
+            // Counter provider missing or unreadable; report nothing rather than a lie.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Instance names look like <c>pid_&lt;pid&gt;_luid_..._engtype_&lt;Engine&gt;</c>. Narrow to the
+    /// engines a transcode touches, so a mostly-idle browser rendering 3D elsewhere does not move
+    /// the number a busy encoder should own.
+    /// </summary>
+    internal static bool IsRelevantEngine(string instance) =>
+        instance.Contains("engtype_Video Encode", StringComparison.OrdinalIgnoreCase)
+        || instance.Contains("engtype_Video Decode", StringComparison.OrdinalIgnoreCase)
+        || instance.Contains("engtype_Video Coding", StringComparison.OrdinalIgnoreCase)
+        || instance.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase)
+        || instance.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase)
+        || instance.Contains("engtype_Copy", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// GPU utilisation from nvidia-smi, or null on a machine without one.
