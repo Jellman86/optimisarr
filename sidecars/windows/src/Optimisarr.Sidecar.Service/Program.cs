@@ -184,6 +184,18 @@ public static class Program
         ?? @"C:\OptimisarrWork";
 
     /// <summary>
+    /// How many jobs this machine will take at once. Configurable so a Windows box with both a
+    /// discrete GPU and an iGPU can fill them both; clamped to the same safe range the Linux and
+    /// macOS workers enforce, so a typo cannot offer the server more concurrency than the machine
+    /// (or this worker) can hold.
+    /// </summary>
+    internal static int ConfiguredConcurrency()
+    {
+        var text = Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_CONCURRENCY");
+        return text is not null && int.TryParse(text, out var value) ? Math.Clamp(value, 1, 4) : 1;
+    }
+
+    /// <summary>
     /// Free space where the work would actually happen, not on the system drive. The server uses
     /// this to decide whether to offer a job at all, so reporting the wrong volume would have it
     /// hand over work this machine has nowhere to put.
@@ -305,11 +317,12 @@ public static class Program
         probe = async token =>
         {
             var ffmpeg = FindFfmpeg();
-            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), 1, token);
+            var concurrency = ConfiguredConcurrency();
+            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), concurrency, token);
             if (ffmpeg is not null)
             {
                 var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, token);
-                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? 1 : 0 };
+                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? concurrency : 0 };
             }
             return NativeWorkerResources.Refresh(proved, scratch);
         };
