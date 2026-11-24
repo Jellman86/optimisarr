@@ -8,6 +8,15 @@ on:
   workflow_dispatch:
   push:
     branches: [main, 'deploy/*']
+    # Docs, the Unraid template, and CI files never end up in the image, so touching them does
+    # not need an image rebuild (any code path below still does).
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'unraid/**'
+      - 'ca_profile.xml'
+      - '.github/**'
     tags: ['v*']
 
 env:

@@ -1,13 +1,34 @@
 #!/usr/bin/env python3
 """Validate the shipped Unraid template against the release/container contract, offline."""
 from pathlib import Path
+import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW = 'https://raw.githubusercontent.com/Jellman86/optimisarr/main/'
-PROJECT = 'https://github.com/Jellman86/optimisarr'
+
+# A repository like ghcr.io/jellman86/optimisarr:latest identifies the project and raw URLs for the
+# owner that published it, so a fork's template is validated against its own owner rather than the
+# upstream one it is not. These are the repository's own committed templates (CI input, not
+# untrusted XML), so the stdlib ET.parse used before remains appropriate here.
+_REPOSITORY = re.compile(r'^ghcr\.io/([A-Za-z0-9][A-Za-z0-9._-]*)/([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*)$')
+
+
+def _identity(template):
+    repository = template.findtext('Repository') or ''
+    match = _REPOSITORY.fullmatch(repository)
+    if match is None:
+        return None
+    owner, repo, tag = match.groups()
+    return {
+        'repository': repository,
+        'owner': owner,
+        'repo': repo,
+        'tag': tag,
+        'raw': f'https://raw.githubusercontent.com/{owner}/{repo}/main/',
+        'project': f'https://github.com/{owner}/{repo}',
+    }
 
 
 def validate(root: Path) -> list[str]:
@@ -22,9 +43,14 @@ def validate(root: Path) -> list[str]:
         if not condition:
             errors.append(message)
 
+    identity = _identity(template)
+    expect(identity is not None, 'Unraid must use a ghcr.io/owner/optimisarr:<tag> repository')
+    if identity is None:
+        return errors
+    RAW, PROJECT, tag = identity['raw'], identity['project'], identity['tag']
+    expect(tag == 'latest' or tag == 'unraid', 'Unraid must use the stable release image')
     expect(template.tag == 'Container' and template.get('version') == '2', 'Unraid template must use Container version 2')
     expect(profile.tag == 'CommunityApplications' and bool((profile.findtext('Profile') or '').strip()), 'Community Apps profile must be non-empty')
-    expect(template.findtext('Repository') == 'ghcr.io/jellman86/optimisarr:latest', 'Unraid must use the stable release image')
     for tag, value in {'Name': 'Optimisarr', 'Project': PROJECT, 'Support': PROJECT+'/issues',
                        'TemplateURL': RAW+'unraid/optimisarr.xml', 'WebUI': 'http://[IP]:[PORT:8787]/',
                        'Network': 'bridge', 'Privileged': 'false', 'ReadMe': PROJECT+'/blob/main/docs/setup/unraid.md',
