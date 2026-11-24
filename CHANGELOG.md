@@ -75,6 +75,14 @@
 - Show Vulkan driver diagnostics under **Technical details** after the AI super-resolution sample test (#548). Device detection now reads past loader messages and checks every reported device. If the container still falls back to the CPU with NVIDIA `graphics` enabled, enable Vulkan loader tracing to see which driver manifests were found and any errors loading them.
 
 - Warn when AI super-resolution falls back to CPU software Vulkan (`llvmpipe`), and show progress for Matroska videos that omit a frame count (#548). In Docker with NVIDIA, setting `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` lets NVENC work while hiding the GPU from Vulkan, so Real-CUGAN and Real-ESRGAN silently used Mesa's CPU renderer (`llvmpipe`) and ran for hours on CPU even though the Settings sample test showed green. The sample test now names the detected Vulkan device and shows an amber warning when software rendering is chosen instead of a GPU, telling you to add `graphics` on NVIDIA or map `/dev/dri` on Intel/AMD. Super-resolution jobs also log their chosen Vulkan device (warning immediately on `llvmpipe`) and each completed batch, and fall back to estimating expected frames from duration and frame rate when a Matroska file has no `NUMBER_OF_FRAMES` tag so progress no longer sits at 0%. Adds `detectedDevice`, `usingSoftwareVulkan` and `warning` to the super-resolution probe responses. No migration. Reported by [Blorti](https://github.com/Blorti).
+- A Windows sidecar's scratch folder no longer has to live on the system drive, and can live on a
+  RAM drive. Where jobs write their source and candidate is read at service start from a durable
+  override file (`C:\ProgramData\Optimisarr\Sidecar\work-location`) first, then the same
+  `OPTIMISARR_SIDECAR_WORK` environment variable the Linux worker honours, then the old default. A
+  blank or bare-root entry is ignored rather than trusted, so a bad override never throws scratch
+  back onto `C:` by accident. Windows has no OS RAM filesystem, so RAM scratch means mounting a RAM
+  drive and pointing the work location at it: the volume's size bounds it, and the server only
+  offers jobs this worker has room for, so nothing overflows into swap.
 
 ## 0.2.26 - 2026-11-20
 

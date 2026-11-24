@@ -169,6 +169,27 @@ tray has its own apphost executable and uses the private desktop runtime. The cu
 apphost are unsigned previews; see the installer’s distribution status before sharing them. Do not
 disable Smart App Control or other Windows protections to run a preview.
 
+### Work directory and RAM scratch
+
+Jobs download their source and write their candidate into a scratch folder. By default that folder is
+`C:\OptimisarrWork`, which sits on the system drive — rarely where anyone wants hundreds of gigabytes
+of transcode scratch. Move it one of two ways, both read at service start in this order:
+
+1. **A durable override file**, `C:\ProgramData\Optimisarr\Sidecar\work-location`, one line holding the
+   folder (for example `D:\OptimisarrWork`). Survives updates and is easy to spot or script.
+2. **The environment variable** `OPTIMISARR_SIDECAR_WORK` (same knob the Linux worker uses).
+
+Then restart the service. A blank entry or a bare drive root is ignored, so a bad override never throws
+scratch back onto `C:` by accident or takes the worker down.
+
+**RAM scratch:** Windows has no OS-level RAM filesystem (unlike macOS's `ram://` disks or Linux's tmpfs),
+so a "work on RAM" way of life means mounting a RAM drive yourself — for example with ImDisk — and
+pointing the work location at it (option 1 or 2 above), then restarting. It needs no special code: the
+RAM drive's own size bounds it, and the server only ever offers a job when this machine reports enough
+free scratch to hold it, so work that will not fit the RAM budget is simply never offered here — the same
+bounded behaviour Linux gets from a `size=` tmpfs mount, without the risk of pushing the whole system
+into swap. A second volume (a real disk) stays available as the fallback if you prefer bigger jobs there.
+
 ### Worker placement and strict verification
 
 When a library requires a smaller output, the assignment carries a frozen candidate byte limit.
