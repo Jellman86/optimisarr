@@ -179,9 +179,28 @@ public static class Program
     /// Where a job's source and candidate would live. Overridable because the default sits on the
     /// system drive, which is rarely where anyone wants hundreds of gigabytes of scratch video.
     /// </summary>
-    internal static string ScratchDirectory() =>
-        Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK")
-        ?? @"C:\OptimisarrWork";
+    internal static string ScratchDirectory()
+    {
+        var overrideFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Optimisarr", "Sidecar", WorkLocation.DefaultOverrideFileName);
+
+        string? fromFile = null;
+        try
+        {
+            if (File.Exists(overrideFile))
+            {
+                var text = File.ReadAllText(overrideFile);
+                fromFile = text.Length == 0 ? null : text;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable override must not take the worker down: fall through to the env knob.
+        }
+
+        return WorkLocation.Resolve(fromFile, Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK"));
+    }
 
     /// <summary>
     /// Free space where the work would actually happen, not on the system drive. The server uses
