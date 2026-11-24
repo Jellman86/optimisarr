@@ -2,12 +2,12 @@
 <CommunityApplications>
   <!-- Repository overview shown in Community Applications. Markdown is supported. -->
   <Profile>
-Optimisarr optimises video, audio and image libraries with verified FFmpeg output and quarantined originals for rollback. It supports CPU, Intel QSV/VA-API and NVIDIA NVENC processing, VMAF video quality checks, and paired Windows, macOS and Linux sidecars. The container remains the authority for replacement and integrates with Plex, Jellyfin, Emby, Sonarr and Radarr.
+Optimisarr optimises video, audio and image libraries with verified FFmpeg output and quarantined originals for rollback. It supports CPU, Intel QSV/VA-API, NVIDIA NVENC and AMD AMF processing (including AMD AMF on paired Windows sidecars), VMAF video quality checks, and paired Windows, macOS and Linux sidecars. The container remains the authority for replacement and integrates with Plex, Jellyfin, Emby, Sonarr and Radarr.
 
-This repository provides the Unraid Community Applications template for the Docker image (`ghcr.io/jellman86/optimisarr`).
+This repository provides the Unraid Community Applications template for the Docker image (`ghcr.io/gnolnos/optimisarr`), a fork of Optimisarr with AMD AMF encoder support.
 
 **Support:** open an issue at https://github.com/Jellman86/optimisarr/issues
   </Profile>
-  <Icon>https://raw.githubusercontent.com/Jellman86/optimisarr/main/web/public/favicon-192.png</Icon>
-  <WebPage>https://github.com/Jellman86/optimisarr</WebPage>
+  <Icon>https://raw.githubusercontent.com/gnolnos/optimisarr/main/web/public/favicon-192.png</Icon>
+  <WebPage>https://github.com/gnolnos/optimisarr</WebPage>
 </CommunityApplications>

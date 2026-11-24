@@ -1,23 +1,23 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Optimisarr</Name>
-  <Repository>ghcr.io/jellman86/optimisarr:latest</Repository>
-  <Registry>https://github.com/Jellman86/optimisarr/pkgs/container/optimisarr</Registry>
+  <Repository>ghcr.io/gnolnos/optimisarr:unraid</Repository>
+  <Registry>https://github.com/gnolnos/optimisarr/pkgs/container/optimisarr</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Jellman86/optimisarr/issues</Support>
-  <Project>https://github.com/Jellman86/optimisarr</Project>
-  <Overview>Optimisarr optimises video, audio and image libraries with FFmpeg and verifies candidates before replacing originals. Configured checks cover decoding, timing, retained streams, metadata, size savings and media quality, including VMAF for video. Originals are quarantined for rollback until approved or purged by the configured retention policy.&#13;&#13;Run CPU, Intel QSV/VA-API or NVIDIA NVENC jobs in the container, or pair Windows, macOS and Linux sidecars for distributed video encoding and verification. Integrates with Plex, Jellyfin, Emby, Sonarr and Radarr. The web UI shows libraries, queued work, quality reports and savings. Mount one read-write storage root at /data for media, work and quarantine. Review a small test set before enabling automatic replacement.</Overview>
+  <Support>https://github.com/gnolnos/optimisarr/issues</Support>
+  <Project>https://github.com/gnolnos/optimisarr</Project>
+  <Overview>Optimisarr optimises video, audio and image libraries with FFmpeg and verifies candidates before replacing originals. Configured checks cover decoding, timing, retained streams, metadata, size savings and media quality, including VMAF for video. Originals are quarantined for rollback until approved or purged by the configured retention policy.&#13;&#13;Run CPU, Intel QSV/VA-API, NVIDIA NVENC or AMD AMF jobs in the container, or pair Windows, macOS and Linux sidecars for distributed video encoding and verification (a paired Windows sidecar can use its AMD GPU via AMF). Integrates with Plex, Jellyfin, Emby, Sonarr and Radarr. The web UI shows libraries, queued work, quality reports and savings. Mount one read-write storage root at /data for media, work and quarantine. Review a small test set before enabling automatic replacement.</Overview>
   <Category>MediaApp:Video Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8787]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Jellman86/optimisarr/main/unraid/optimisarr.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Jellman86/optimisarr/main/web/public/favicon-192.png</Icon>
-  <ReadMe>https://github.com/Jellman86/optimisarr/blob/main/docs/setup/unraid.md</ReadMe>
-  <License>https://github.com/Jellman86/optimisarr/blob/main/LICENSE</License>
-  <Screenshot>https://raw.githubusercontent.com/Jellman86/optimisarr/main/docs/images/optimisarr-dashboard-dark.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/Jellman86/optimisarr/main/docs/images/optimisarr-queue-dark.png</Screenshot>
+  <TemplateURL>https://raw.githubusercontent.com/gnolnos/optimisarr/main/unraid/optimisarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/gnolnos/optimisarr/main/web/public/favicon-192.png</Icon>
+  <ReadMe>https://github.com/gnolnos/optimisarr/blob/main/docs/setup/unraid.md</ReadMe>
+  <License>https://github.com/gnolnos/optimisarr/blob/main/LICENSE</License>
+  <Screenshot>https://raw.githubusercontent.com/gnolnos/optimisarr/main/docs/images/optimisarr-dashboard-dark.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/gnolnos/optimisarr/main/docs/images/optimisarr-queue-dark.png</Screenshot>
   <ExtraSearchTerms>transcode transcoding ffmpeg media optimise optimize hevc h265 av1 nvenc qsv vaapi vmaf audio image sidecar worker plex jellyfin emby radarr sonarr</ExtraSearchTerms>
   <Description>Optimisarr optimises video, audio and image libraries with FFmpeg and verifies candidates before replacing originals. Configured checks cover decoding, timing, retained streams, metadata, size savings and media quality, including VMAF for video. Originals are quarantined for rollback until approved or purged by the configured retention policy.&#13;&#13;Run CPU, Intel QSV/VA-API or NVIDIA NVENC jobs in the container, or pair Windows, macOS and Linux sidecars for distributed video encoding and verification. Integrates with Plex, Jellyfin, Emby, Sonarr and Radarr. The web UI shows libraries, queued work, quality reports and savings. Mount one read-write storage root at /data for media, work and quarantine. Review a small test set before enabling automatic replacement.</Description>
   <Config Name="WebUI Port" Target="8787" Default="8787" Mode="tcp" Description="Host port for the Optimisarr web interface (container listens on 8787)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
