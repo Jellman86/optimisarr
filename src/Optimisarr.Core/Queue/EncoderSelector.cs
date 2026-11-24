@@ -42,11 +42,12 @@ public static class EncoderSelector
             EncoderMode.Auto when requiresHighBitDepthCpuH264 => ["CPU"],
             // VideoToolbox is only ever advertised by a macOS sidecar; the local probe never lists
             // it, so its place in the order matters only when choosing for a worker.
-            EncoderMode.Auto => ["NVIDIA NVENC", "Intel QSV", "VAAPI", "VideoToolbox", "CPU"],
+            EncoderMode.Auto => ["NVIDIA NVENC", "AMD AMF", "Intel QSV", "VAAPI", "VideoToolbox", "CPU"],
             EncoderMode.Cpu => ["CPU"],
             EncoderMode.NvidiaNvenc => ["NVIDIA NVENC"],
             EncoderMode.IntelQsv => ["Intel QSV"],
             EncoderMode.Vaapi => ["VAAPI"],
+            EncoderMode.AmdAmf => ["AMD AMF"],
             _ => ["CPU"]
         };
         if (avoidIntelQsv)
@@ -84,6 +85,7 @@ public static class EncoderSelector
         EncoderMode.NvidiaNvenc => "NVIDIA NVENC",
         EncoderMode.IntelQsv => "Intel QSV",
         EncoderMode.Vaapi => "VAAPI",
+        EncoderMode.AmdAmf => "AMD AMF",
         _ => mode.ToString()
     };
 

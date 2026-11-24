@@ -266,6 +266,7 @@ export const ja: Messages = {
     finish_auto_replace: "ドライランがオフの場合、自動置換が有効なライブラリでは、チェックに合格すると元のファイルも置換されます。",
     retention_invalid: "0 以上の整数を入力してください。",
     reason_encoder_nvidia: "NVIDIA エンコーダーがこのマシンでテストに合格しました。",
+    reason_encoder_amd: "AMD AMF エンコーダーがこのマシンでテストに合格しました。",
     reason_encoder_intel: "Intel Quick Sync エンコーダーがこのマシンでテストに合格しました。",
     reason_encoder_vaapi: "VAAPI エンコーダーがこのマシンでテストに合格しました。",
     reason_encoder_cpu: "このマシンでテストに合格したハードウェアエンコーダーがないため、CPU を使います。",

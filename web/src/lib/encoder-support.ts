@@ -1,7 +1,7 @@
 // Which encoder tuning settings the encoder this server uses will honour, so the library editor
 // can keep a setting in view and say why it does nothing. Mirrors EncoderTuningPolicy on the
 // server, which passes each encoder only what it understands.
-export type EncoderFamily = 'x26x' | 'svtav1' | 'nvenc' | 'qsv' | 'vaapi'
+export type EncoderFamily = 'x26x' | 'svtav1' | 'nvenc' | 'qsv' | 'vaapi' | 'amf'
 export type EncoderSetting = 'contentTune' | 'maxBitrate' | 'minBitrate' | 'adaptiveQuantisation'
 
 const ignored: Record<EncoderFamily, readonly EncoderSetting[]> = {
@@ -10,10 +10,11 @@ const ignored: Record<EncoderFamily, readonly EncoderSetting[]> = {
   nvenc: ['contentTune', 'minBitrate'],
   qsv: ['contentTune', 'maxBitrate', 'minBitrate', 'adaptiveQuantisation'],
   vaapi: ['contentTune', 'maxBitrate', 'minBitrate', 'adaptiveQuantisation'],
+  amf: ['contentTune', 'maxBitrate', 'minBitrate', 'adaptiveQuantisation'],
 }
 
 const names: Record<EncoderFamily, string> = {
-  x26x: 'x264/x265', svtav1: 'SVT-AV1', nvenc: 'NVIDIA NVENC', qsv: 'Intel Quick Sync', vaapi: 'VA-API',
+  x26x: 'x264/x265', svtav1: 'SVT-AV1', nvenc: 'NVIDIA NVENC', qsv: 'Intel Quick Sync', vaapi: 'VA-API', amf: 'AMD AMF',
 }
 
 /**
@@ -25,6 +26,7 @@ export function encoderFamily(encoderMode: string | null | undefined, codec: str
   switch (encoderMode) {
     case 'Cpu': return codec?.toLowerCase() === 'av1' ? 'svtav1' : 'x26x'
     case 'NvidiaNvenc': return 'nvenc'
+    case 'AmdAmf': return 'amf'
     case 'IntelQsv': return 'qsv'
     case 'Vaapi': return 'vaapi'
     default: return null

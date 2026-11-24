@@ -42,7 +42,7 @@ $Url     = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$Release/$As
 # Every one of these was verified present in the pinned build. The check below is fatal: a
 # capability silently missing is a worker that is never offered the work it exists to do, and the
 # macOS sidecar shipped two broken releases because an equivalent check was only advisory.
-$RequiredEncoders = @('hevc_nvenc', 'h264_nvenc', 'av1_nvenc', 'libx265', 'libsvtav1')
+$RequiredEncoders = @('hevc_nvenc', 'h264_nvenc', 'av1_nvenc', 'libx265', 'libsvtav1', 'hevc_amf', 'h264_amf')
 $RequiredFilters  = @('libvmaf')
 $RequiredDecoders = @('hevc_cuvid', 'h264_cuvid')
 

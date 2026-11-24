@@ -266,6 +266,7 @@ export const it: Messages = {
     finish_auto_replace: "Senza la modalità simulazione, le librerie con sostituzione automatica sostituiranno anche gli originali quando i file superano i controlli.",
     retention_invalid: "Inserisci un numero intero, 0 o più.",
     reason_encoder_nvidia: "Un codificatore NVIDIA ha superato il test su questo computer.",
+    reason_encoder_amd: "Un codificatore AMD AMF ha superato il test su questo computer.",
     reason_encoder_intel: "Un codificatore Intel Quick Sync ha superato il test su questo computer.",
     reason_encoder_vaapi: "Un codificatore VAAPI ha superato il test su questo computer.",
     reason_encoder_cpu: "Nessun codificatore hardware ha superato il test su questo computer, quindi si usa la CPU.",

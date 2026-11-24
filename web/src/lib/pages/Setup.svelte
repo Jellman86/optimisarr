@@ -84,7 +84,7 @@
   let eligiblePage = $state<InventoryPage | null>(null)
 
   const w = $derived(i18n.m.wizard)
-  const encoderNames: Record<SetupRecommendation['encoderMode'], string> = { Cpu: 'CPU', NvidiaNvenc: 'NVIDIA NVENC', IntelQsv: 'Intel Quick Sync', Vaapi: 'VAAPI' }
+  const encoderNames: Record<SetupRecommendation['encoderMode'], string> = { Cpu: 'CPU', NvidiaNvenc: 'NVIDIA NVENC', AmdAmf: 'AMD AMF', IntelQsv: 'Intel Quick Sync', Vaapi: 'VAAPI' }
   const stepNames = $derived([w.step_machine, w.step_library, w.step_apps, w.step_files, w.step_try])
   const settingsPlace = $derived(`${i18n.m.nav.settings} → ${i18n.m.settings.room_files}`)
   const missingTools = $derived(tools.filter((tool) => tool.required && !tool.available).map((tool) => tool.name))

@@ -128,6 +128,18 @@ public static class EncoderPresetPolicy
             });
         }
 
+        // AMD AMF names its quality/speed presets "speed" and "quality", with "balanced" left to
+        // the driver default; the quality number maps through CQP (see FfmpegCommandBuilder).
+        if (encoder.EndsWith("_amf", StringComparison.Ordinal))
+        {
+            return Success(effort, effort switch
+            {
+                Quick => "speed",
+                Balanced => null,
+                _ => "quality"
+            });
+        }
+
         // Neither VA-API nor VideoToolbox has a preset vocabulary; each takes its driver's defaults.
         if (encoder.EndsWith("_vaapi", StringComparison.Ordinal)
             || encoder.EndsWith("_videotoolbox", StringComparison.Ordinal))
@@ -142,6 +154,11 @@ public static class EncoderPresetPolicy
     private static EncoderPresetResolution ResolveLegacy(string encoder, string selection)
     {
         if (encoder.EndsWith("_vaapi", StringComparison.Ordinal))
+        {
+            return Success(selection, null);
+        }
+
+        if (encoder.EndsWith("_amf", StringComparison.Ordinal))
         {
             return Success(selection, null);
         }

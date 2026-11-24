@@ -266,6 +266,7 @@ export const zh: Messages = {
     finish_auto_replace: "dry-run 关闭时，开启自动替换的媒体库在文件通过检查后也会替换原文件。",
     retention_invalid: "请输入 0 或更大的整数。",
     reason_encoder_nvidia: "NVIDIA 编码器已在此机器上通过测试。",
+    reason_encoder_amd: "AMD AMF 编码器已在此机器上通过测试。",
     reason_encoder_intel: "Intel Quick Sync 编码器已在此机器上通过测试。",
     reason_encoder_vaapi: "VAAPI 编码器已在此机器上通过测试。",
     reason_encoder_cpu: "没有硬件编码器在此机器上通过测试，因此使用 CPU。",

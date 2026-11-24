@@ -266,6 +266,7 @@ export const fr: Messages = {
     finish_auto_replace: "Sans le mode simulation, les médiathèques en remplacement automatique remplaceront aussi les originaux une fois les vérifications réussies.",
     retention_invalid: "Saisissez un nombre entier, 0 ou plus.",
     reason_encoder_nvidia: "Un encodeur NVIDIA a réussi le test sur cette machine.",
+    reason_encoder_amd: "Un encodeur AMD AMF a réussi le test sur cette machine.",
     reason_encoder_intel: "Un encodeur Intel Quick Sync a réussi le test sur cette machine.",
     reason_encoder_vaapi: "Un encodeur VAAPI a réussi le test sur cette machine.",
     reason_encoder_cpu: "Aucun encodeur matériel n’a réussi le test sur cette machine, le CPU est donc utilisé.",

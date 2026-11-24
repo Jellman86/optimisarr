@@ -266,6 +266,7 @@ export const pt: Messages = {
     finish_auto_replace: "Sem o modo simulação, as bibliotecas com substituição automática também substituem os originais quando os ficheiros passam nas verificações.",
     retention_invalid: "Introduza um número inteiro, 0 ou mais.",
     reason_encoder_nvidia: "Um codificador NVIDIA passou no teste nesta máquina.",
+    reason_encoder_amd: "Um codificador AMD AMF passou no teste nesta máquina.",
     reason_encoder_intel: "Um codificador Intel Quick Sync passou no teste nesta máquina.",
     reason_encoder_vaapi: "Um codificador VAAPI passou no teste nesta máquina.",
     reason_encoder_cpu: "Nenhum codificador por hardware passou no teste nesta máquina, por isso usa-se a CPU.",

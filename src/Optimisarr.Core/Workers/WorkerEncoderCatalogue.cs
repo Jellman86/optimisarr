@@ -54,6 +54,7 @@ public static class WorkerEncoderCatalogue
         name is "libx264" or "libx265" or "libsvtav1" ? "CPU"
         : name.EndsWith("_nvenc", StringComparison.Ordinal) ? "NVIDIA NVENC"
         : name.EndsWith("_qsv", StringComparison.Ordinal) ? "Intel QSV"
+        : name.EndsWith("_amf", StringComparison.Ordinal) ? "AMD AMF"
         : name.EndsWith("_vaapi", StringComparison.Ordinal) ? "VAAPI"
         : name.EndsWith("_videotoolbox", StringComparison.Ordinal) ? "VideoToolbox"
         : null;

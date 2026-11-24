@@ -268,6 +268,7 @@ export const de: Messages = {
     finish_auto_replace: "Ist der Testlauf aus, ersetzen Bibliotheken mit automatischem Ersetzen auch Originale, sobald Dateien ihre Prüfungen bestanden haben.",
     retention_invalid: "Gib eine ganze Zahl ab 0 ein.",
     reason_encoder_nvidia: "Ein NVIDIA-Encoder hat den Test auf diesem Rechner bestanden.",
+    reason_encoder_amd: "Ein AMD-AMF-Encoder hat den Test auf diesem Rechner bestanden.",
     reason_encoder_intel: "Ein Intel-Quick-Sync-Encoder hat den Test auf diesem Rechner bestanden.",
     reason_encoder_vaapi: "Ein VAAPI-Encoder hat den Test auf diesem Rechner bestanden.",
     reason_encoder_cpu: "Kein Hardware-Encoder hat den Test auf diesem Rechner bestanden, daher wird die CPU verwendet.",

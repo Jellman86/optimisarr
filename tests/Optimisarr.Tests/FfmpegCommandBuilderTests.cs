@@ -634,6 +634,26 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Amf_uses_cqp_quality_without_a_device_init_or_hwupload()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { Preset = null }, videoEncoder: "hevc_amf");
+
+        // AMF on Windows initialises its device implicitly from the first AMD adapter ffmpeg finds,
+        // so there is no -init_hw_device and the encoder consumes system-memory frames directly.
+        Assert.DoesNotContain("-init_hw_device", args);
+        Assert.DoesNotContain("-vaapi_device", args);
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-filter:v:0", args);
+
+        // Constant quantisation: the same QP on I and P frames, never -crf.
+        Assert.DoesNotContain("-crf", args);
+        Assert.Equal("cqp", args[IndexOf(args, "-rc") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-qp_i") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-qp_p") + 1]);
+        Assert.Equal("hevc_amf", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
     public void Vaapi_combines_tonemap_then_hwupload_in_one_filter_chain()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true), videoEncoder: "hevc_vaapi");
