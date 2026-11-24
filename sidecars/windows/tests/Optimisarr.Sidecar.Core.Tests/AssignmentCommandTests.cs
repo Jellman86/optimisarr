@@ -174,6 +174,19 @@ public sealed class AssignmentCommandTests
     }
 
     [Fact]
+    public void An_AMD_AMF_constant_quality_command_is_accepted()
+    {
+        // AMF exposes its constant-QP control as per-tier QP choices (-qp_i / -qp_p), distinct from
+        // the single -qp / -cq of the other hardware encoders. The server emits them for the AMD
+        // AMF encoder family; the sidecar has to agree before it will run the job.
+        string[] arguments =
+            ["-i", "{{input}}", "-c:v:0", "hevc_amf", "-rc", "cqp", "-qp_i", "24", "-qp_p", "24",
+             "-c:a", "aac", "-c:s", "copy", "{{output}}.mkv"];
+
+        Assert.Null(Refuse(arguments));
+    }
+
+    [Fact]
     public void A_value_that_hides_a_windows_path_is_refused()
     {
         // The case this platform has and macOS does not: a backslash path is exactly what an

@@ -39,7 +39,7 @@ public static class AssignmentCommand
     {
         "-progress", "-threads", "-fflags", "-i", "-map", "-map_metadata", "-metadata",
         "-disposition:v:0", "-c", "-c:v", "-c:v:0", "-c:a", "-c:s", "-filter:v:0", "-vf",
-        "-crf", "-preset", "-q:v", "-qp", "-cq", "-rc", "-b:v", "-b:a", "-ac",
+        "-crf", "-preset", "-q:v", "-qp", "-qp_i", "-qp_p", "-cq", "-rc", "-b:v", "-b:a", "-ac",
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0", "-itsoffset",
