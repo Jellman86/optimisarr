@@ -41,6 +41,23 @@ public sealed class SetupRecommendationPolicyTests
     }
 
     [Fact]
+    public void Amd_is_preferred_to_vaapi_and_does_not_recommend_hardware_decode()
+    {
+        var result = SetupRecommendationPolicy.Recommend(
+            [
+                new EncoderCapability("hevc_vaapi", "hevc", "VAAPI", Available: true),
+                new EncoderCapability("hevc_amf", "hevc", "AMD AMF", Available: true)
+            ],
+            vmafAvailable: true,
+            cudaVmafAvailable: false);
+
+        Assert.Equal(EncoderMode.AmdAmf, result.EncoderMode);
+        // AMF encodes from system-memory frames (software decode + GPU encode).
+        Assert.False(result.HardwareDecode);
+        Assert.Equal("amd", result.EncoderReason);
+    }
+
+    [Fact]
     public void Unproved_hardware_falls_back_to_cpu_and_never_enables_hardware_decode()
     {
         var result = SetupRecommendationPolicy.Recommend(

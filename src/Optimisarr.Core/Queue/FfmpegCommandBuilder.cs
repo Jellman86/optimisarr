@@ -317,7 +317,7 @@ public static class FfmpegCommandBuilder
             args.Add("-map");
             args.Add("-0:d");
         }
-        else if (!spec.VideoOnly && family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc)
+        else if (!spec.VideoOnly && family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc or EncoderFamily.Amf)
         {
             // A hardware encoder can abort on a data stream (camera timecode, GoPro GPMF) even in a
             // Matroska output, where the MP4 exclusion above doesn't apply. Drop data streams for any
@@ -757,13 +757,14 @@ public static class FfmpegCommandBuilder
 
     // The hardware family is inferred from the resolved encoder name, so quality and device
     // arguments stay correct whatever codec was selected (e.g. h264_vaapi vs hevc_vaapi).
-    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi, VideoToolbox }
+    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi, VideoToolbox, Amf }
 
     private static EncoderFamily FamilyOf(string encoder) =>
         encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Nvenc
         : encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Qsv
         : encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Vaapi
         : encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.VideoToolbox
+        : encoder.EndsWith("_amf", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Amf
         : EncoderFamily.Cpu;
 
     // Apple's encoders take constant quality as -q:v on a 1–100 scale where higher is better, the
@@ -824,6 +825,12 @@ public static class FfmpegCommandBuilder
                     args.Add("qsv");
                 }
                 break;
+            case EncoderFamily.Amf:
+                // AMF on Windows initialises its device implicitly from the first AMD adapter the
+                // ffmpeg build finds, so no -init_hw_device is required. AMF encodes from system-memory
+                // frames (software decode + GPU encode, the proven path), which is why this family is
+                // not included in the hardware-decode set and needs no device declaration at all.
+                break;
         }
     }
 
@@ -851,6 +858,11 @@ public static class FfmpegCommandBuilder
                 break;
             case EncoderFamily.Vaapi:
                 args.AddRange(["-rc_mode", "CQP", "-qp", q]);
+                break;
+            case EncoderFamily.Amf:
+                // Constant quantisation, the only AMF mode that maps a 0-51 quality number faithfully;
+                // -rc cqp with the same QP on I and P frames, mirroring the VAAPI CQP path.
+                args.AddRange(["-rc", "cqp", "-qp_i", q, "-qp_p", q]);
                 break;
             case EncoderFamily.VideoToolbox:
                 args.AddRange(["-q:v", VideoToolboxQuality(quality).ToString()]);

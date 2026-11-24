@@ -1082,6 +1082,7 @@ let settings = $state<Settings>({
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
           <option value="NvidiaNvenc">NVIDIA NVENC</option>
+          <option value="AmdAmf">AMD AMF</option>
           <option value="IntelQsv">Intel QSV</option>
           <option value="Vaapi">VAAPI</option>
         </select>

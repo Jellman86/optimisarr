@@ -16,6 +16,8 @@ public sealed class WorkerEncoderCatalogueTests
     [InlineData("libsvtav1", "av1", "CPU")]
     [InlineData("hevc_nvenc", "hevc", "NVIDIA NVENC")]
     [InlineData("h264_qsv", "h264", "Intel QSV")]
+    [InlineData("hevc_amf", "hevc", "AMD AMF")]
+    [InlineData("h264_amf", "h264", "AMD AMF")]
     [InlineData("av1_vaapi", "av1", "VAAPI")]
     [InlineData("hevc_videotoolbox", "hevc", "VideoToolbox")]
     [InlineData("h264_videotoolbox", "h264", "VideoToolbox")]
@@ -120,5 +122,19 @@ public sealed class WorkerEncoderCatalogueTests
             "hevc", EncoderMode.Auto, ["libx265", "hevc_qsv", "hevc_vaapi"], avoidIntelQsv: true);
 
         Assert.Equal("hevc_vaapi", selection.EncoderName);
+    }
+
+    [Fact]
+    public void An_amd_worker_is_offered_its_proved_amf_encoder_under_auto_and_vendor_amd()
+    {
+        Assert.Equal("hevc_amf", WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_amf"]).EncoderName);
+
+        Assert.Equal("hevc_amf", WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_amf"]).EncoderName);
+
+        // The server naming AMD must not strand a worker that only proved Intel (as with NVENC).
+        Assert.Equal("hevc_qsv", WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_qsv"]).EncoderName);
     }
 }

@@ -25,7 +25,7 @@ It finds eligible video, audio, and image files, transcodes them to reduce
 storage use, verifies the result, and only then replaces the original.
 
 Built for Plex, Jellyfin, Emby, Sonarr, and Radarr users, Optimisarr supports
-CPU, NVIDIA NVENC, Intel QSV, and VA-API transcoding. Originals are quarantined
+CPU, NVIDIA NVENC, Intel QSV, AMD AMF, and VA-API transcoding. Originals are quarantined
 for rollback rather than deleted immediately.
 
 ## Why Optimisarr?
@@ -134,15 +134,15 @@ no support SLA or promise of a release schedule.
   containing artwork are rejected before queueing. Opus remains an option for art-free sources
   without embedded timed lyrics.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
-  NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
-- Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
+  NVENC, Intel QSV, AMD AMF, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
+- Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, AMD AMF, and VAAPI.
 - Per-library **Encoder effort** choices that resolve after the actual encoder is selected, mapping
   one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, or QSV presets
   while VAAPI safely retains its driver default.
 - Per-library, media-aware verification gates for duration tolerance, stream
   retention, required size reduction, VMAF, audio fidelity, image SSIM, and metadata.
 
-- **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
+- **Hardware transcoding** through NVIDIA NVENC, Intel QSV, AMD AMF, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the
   encoder used shown per job (GPU/CPU) on the Queue.
 - **GPU hardware decoding** (NVIDIA NVDEC, QSV, and VA-API) of the source as well as the encode,
@@ -165,7 +165,7 @@ no support SLA or promise of a release schedule.
 Still planned (see the [roadmap](docs/roadmap.md) and maintained
 [hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
 for AMD VA-API and NVIDIA NVDEC. Intel QSV has been tested on real hardware for both encoding and
-decoding.
+decoding, and AMD AMF encoding has been validated on real AMD hardware through the Windows sidecar.
 
 ## Before you start
 

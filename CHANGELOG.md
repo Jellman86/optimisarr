@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Encode on AMD GPUs. A Windows (and Linux) sidecar that proves an AMD AMF encoder can now use it: AMF is a first-class encoder family — a new **AMD AMF** encoder mode, and Auto mode preferring it after NVIDIA and before Intel QSV. Quality maps onto AMF's constant-QP control (-rc cqp) with the same conservative headroom as the other hardware encoders, and the portable Fast/Balanced/Efficient effort resolves to AMF's speed/default/quality presets. AMD AMF encoders no longer fall out of a worker's proved capabilities because the control plane didn't recognise them. H.264 and HEVC (8- and 10-bit) are supported; AV1 AMF stays off for RDNA2 hardware that cannot encode it. Recommended for a first-run AMD box, and it does not turn hardware decode on for AMF jobs, which still encode from system-memory frames. The Windows sidecar's FFmpeg bundle now also refuses to install unless it ships the AMF encoders.
+
 ## 0.2.26 - 2026-11-20
 
 - Keep sound and picture together in an upscaled Matroska file that has attachments, such as subtitle fonts. When the encode also copied the source's attachments, FFmpeg 7 stopped keeping the source's audio in step with the upscaled pictures and wrote nearly all of it first: a 90-second file had 80 seconds of audio before its first picture. It played, but badly over a network. Attachments are now copied in after the encode, so the audio stays in step with the picture; the existing check that every attachment survived still applies. Found by the release acceptance run with the CPU encoder; the earlier hardware run, on FFmpeg 8 with NVENC, did not show it. The acceptance check also no longer fails a square-pixel upscale for having no display ratio recorded, which libx265 leaves unset. No migration.

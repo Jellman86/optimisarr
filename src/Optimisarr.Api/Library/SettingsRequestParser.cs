@@ -51,7 +51,7 @@ internal static class SettingsRequestParser
             // Keep the established API code alongside the persisted/wire setting name.
             return Fail("settings.quarantineRetention.nonNegative", "Cleanup retention days cannot be negative.", out error);
         if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
-            return Fail("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi.", out error);
+            return Fail("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, Vaapi, or AmdAmf.", out error);
         var hdrToneMapMode = HdrToneMapMode.Software;
         if (!string.IsNullOrWhiteSpace(request.HdrToneMapMode)
             && (!Enum.TryParse(request.HdrToneMapMode, ignoreCase: true, out hdrToneMapMode)
