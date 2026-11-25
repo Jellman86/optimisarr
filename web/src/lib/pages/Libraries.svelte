@@ -1595,10 +1595,10 @@
 {:else}
   <header class="mb-6">
     <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-      <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
+      <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
       <span aria-hidden="true">/</span>
       {#if page !== 'overview' || activeTab !== 'rules'}
-        <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+        <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
         <span aria-hidden="true">/</span>
       {/if}
       <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
@@ -1613,7 +1613,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
         {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
-          <button class="btn min-h-11" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
+          <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
             <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
             {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
@@ -1677,7 +1677,7 @@
   {#if editingId && editingId > 0}
     <SettingRow label={i18n.m.calibration.eyebrow} sentence={i18n.m.calibration.intro}
       disabledReason={isDirty ? i18n.m.libraryEditor.save_first : null}>
-      <button type="button" class="btn min-h-11" disabled={isDirty} onclick={() => router.go(`/libraries/${editingId}/quality-check`)}>{i18n.m.calibration.eyebrow}</button>
+      <button type="button" class="btn" disabled={isDirty} onclick={() => router.go(`/libraries/${editingId}/quality-check`)}>{i18n.m.calibration.eyebrow}</button>
     </SettingRow>
   {/if}
 {/snippet}
@@ -1696,7 +1696,7 @@
     <SettingRow label={i18n.m.libraryEditor.folder} sentence={i18n.m.libraryEditor.folder_sentence} controlId="lib-path">
       <div class="flex gap-2">
         <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-        <button type="button" class="btn min-h-11 flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
+        <button type="button" class="btn flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
       </div>
     </SettingRow>
     <SettingRow label={i18n.m.libraries.media_type} sentence={i18n.m.libraryWorkflow.type_hint} controlId="lib-type">
@@ -1724,7 +1724,7 @@
       <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
            under an HEVC target). Off by default; the size-saving check still protects the original. -->
       <SettingRow label={i18n.m.libraries.same_codec_label} sentence={i18n.m.libraries.same_codec_hint} more={i18n.m.libraries.same_codec_tip}>
-        <label class="flex min-h-11 cursor-pointer items-center justify-end gap-2 text-sm">
+        <label class="flex hit-target cursor-pointer items-center justify-end gap-2 text-sm">
           <input type="checkbox" class="checkbox" aria-label={i18n.m.libraries.same_codec_label} checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
         </label>
         {#if sameCodecGb !== ''}
@@ -1745,7 +1745,7 @@
         <div class="flex flex-wrap gap-2" role="group" aria-label={i18n.m.libraries.skip_codecs}>
           {#each offeredSourceCodecs as codec (codec)}
             <button type="button" aria-pressed={skippedCodecs.includes(codec)} onclick={() => toggleSkippedCodec(codec)}
-              class="choice min-h-11 rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec) ? 'choice-selected' : 'text-ink-2'}">{codec}</button>
+              class="choice hit-target justify-center rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec) ? 'choice-selected' : 'text-ink-2'}">{codec}</button>
           {/each}
         </div>
       </SettingRow>
@@ -1767,7 +1767,7 @@
     <nav class="sticky top-2 mb-4 hidden self-start xl:block" aria-label={i18n.m.libraryEditor.on_this_page}>
       <ul class="space-y-1 text-sm">
         {#each videoSections as section (section.id)}
-          <li><button type="button" class="focus-ring min-h-11 w-full rounded-lg px-3 text-left text-ink-2 hover:bg-raised" onclick={() => document.getElementById(section.id)?.scrollIntoView({ block: 'start' })}>{section.title}</button></li>
+          <li><button type="button" class="focus-ring hit-target w-full rounded-lg px-3 text-left text-ink-2 hover:bg-raised" onclick={() => document.getElementById(section.id)?.scrollIntoView({ block: 'start' })}>{section.title}</button></li>
         {/each}
       </ul>
     </nav>
@@ -1803,7 +1803,7 @@
         {#if trackCleanupNeedsLanguages}
           <p class="callout tone-warn mt-3 text-xs">
             {i18n.m.libraryEditor.cleanup_needs_languages}
-            <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium underline" onclick={() => goPage('audio', 'library-languages')}>{pageNames.audio}</button>
+            <button type="button" class="focus-ring hit-target rounded px-1 font-medium underline" onclick={() => goPage('audio', 'library-languages')}>{pageNames.audio}</button>
           </p>
         {/if}
 
@@ -1812,7 +1812,7 @@
             <SettingRow label={i18n.m.libraryEditor.preset_label} sentence={i18n.m.libraryEditor.preset_sentence} stacked>
               <div class="flex flex-wrap items-center gap-2" role="group" aria-label={i18n.m.libraryEditor.preset_label}>
                 {#each encodeProfiles as profile}
-                  <button type="button" class="choice min-h-11 rounded-full px-4 text-sm font-medium {form.ruleProfile === profile ? 'choice-selected' : 'text-ink-2'}"
+                  <button type="button" class="choice hit-target justify-center rounded-full px-4 text-sm font-medium {form.ruleProfile === profile ? 'choice-selected' : 'text-ink-2'}"
                     aria-pressed={form.ruleProfile === profile} onclick={() => choosePreset(profile)}>
                     {presetName(profile, i18n.m)}
                     <span class="ml-1.5 font-mono text-xs font-normal text-ink-3">{specFor(profile).codec}</span>
@@ -1825,7 +1825,7 @@
               </p>
               <!-- A preset is only mysterious until its values are on the page. These are the server's own. -->
               <details class="preset-table mt-1" data-preset-table>
-                <summary class="focus-ring inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
+                <summary class="focus-ring hit-target cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
                   <Icon name="info" class="h-3.5 w-3.5" />{i18n.m.libraryEditor.preset_table}
                 </summary>
                 <div class="overflow-x-auto">
@@ -2356,7 +2356,7 @@
   <SettingRow {label} sentence={i18n.m.libraryEditor.set_elsewhere}>
     <div class="flex flex-wrap items-center justify-end gap-2">
       <span class="badge tone-neutral" data-check-value>{value}</span>
-      <button type="button" class="btn min-h-11" onclick={() => goPage(target, anchor)}>{pageNames[target]}</button>
+      <button type="button" class="btn" onclick={() => goPage(target, anchor)}>{pageNames[target]}</button>
     </div>
   </SettingRow>
 {/snippet}
@@ -2548,7 +2548,7 @@
   {#if editingId !== null && editingId > 0}
     <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
       <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
-      <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+      <button type="button" class="btn" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
     </section>
   {/if}
 {/snippet}
@@ -2567,11 +2567,11 @@
     <div class="callout tone-warn mt-5" role="alert">
       <p class="text-sm font-medium">{i18n.m.libraryWorkflow.review_errors}</p>
       <div class="mt-2 flex flex-wrap gap-2">
-        {#if audioLanguageError || subtitleLanguageError}<button class="btn min-h-11" onclick={() => goPage('audio', 'library-languages')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
-        {#if encoderEffortError}<button class="btn min-h-11" onclick={() => goPage('video', 'library-encoder')}>{encoderEffortError}</button>{/if}
-        {#if !isNoEncodeProfile && vmafError}<button class="btn min-h-11" onclick={() => goPage('video', 'library-quality')}>{vmafError}</button>{/if}
-        {#if verificationError}<button class="btn min-h-11" onclick={() => goPage(verificationErrorPage)}>{verificationError}</button>{/if}
-        {#if targetFolderProblem}<button class="btn min-h-11" onclick={() => goPage('schedule', 'library-files-choice')}>{targetFolderProblem}</button>{/if}
+        {#if audioLanguageError || subtitleLanguageError}<button class="btn" onclick={() => goPage('audio', 'library-languages')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
+        {#if encoderEffortError}<button class="btn" onclick={() => goPage('video', 'library-encoder')}>{encoderEffortError}</button>{/if}
+        {#if !isNoEncodeProfile && vmafError}<button class="btn" onclick={() => goPage('video', 'library-quality')}>{vmafError}</button>{/if}
+        {#if verificationError}<button class="btn" onclick={() => goPage(verificationErrorPage)}>{verificationError}</button>{/if}
+        {#if targetFolderProblem}<button class="btn" onclick={() => goPage('schedule', 'library-files-choice')}>{targetFolderProblem}</button>{/if}
       </div>
     </div>
   {/if}
@@ -2582,11 +2582,11 @@
     data-library-actions
     class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} card z-10 mt-4 flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6"
   >
-    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave || saving}>
+    <button class="btn btn-lg btn-primary" onclick={save} disabled={!canSave || saving}>
       <Icon name="check" class="h-4 w-4" />
       {saving ? i18n.m.settings.saving : i18n.m.libraries.save}
     </button>
-    <button class="btn min-h-11" onclick={cancelEdit} disabled={saving}>
+    <button class="btn btn-lg" onclick={cancelEdit} disabled={saving}>
       <Icon name="x" class="h-4 w-4" />
       {i18n.m.libraries.cancel}
     </button>
@@ -2607,7 +2607,7 @@
     <!-- Every page is one step from every other; the one being read is filled. -->
     <nav class="mb-6 flex flex-wrap gap-2" aria-label={i18n.m.libraryEditor.pages_label}>
       {#each pages as candidate (candidate)}
-        <button type="button" class="choice min-h-11 rounded-full px-4 text-sm font-medium {page === candidate ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}"
+        <button type="button" class="choice hit-target justify-center rounded-full px-4 text-sm font-medium {page === candidate ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}"
           aria-current={page === candidate ? 'page' : undefined} onclick={() => goPage(candidate)}>{pageNames[candidate]}</button>
       {/each}
     </nav>
@@ -2675,7 +2675,7 @@
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
               <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
-            <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
+            <button class="btn btn-sm btn-ghost flex-shrink-0" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
         {/each}
       </div>
@@ -2758,11 +2758,11 @@
 
         <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
         <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
+          <button class="btn btn-primary" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
-          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
+          <a class="btn btn-ghost" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
             <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
           {/if}
@@ -2798,18 +2798,6 @@
 </ConfirmDialog>
 
 <style>
-  /* Match Settings' readable labels and comfortable control targets while retaining
-     the shared card surfaces, theme tokens and full-width room layout. */
-  [data-library-workflow] :global(.label) {
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--ink-2);
-  }
-  [data-library-workflow] :global(.input) {
-    min-height: 2.75rem;
-  }
   .preset-table > summary {
     list-style: none;
   }

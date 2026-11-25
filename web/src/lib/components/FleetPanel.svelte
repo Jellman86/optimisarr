@@ -79,7 +79,7 @@
           {plural(runningLocally, i18n.m.dashboard.fleet_jobs_one, i18n.m.dashboard.fleet_jobs_other, runningLocally.toLocaleString())}
         </div>
       </div>
-      <div class="text-[11px] font-medium text-ink-3">
+      <div class="text-micro font-medium text-ink-3">
         <div class="mb-1 flex items-center gap-2">
           <span class="w-7">CPU</span>
           <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-sunken"><span class="block h-full rounded-full bg-ink-3" style="width: {localCpu ?? 0}%"></span></span>
@@ -119,7 +119,7 @@
             <div class="mt-1 line-clamp-2 text-xs {problemIsFresh(worker) ? 'text-warn' : 'text-ink-4'}" title={worker.lastProblem}>{problemLine(worker)}</div>
           {/if}
         </div>
-        <div class="text-[11px] font-medium text-ink-3">
+        <div class="text-micro font-medium text-ink-3">
           {#if cpu != null}
             <div class="mb-1 flex items-center gap-2">
               <span class="w-7">CPU</span>

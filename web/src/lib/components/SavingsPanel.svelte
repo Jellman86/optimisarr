@@ -29,17 +29,17 @@
 </script>
 
 <section class="card flex h-full flex-col" aria-labelledby="savings-heading">
-  <div class="flex items-center gap-3 border-b border-line px-4 py-2.5">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2.5">
     <h2 id="savings-heading" class="label mb-0">{i18n.m.dashboard.total_saved}</h2>
     {#if optimised}
       {#if confirmingReset}
-        <span class="ml-auto flex items-center gap-1">
-          <button class="btn btn-danger px-2 py-0.5 text-[10px]" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
-          <button class="btn px-2 py-0.5 text-[10px]" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
+        <span class="ml-auto flex flex-wrap items-center gap-1">
+          <button class="btn btn-sm btn-danger" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
+          <button class="btn btn-sm" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
         </span>
       {:else}
         <button
-          class="ml-auto rounded text-ink-4 transition hover:text-ink-2 focus-ring"
+          class="btn btn-sm btn-ghost btn-icon ml-auto text-ink-4"
           title={i18n.m.dashboard.reset_title}
           aria-label={i18n.m.dashboard.reset_title}
           onclick={() => (confirmingReset = true)}
@@ -50,7 +50,7 @@
 
   <div class="flex flex-1 flex-col gap-4 p-4">
     <div>
-      <div class="text-[2.75rem] font-bold leading-none tracking-[-0.03em] tabular-nums text-ink">
+      <div class="text-display font-bold tracking-[-0.03em] tabular-nums text-ink">
         {stats ? formatSize(stats.bytesSaved) : '—'}
       </div>
       <p class="mt-2 text-sm text-ink-2">

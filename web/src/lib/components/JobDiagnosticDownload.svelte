@@ -23,5 +23,5 @@
     finally { busy = false }
   }
 </script>
-<button class="btn btn-ghost min-h-11 text-xs" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
+<button class="btn btn-sm btn-ghost" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
 {#if error}<p class="text-sm text-bad" role="alert">{error}</p>{/if}

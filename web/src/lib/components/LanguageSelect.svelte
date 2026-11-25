@@ -111,7 +111,7 @@
   <button
     bind:this={trigger}
     type="button"
-    class={compact ? 'btn btn-ghost px-2' : 'input flex h-8 w-full items-center justify-between py-0 text-left text-xs'}
+    class={compact ? 'btn btn-ghost btn-icon' : 'input flex h-8 w-full items-center justify-between py-0 text-left text-xs'}
     aria-label={compact ? `${i18n.m.language.label}: ${selectedName}` : i18n.m.language.label}
     title={compact ? selectedName : undefined}
     aria-haspopup="listbox"

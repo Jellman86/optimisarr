@@ -100,7 +100,7 @@
           {:else}{i18n.m.schedule.queue_blocked}{/if}
         </h2>
       </div>
-      <button class="btn min-h-11" onclick={() => router.go('/settings/encoding')}>{i18n.m.settings.room_encoding}</button>
+      <button class="btn" onclick={() => router.go('/settings/encoding')}>{i18n.m.settings.room_encoding}</button>
     </div>
     <p class="schedule-dispatch-reason" class:blocked={!queueStatus.canStart}>{dispatchExplanation}</p>
     {#if !queueStatus.canStart}<PlaybackHolds holds={queueStatus.playbackHolds ?? []} />{/if}
@@ -114,7 +114,7 @@
   <section aria-label={i18n.m.schedule.auto_windows_title}>
     <div class="schedule-section-head">
       <div><h2>{i18n.m.schedule.auto_windows_title}</h2><p>{i18n.m.schedule.auto_windows_desc}</p></div>
-      <button class="btn min-h-11" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>
+      <button class="btn" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>
     </div>
     {#if autoOptimiseLibraries.length > 0}
       <div class="schedule-library-grid">

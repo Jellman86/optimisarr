@@ -48,7 +48,7 @@
           {/if}
         </div>
         {#if onedit}
-          <button type="button" class="btn min-h-11 flex-none" aria-label={t(i18n.m.librarySummary.edit_topic, { topic: line.title })} onclick={() => onedit(line.topic)}>
+          <button type="button" class="btn flex-none" aria-label={t(i18n.m.librarySummary.edit_topic, { topic: line.title })} onclick={() => onedit(line.topic)}>
             {i18n.m.librarySummary.edit}
           </button>
         {/if}

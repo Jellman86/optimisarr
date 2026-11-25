@@ -74,12 +74,12 @@
       {@render body()}
     </div>
     <div class="flex flex-col gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-      <button type="button" class="btn min-h-11 justify-center" bind:this={cancelButton} onclick={cancel} disabled={busy}>
+      <button type="button" class="btn btn-lg justify-center" bind:this={cancelButton} onclick={cancel} disabled={busy}>
         {i18n.m.common.cancel}
       </button>
       <button
         type="button"
-        class="btn {danger ? 'btn-danger' : 'btn-primary'} min-h-11 justify-center"
+        class="btn {danger ? 'btn-danger' : 'btn-primary'} btn-lg justify-center"
         onclick={confirm}
         disabled={busy}
         data-confirm-accept

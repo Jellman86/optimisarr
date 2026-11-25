@@ -75,7 +75,7 @@
 <div class="relative flex-shrink-0" bind:this={root}>
   <button
     type="button"
-    class="btn min-h-11 px-2"
+    class="btn btn-icon"
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label}
@@ -99,7 +99,7 @@
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-ring-inset disabled:pointer-events-none disabled:opacity-50 {item.danger
+          class="hit-target flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-ring-inset disabled:pointer-events-none disabled:opacity-50 {item.danger
  ? 'text-bad hover:bg-bad-soft'
  : 'text-ink-2 hover:bg-raised'}"
           disabled={item.disabled}

@@ -73,7 +73,7 @@
     {#if group.reviewKey}
       <div class="mb-5">
         <label class="label" for={presetId}>{i18n.m.duplicates.keeperPreset}</label>
-        <select class="input min-h-11 max-w-md" id={presetId} value={preset} disabled={!canSave} onchange={event => applyPreset(event.currentTarget.value)} aria-describedby={`${presetId}-hint`}>
+        <select class="input max-w-md" id={presetId} value={preset} disabled={!canSave} onchange={event => applyPreset(event.currentTarget.value)} aria-describedby={`${presetId}-hint`}>
           <option value="manual">{i18n.m.duplicates.manualKeep}</option>
           <option value="all">{i18n.m.duplicates.keepAll}</option>
           {#each keeperLibraries as library (library.id)}<option value={`library:${library.id}`}>{t(i18n.m.duplicates.keepLibrary, { library: library.name ?? '' })}</option>{/each}
@@ -99,7 +99,7 @@
               {#each copy.aliases as alias (alias.id)}<p class="mt-2 break-all text-xs leading-relaxed text-ink-3">{alias.libraryName} · {alias.relativePath}</p>{/each}
             </div>
           {/if}
-          {#if group.reviewKey}<label class="keep-control mt-4 flex min-h-11 cursor-pointer items-center gap-3 border-t border-line pt-3 text-sm font-medium text-ink">
+          {#if group.reviewKey}<label class="keep-control mt-4 flex hit-target cursor-pointer items-center gap-3 border-t border-line pt-3 text-sm font-medium text-ink">
             <input class="h-4 w-4 accent-accent" type="checkbox" checked={keepIds.includes(copy.id)} disabled={!canSave} onchange={event => toggle(copy.id,event.currentTarget.checked)} aria-label={`${i18n.m.duplicates.keepCopy}: ${copy.libraryName ?? ''} ${copy.relativePath}`} />
             {i18n.m.duplicates.keepCopy}
           </label>{/if}

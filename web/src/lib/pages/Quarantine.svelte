@@ -228,8 +228,8 @@
 {#if error && !reviewOpen}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
 {#if reviewOpen}
   <div data-quarantine-review class="space-y-5">
-    <nav class="flex min-h-11 flex-wrap items-center gap-2 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-      <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 hover:text-accent" href="#/quarantine">{i18n.m.nav.quarantine}</a>
+    <nav class="flex flex-wrap items-center gap-2 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+      <a class="focus-ring hit-target rounded px-1 hover:text-accent" href="#/quarantine">{i18n.m.nav.quarantine}</a>
       <span aria-hidden="true">/</span><span aria-current="page" class="text-ink">{i18n.m.quarantine.review_title}</span>
     </nav>
     <header class="card relative flex items-center gap-5 overflow-hidden p-5 sm:p-6">
@@ -263,8 +263,8 @@
           <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3">{i18n.m.quarantine.action_note}</p>
           {#if error}<div role="alert"><Banner kind="error" class="mt-4">{error}</Banner></div>{/if}
           <div class="mt-5 flex flex-wrap gap-3">
-            <button class="btn btn-primary min-h-11" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
-            <button class="btn btn-danger min-h-11" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
+            <button class="btn btn-lg btn-primary" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
+            <button class="btn btn-lg btn-danger" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
           </div>
         </section>
       {/if}
@@ -297,7 +297,7 @@
         {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>
     {:else}<div class="card p-8 text-sm text-ink-3">{i18n.m.quarantine.unavailable}</div>{/if}
-    <a class="btn min-h-11" href="#/quarantine"><Icon name="arrow-left" />{i18n.m.nav.quarantine}</a>
+    <a class="btn" href="#/quarantine"><Icon name="arrow-left" />{i18n.m.nav.quarantine}</a>
   </div>
 {:else}
 <header class="mb-6">
@@ -313,7 +313,7 @@
 {#if duplicates.length > 0 && replacements.length > 0}
   <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label={i18n.m.quarantine.kind_label}>
     {#each [['all', i18n.m.quarantine.kind_all, replacements.length + duplicates.length], ['optimisation', i18n.m.quarantine.kind_optimisation, replacements.length], ['duplicate', i18n.m.quarantine.kind_duplicate, duplicates.length]] as const as [value, label, count] (value)}
-      <button class="btn min-h-11 px-3 py-1.5 text-sm {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { chosenKind = value }}>{label} ({count})</button>
+      <button class="btn {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { chosenKind = value }}>{label} ({count})</button>
     {/each}
   </div>
 {/if}
@@ -333,17 +333,17 @@
             {#if group.state === 'Purging'}<span class="badge ml-1 tone-muted">{i18n.m.quarantine.duplicate_deleting}</span>{/if}
             {#each group.copies as copy (copy.quarantinePath)}
               <div class="mt-2 break-all text-sm font-medium text-ink">{fileName(copy.path)}</div>
-              <div class="break-all font-mono text-[11px] text-ink-3" title={copy.quarantinePath}>{t(i18n.m.quarantine.duplicate_from, { path: copy.path })} · {formatSize(copy.sizeBytes)}</div>
+              <div class="break-all font-mono text-caption text-ink-3" title={copy.quarantinePath}>{t(i18n.m.quarantine.duplicate_from, { path: copy.path })} · {formatSize(copy.sizeBytes)}</div>
             {/each}
             {#each group.keptPaths as path (path)}
-              <div class="mt-1 break-all font-mono text-[11px] text-ink-3">{t(i18n.m.quarantine.duplicate_kept, { path })}</div>
+              <div class="mt-1 break-all font-mono text-caption text-ink-3">{t(i18n.m.quarantine.duplicate_kept, { path })}</div>
             {/each}
             {#if group.attentionReason}<p class="mt-1 text-xs text-warn">{group.attentionReason}</p>{/if}
-            <div class="mt-1 text-[11px] text-ink-3">{new Date(group.heldSince).toLocaleString()}</div>
+            <div class="mt-1 text-caption text-ink-3">{new Date(group.heldSince).toLocaleString()}</div>
           </div>
           <div class="flex flex-wrap gap-2">
-            {#if group.state !== 'Purging'}<button class="btn min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>{/if}
-            {#if group.state !== 'NeedsAttention'}<button class="btn btn-danger min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'delete')}><Icon name="trash" class="h-4 w-4" />{i18n.m.quarantine.duplicate_delete}</button>{/if}
+            {#if group.state !== 'Purging'}<button class="btn" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>{/if}
+            {#if group.state !== 'NeedsAttention'}<button class="btn btn-danger" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'delete')}><Icon name="trash" class="h-4 w-4" />{i18n.m.quarantine.duplicate_delete}</button>{/if}
           </div>
         </li>
       {/each}
@@ -354,17 +354,17 @@
 {#if kind !== 'duplicate' && (activeCount > 0 || spentCount > 0)}
   <div class="mb-4 flex flex-wrap items-center gap-2">
     {#if activeCount > 0}
-      <button class="btn btn-primary px-3 py-1.5 text-sm" onclick={approveAll} disabled={busy}>
+      <button class="btn btn-primary" onclick={approveAll} disabled={busy}>
         <Icon name="check" class="h-4 w-4" />
         {bulkAction === 'approve' ? i18n.m.quarantine.approving_all : t(i18n.m.quarantine.approve_all, { count: activeCount })}
       </button>
-      <button class="btn btn-danger px-3 py-1.5 text-sm" onclick={rejectAll} disabled={busy}>
+      <button class="btn btn-danger" onclick={rejectAll} disabled={busy}>
         <Icon name="rotate" class="h-4 w-4" />
         {bulkAction === 'reject' ? i18n.m.quarantine.rolling_back_all : t(i18n.m.quarantine.reject_all, { count: activeCount })}
       </button>
     {/if}
     {#if spentCount > 0}
-      <button class="btn btn-ghost px-3 py-1.5 text-sm" onclick={clearSpent} disabled={busy}>
+      <button class="btn btn-ghost" onclick={clearSpent} disabled={busy}>
         <Icon name="trash" class="h-4 w-4" />
         {clearing ? i18n.m.quarantine.clearing : t(i18n.m.quarantine.clear_finished, { count: spentCount })}
       </button>
@@ -411,11 +411,11 @@
                 <div class="flex items-center gap-3">
                 <Thumbnail mediaFileId={r.mediaFileId} alt="" />
                 <div class="min-w-0">
-                <a id={`replacement-${r.id}`} class="focus-ring flex min-h-11 items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
+                <a id={`replacement-${r.id}`} class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
                 {#if r.status === 'Purged'}
-                  <div class="text-[11px] text-ink-3">{i18n.m.quarantine.original_purged}</div>
+                  <div class="text-caption text-ink-3">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
-                  <div class="max-w-md truncate font-mono text-[11px] text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
+                  <div class="max-w-md truncate font-mono text-caption text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
                 </div>
                 </div>

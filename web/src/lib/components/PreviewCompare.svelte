@@ -150,21 +150,21 @@
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
         <div class="truncate text-xs font-semibold text-ink-2" title={title}>{title}</div>
-        <div class="text-[11px] text-ink-3">{t(i18n.m.shared.preview_status, { status: statusLabel })}</div>
+        <div class="text-caption text-ink-3">{t(i18n.m.shared.preview_status, { status: statusLabel })}</div>
       </div>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={() => (minimized = false)} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
+      <button class="btn btn-sm btn-ghost btn-icon flex-shrink-0" onclick={() => (minimized = false)} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
         <Icon name="chevron" class="h-4 w-4 rotate-180" />
       </button>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-bad" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
+      <button class="btn btn-sm btn-ghost btn-icon flex-shrink-0 text-bad" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
         <Icon name="x" class="h-4 w-4" />
       </button>
     </div>
     {#if error}
-      <p class="mt-2 text-[11px] text-bad">{error}</p>
+      <p class="mt-2 text-caption text-bad">{error}</p>
     {:else if isRunning || !preview}
       <div class="progress-track mt-2"><div class="progress-indeterminate"></div></div>
     {:else if preview.status === 'Completed'}
-      <p class="mt-2 flex items-center gap-1 text-[11px] text-ink-2"><OkMark class="h-3 w-3" />{i18n.m.shared.ready_expand}</p>
+      <p class="mt-2 flex items-center gap-1 text-caption text-ink-2"><OkMark class="h-3 w-3" />{i18n.m.shared.ready_expand}</p>
     {/if}
   </div>
 {:else}

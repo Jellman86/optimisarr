@@ -105,7 +105,7 @@
     <div class="status-strip-action">
       {#if counts.pauseError}<span class="text-xs text-bad" role="alert">{counts.pauseError}</span>{/if}
       <button
-        class="btn px-3 py-1.5 text-xs"
+        class="btn btn-sm"
         class:btn-primary={queue.manuallyPaused}
         onclick={() => void counts.togglePause()}
         disabled={counts.pauseBusy}

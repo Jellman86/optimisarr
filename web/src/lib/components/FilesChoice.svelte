@@ -128,7 +128,7 @@
     {#each options as option (option.value)}
       {@const selected = choice === option.value}
       <div class="choice rounded-xl p-4 {selected ? 'choice-selected' : ''}">
-        <label class="flex min-h-11 cursor-pointer items-start gap-3">
+        <label class="flex hit-target cursor-pointer items-start gap-3">
           <input
             type="radio"
             name={`${id}-files-choice`}
@@ -183,7 +183,7 @@
                   aria-invalid={folderRefused ? 'true' : undefined}
                   aria-describedby={`${id}-target-state`}
                 />
-                <button type="button" class="btn min-h-11 flex-shrink-0" onclick={(event) => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
+                <button type="button" class="btn flex-shrink-0" onclick={(event) => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
               </div>
               <div id={`${id}-target-state`} class="mt-2 text-xs leading-relaxed" aria-live="polite" data-target-folder-state={check?.reason ?? (checking ? 'checking' : 'none')}>
                 {#if !targetFolder?.trim()}

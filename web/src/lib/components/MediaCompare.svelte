@@ -175,7 +175,7 @@
 
 {#if playable}
   <div class="mb-2 flex justify-end">
-    <button type="button" class="btn min-h-11 px-3 text-xs" onclick={toggleBoth}>
+    <button type="button" class="btn btn-sm" onclick={toggleBoth}>
       {anyPlaying ? i18n.m.shared.pause_both : i18n.m.shared.play_both}
     </button>
   </div>
@@ -187,7 +187,7 @@
         <span>{side.label}</span>
         <span class="flex items-center gap-2">
           <span>{side.sizeBytes != null ? formatSize(side.sizeBytes) : ''}</span>
-          <a class="btn min-h-11 px-3 text-xs" href={side.url} download>{i18n.m.shared.download}</a>
+          <a class="btn btn-sm" href={side.url} download>{i18n.m.shared.download}</a>
         </span>
       </div>
       {#if mediaKind === 'Image'}

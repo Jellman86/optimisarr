@@ -952,7 +952,7 @@
       {#if selectedJob.ffmpegArguments}
         <details class="mt-4 text-xs text-ink-3">
           <summary class="cursor-pointer">{i18n.m.queue.ffmpeg_command}</summary>
-          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-[11px] leading-relaxed text-ink-2">ffmpeg {selectedJob.ffmpegArguments}</pre>
+          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-caption leading-relaxed text-ink-2">ffmpeg {selectedJob.ffmpegArguments}</pre>
         </details>
       {/if}
 
@@ -1029,11 +1029,11 @@
         {#if diagnosticLookupPending}
           <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
         {:else if diagnosticCapture}
-          <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
-          <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
+          <button class="btn" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
+          <button class="btn" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
           {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
         {:else}
-          <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
+          <button class="btn" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
         {/if}
         {#if diagnosticSummaryError}<p class="basis-full text-sm text-bad" role="alert">{diagnosticSummaryError}</p>{/if}
         {#if diagnosticSummaryText}
@@ -1062,35 +1062,35 @@
                 <!-- Actions -->
       <div class="flex flex-wrap gap-2">
         {#if selectedJob.status === 'AwaitingSizeReview'}
-          <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
+          <button class="btn btn-primary" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
             {approvingSizeId === selectedJob.id ? i18n.m.common.loading_short : i18n.m.queue.action_encode_anyway}
           </button>
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
           <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id} title={i18n.m.queue.exclude_title}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
           {#if canRetryHigher(selectedJob)}
-            <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
+            <button class="btn btn-primary" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
               {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry_higher_quality}
             </button>
-            <button class="btn min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
+            <button class="btn" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
               {i18n.m.queue.action_retry_same}
             </button>
           {:else}
-            <button class="btn min-h-9 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
+            <button class="btn" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
               {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry}
             </button>
           {/if}
           {#if selectedJob.belowTarget?.eligible}
-            <button class="btn min-h-9 px-3 py-1 text-xs" onclick={() => selectedJob && acceptBelowTarget(selectedJob)} disabled={dryRun || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.accept_anyway_title} aria-describedby={dryRun ? 'accept-below-target-locked' : undefined} data-accept-below-target>
+            <button class="btn" onclick={() => selectedJob && acceptBelowTarget(selectedJob)} disabled={dryRun || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.accept_anyway_title} aria-describedby={dryRun ? 'accept-below-target-locked' : undefined} data-accept-below-target>
               {i18n.m.queue.action_accept_anyway}
             </button>
           {/if}
-          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
+          <button class="btn btn-danger" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
             {removingId === selectedJob.id ? i18n.m.queue.action_removing_ellipsis : i18n.m.queue.action_remove_from_queue}
           </button>
         {/if}
         {#if isActive(selectedJob.status)}
-          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
+          <button class="btn btn-danger" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
             {removingId === selectedJob.id ? i18n.m.queue.action_stopping : i18n.m.queue.action_stop_remove}
           </button>
         {/if}

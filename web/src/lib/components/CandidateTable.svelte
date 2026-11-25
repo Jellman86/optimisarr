@@ -109,13 +109,13 @@
 
 {#if candidates.length > 0}
   <div class="mb-4 flex flex-wrap gap-2">
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => selectShow('all')}>
+    <button class="btn btn-sm" class:btn-primary={show === 'all'} onclick={() => selectShow('all')}>
       {t(i18n.m.shared.all_count, { count: candidates.length })}
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => selectShow('eligible')}>
+    <button class="btn btn-sm" class:btn-primary={show === 'eligible'} onclick={() => selectShow('eligible')}>
       {t(i18n.m.shared.eligible_count, { count: eligibleCount })}
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => selectShow('skipped')}>
+    <button class="btn btn-sm" class:btn-primary={show === 'skipped'} onclick={() => selectShow('skipped')}>
       {t(i18n.m.shared.skipped_count, { count: skippedCount })}
     </button>
   </div>
@@ -205,7 +205,7 @@
             <td class="px-4 py-2 text-xs text-ink-3">{candidate.reason}</td>
             <td class="px-4 py-2 text-right">
               {#if candidate.eligible}
-                <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
+                <button class="btn btn-sm" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
               {/if}
             </td>
           </tr>
@@ -249,9 +249,9 @@
     </span>
     {#if pageCount > 1}
       <span class="flex items-center gap-2">
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
+        <button class="btn btn-sm btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
         <span>{t(i18n.m.shared.page_of, { page: Math.min(page, pageCount).toLocaleString(), count: pageCount.toLocaleString() })}</span>
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
+        <button class="btn btn-sm btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
       </span>
     {/if}
   </div>

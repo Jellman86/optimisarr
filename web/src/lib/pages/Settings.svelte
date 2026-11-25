@@ -953,7 +953,7 @@ let settings = $state<Settings>({
 
 {#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
   {#if isChanged(field)}
-    <span class="mt-1 block font-mono text-[10.5px] font-normal normal-case tracking-normal text-accent">
+    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
       {tr(i18n.m.settings.was_value, { value: previous })}
       <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
         {i18n.m.settings.put_back}
@@ -1218,7 +1218,7 @@ let settings = $state<Settings>({
       </div>
 
       <div class="settings-video-fields">
-        <button type="button" class="btn btn-ghost min-h-11" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
+        <button type="button" class="btn btn-ghost" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
       </div>
       {/if}
     </div>
@@ -1280,8 +1280,8 @@ let settings = $state<Settings>({
           {/if}
         {/if}
         <div class="flex gap-3">
-          <button type="button" class="btn btn-ghost min-h-11" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>
-          <button type="button" class="btn btn-ghost min-h-11" onclick={probeEngine} disabled={probingEngine}>
+          <button type="button" class="btn btn-ghost" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>
+          <button type="button" class="btn btn-ghost" onclick={probeEngine} disabled={probingEngine}>
             {probingEngine ? i18n.m.settings.sr_probing : i18n.m.settings.sr_probe}
           </button>
         </div>
@@ -1379,7 +1379,7 @@ let settings = $state<Settings>({
             {/if}
           </div>
           <button
-            class="btn btn-danger min-h-11"
+            class="btn btn-danger"
             onclick={cleanUpNow}
             disabled={cleanupLoading || cleaning || !cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()}
           >
@@ -1430,15 +1430,15 @@ let settings = $state<Settings>({
               <span class="badge tone-neutral">{w.type}</span>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium text-ink-2">{w.name}</div>
-                <div class="truncate font-mono text-[11px] text-ink-4" title={w.baseUrl}>{w.baseUrl}</div>
+                <div class="truncate font-mono text-caption text-ink-4" title={w.baseUrl}>{w.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !w.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
                 {#if w.refreshOnReplace}<span class="badge tone-ok" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
                 {#if !w.showViewerNames}<span class="badge tone-neutral" title={i18n.m.settings.badge_viewers_hidden_title}>{i18n.m.settings.badge_viewers_hidden}</span>{/if}
                 {#if !w.hasToken}<span class="badge tone-warn" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-sm btn-ghost" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
@@ -1483,9 +1483,9 @@ let settings = $state<Settings>({
               />
               {#if watcherDraft.type !== 'Emby'}
                 {#if connecting}
-                  <button class="btn btn-ghost min-h-11 whitespace-nowrap px-3 py-1 text-xs sm:min-h-0" onclick={resetConnect}>{i18n.m.common.cancel}</button>
+                  <button class="btn btn-sm btn-ghost whitespace-nowrap" onclick={resetConnect}>{i18n.m.common.cancel}</button>
                 {:else}
-                  <button class="btn min-h-11 whitespace-nowrap px-3 py-1 text-xs sm:min-h-0" onclick={connect}>
+                  <button class="btn btn-sm whitespace-nowrap" onclick={connect}>
                     {watcherDraft.type === 'Plex' ? i18n.m.settings.sign_in_plex : i18n.m.settings.quick_connect}
                   </button>
                 {/if}
@@ -1507,7 +1507,7 @@ let settings = $state<Settings>({
                     >
                       <span class="min-w-0">
                         <span class="font-medium text-ink-2">{server.name}</span>
-                        <span class="block truncate font-mono text-[11px] text-ink-4">{server.uri}</span>
+                        <span class="block truncate font-mono text-caption text-ink-4">{server.uri}</span>
                       </span>
                       <span class="badge flex-shrink-0 {server.local ? 'tone-ok' : 'bg-raised text-ink-3'}">
                         {server.local ? i18n.m.settings.badge_local : i18n.m.settings.badge_remote}
@@ -1535,11 +1535,11 @@ let settings = $state<Settings>({
           </p>
         {/if}
         <div class="mt-4 flex flex-wrap items-center gap-2">
-          <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveWatcher} disabled={savingWatcher}>
+          <button class="btn btn-primary" onclick={saveWatcher} disabled={savingWatcher}>
             {savingWatcher ? i18n.m.settings.saving : editingId === null ? i18n.m.settings.add_media_server_btn : i18n.m.settings.save_changes}
           </button>
           <button
-            class="btn min-h-11 px-3 py-1 text-sm sm:min-h-0"
+            class="btn"
             onclick={testConnection}
             disabled={testing || (!watcherDraft.baseUrl.trim())}
             title={i18n.m.settings.test_connection_title}
@@ -1547,7 +1547,7 @@ let settings = $state<Settings>({
             {testing ? i18n.m.settings.testing : i18n.m.settings.test_connection}
           </button>
           {#if editingId !== null}
-            <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAdd} disabled={savingWatcher}>{i18n.m.common.cancel}</button>
+            <button class="btn btn-ghost" onclick={startAdd} disabled={savingWatcher}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
@@ -1578,20 +1578,20 @@ let settings = $state<Settings>({
               <span class="badge tone-neutral">{c.type}</span>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium text-ink-2">{c.name}</div>
-                <div class="truncate font-mono text-[11px] text-ink-4" title={c.baseUrl}>{c.baseUrl}</div>
+                <div class="truncate font-mono text-caption text-ink-4" title={c.baseUrl}>{c.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
                 {#if c.enabled && c.rescanAfterChanges}<span class="badge tone-neutral" title={i18n.m.settings.arr_rescan_hint}>{i18n.m.settings.badge_rescans}</span>{/if}
                 {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-sm btn-ghost" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
         <div class="mb-4">
-          <button type="button" class="btn btn-ghost min-h-11" onclick={checkArrTracking} disabled={checkingArrTracking}>{checkingArrTracking ? i18n.m.settings.arr_tracking_checking : i18n.m.settings.arr_tracking_check}</button>
+          <button type="button" class="btn btn-ghost" onclick={checkArrTracking} disabled={checkingArrTracking}>{checkingArrTracking ? i18n.m.settings.arr_tracking_checking : i18n.m.settings.arr_tracking_check}</button>
           <p class="mt-1 text-xs text-ink-4">{i18n.m.settings.arr_tracking_hint}</p>
           {#if arrTracking}
             <ul class="mt-2 space-y-1 text-sm" data-testid="arr-tracking" role="status">
@@ -1646,11 +1646,11 @@ let settings = $state<Settings>({
           <Toggle bind:checked={arrDraft.rescanAfterChanges} label={i18n.m.settings.arr_rescan} hint={i18n.m.settings.arr_rescan_hint} />
         </div>
         <div class="mt-4 flex flex-wrap items-center gap-2">
-          <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveArr} disabled={savingArr}>
+          <button class="btn btn-primary" onclick={saveArr} disabled={savingArr}>
             {savingArr ? i18n.m.settings.saving : editingArrId === null ? i18n.m.settings.add_download_manager_btn : i18n.m.settings.save_changes}
           </button>
           {#if editingArrId !== null}
-            <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
+            <button class="btn btn-ghost" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
@@ -1682,18 +1682,18 @@ let settings = $state<Settings>({
             <span class="badge tone-neutral">{t.type}</span>
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-ink-2">{t.name}</div>
-              <div class="truncate font-mono text-[11px] text-ink-4" title={t.url}>{t.url}</div>
+              <div class="truncate font-mono text-caption text-ink-4" title={t.url}>{t.url}</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               {#if !t.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
               {#if t.type === 'Telegram' && !t.hasToken}<span class="badge tone-warn">{i18n.m.settings.badge_no_token}</span>{/if}
               {#if t.notifyOnReplacement}<span class="badge tone-ok">{i18n.m.settings.badge_replaced}</span>{/if}
               {#if t.notifyOnFailure}<span class="badge tone-warn">{i18n.m.settings.badge_failed}</span>{/if}
-              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
+              <button class="btn btn-sm btn-ghost" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
                 {testingTargetId === t.id ? i18n.m.settings.testing : i18n.m.settings.send_test}
               </button>
-              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
-              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
+              <button class="btn btn-sm btn-ghost" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
+              <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>
           </li>
         {/each}
@@ -1730,9 +1730,9 @@ let settings = $state<Settings>({
             bind:value={targetDraft.url}
           />
           {#if targetDraft.type === 'Discord'}
-            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.discord_hint}</p>
+            <p class="mt-1 text-caption text-ink-4">{i18n.m.settings.discord_hint}</p>
           {:else if targetDraft.type === 'Telegram'}
-            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.telegram_hint}</p>
+            <p class="mt-1 text-caption text-ink-4">{i18n.m.settings.telegram_hint}</p>
           {/if}
         </div>
         <div>
@@ -1756,11 +1756,11 @@ let settings = $state<Settings>({
         <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />
       </div>
       <div class="mt-4 flex flex-wrap items-center gap-2">
-        <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveTarget} disabled={savingTarget || (telegramTokenRequired && !targetDraft.token.trim())}>
+        <button class="btn btn-primary" onclick={saveTarget} disabled={savingTarget || (telegramTokenRequired && !targetDraft.token.trim())}>
           {savingTarget ? i18n.m.settings.saving : editingTargetId === null ? i18n.m.settings.add_target_btn : i18n.m.settings.save_changes}
         </button>
         {#if editingTargetId !== null}
-          <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAddTarget} disabled={savingTarget}>{i18n.m.common.cancel}</button>
+          <button class="btn btn-ghost" onclick={startAddTarget} disabled={savingTarget}>{i18n.m.common.cancel}</button>
         {/if}
       </div>
     </div>
@@ -1830,7 +1830,7 @@ let settings = $state<Settings>({
     title={i18n.m.settings.restart_setup_title}
     description={i18n.m.settings.restart_setup_desc}
   >
-    <button class="btn min-h-11 w-full sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
+    <button class="btn w-full sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
       <Icon name="retry" class="h-4 w-4 {restartingSetup ? 'animate-spin' : ''}" />
       {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
     </button>
@@ -1853,10 +1853,10 @@ let settings = $state<Settings>({
       {#if message}<span class="inline-flex items-center gap-1.5 text-sm text-ink-2" role="status"><OkMark />{message}</span>{/if}
       <span class="flex-1"></span>
       {#if changedCount > 0}
-        <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>
+        <button class="btn btn-lg btn-ghost" onclick={discardAll} disabled={saving}>
           {i18n.m.settings.discard}
         </button>
-        <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>
+        <button class="btn btn-lg btn-primary" onclick={save} disabled={saving}>
           {saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}
         </button>
       {/if}
@@ -1908,11 +1908,6 @@ let settings = $state<Settings>({
   .settings-field:last-child { border-bottom: 0; padding-bottom: 0; }
   .settings-field > span { grid-column: 2; }
   .settings-field-label p { margin-top: .3rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
-  .settings-detail :global(.label) { text-transform: none; letter-spacing: 0; font-size: .8125rem; font-weight: 500; color: var(--ink-2); }
-  .settings-detail :global(.input) { min-height: 2.75rem; }
-
-  .settings-field .input { min-height: 2.75rem; }
-  .settings-field :global(.label) { margin-bottom: 0; }
   .settings-field-changed { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .settings-video-fields {
     display: grid; gap: 1.5rem;

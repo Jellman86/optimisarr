@@ -32,15 +32,15 @@
     <p class="text-sm leading-relaxed text-ink-2">{i18n.m.autoAccept.confirmIntro}</p>
     <p id={`${id}-risk`} class="mt-4 rounded-xl border border-bad-line bg-bad-soft p-4 text-sm leading-relaxed text-ink-2">{i18n.m.autoAccept.warning}</p>
     <p id={`${id}-quarantine`} class="mt-4 text-sm leading-relaxed text-ink-3">{i18n.m.autoAccept.quarantine}</p>
-    <label class="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm leading-relaxed text-ink">
+    <label class="hit-target mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm leading-relaxed text-ink">
       <input type="checkbox" class="checkbox mt-1 shrink-0" bind:checked={acknowledged} />
       <span>{i18n.m.autoAccept.acknowledge}</span>
     </label>
     <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.autoAccept.saveNotice}</p>
   </div>
   <div class="flex flex-col gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-    <button type="button" class="btn min-h-11 justify-center" use:focusCancel onclick={oncancel}>{i18n.m.autoAccept.cancel}</button>
-    <button type="button" class="btn btn-danger min-h-11 justify-center" disabled={!acknowledged} onclick={onaccept}>{i18n.m.autoAccept.enable}</button>
+    <button type="button" class="btn btn-lg justify-center" use:focusCancel onclick={oncancel}>{i18n.m.autoAccept.cancel}</button>
+    <button type="button" class="btn btn-lg btn-danger justify-center" disabled={!acknowledged} onclick={onaccept}>{i18n.m.autoAccept.enable}</button>
   </div>
 </dialog>
 

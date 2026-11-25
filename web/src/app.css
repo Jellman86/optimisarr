@@ -244,6 +244,48 @@ html.dark,
   --color-info-line: var(--info-line);
 }
 
+/* ── Scale: type, radius and control height ─────────────────────────────────
+   Six type roles, every one in rem so the large-display root steps below scale
+   them together. Each role carries its own line height, so `text-body` is the
+   whole decision rather than a size that still needs a leading beside it.
+
+     display  the page's one headline figure or title     28/32
+     title    a panel or dialog heading                   17/24
+     body     running text and table cells                14/20
+     label    a field or group label, a segment           13/18
+     caption  hints, metadata, evidence detail            12/16
+     micro    chips, badges, axes and stage labels only   11/14
+
+   Four radii: a pill (`rounded-full`) for buttons, chips and segments; `field`
+   for inputs; `panel` for cards; `dialog` for modals. */
+@theme {
+  --text-display: 1.75rem;
+  --text-display--line-height: 2rem;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.5rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 0.875rem;
+
+  --radius-field: 0.5rem;
+  --radius-panel: 0.875rem;
+  --radius-dialog: 1.125rem;
+}
+
+/* Three control heights: compact inside a row, default, and prominent in a form or dialog.
+   A coarse pointer or a phone-width screen raises every control to the 44px touch target,
+   so no call site has to remember to. */
+:root {
+  --control-sm: 1.75rem;
+  --control-md: 2.25rem;
+  --control-lg: 2.75rem;
+}
+
 /* Paint the document background (not just an inner element) so iOS Safari's
    safe-area insets and rubber-band overscroll never reveal a white strip at the
    top or bottom. color-scheme also gives native form controls and scrollbars the
@@ -353,7 +395,7 @@ p {
 
   /* Page furniture: a large title, the way a macOS window names its content. */
   .page-title {
-    @apply text-[1.75rem] leading-tight font-bold tracking-[-0.02em] text-ink;
+    @apply text-display font-bold tracking-[-0.02em] text-ink;
   }
   .page-subtitle {
     @apply mt-1 text-sm text-ink-3;
@@ -375,7 +417,7 @@ p {
   /* Carried only by the entries that can ask something of you. Tabular so a changing figure
      does not make the row twitch. */
   .nav-badge {
-    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold tabular-nums text-ink-2;
+    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center text-micro font-semibold tabular-nums text-ink-2;
     background: var(--lit);
   }
   .nav-button-inactive {
@@ -391,7 +433,7 @@ p {
 
   /* The card: a grouped surface. A solid fill and a soft shadow; no outline. */
   .card {
-    @apply min-w-0 max-w-full rounded-[14px];
+    @apply min-w-0 max-w-full rounded-panel;
     background: var(--panel);
     box-shadow: var(--lift-2);
   }
@@ -535,7 +577,7 @@ p {
      that does the thing. Colours change at once, never by fading: a button that becomes
      available mid-fade reads as neither enabled nor disabled. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full border-0 px-3.5 py-2 text-sm font-medium text-ink transition-[box-shadow,filter] focus-ring active:brightness-95 disabled:pointer-events-none disabled:opacity-45;
+    @apply inline-flex min-h-(--control-md) items-center justify-center gap-2 rounded-full border-0 px-3.5 py-2 text-body font-medium text-ink transition-[box-shadow,filter] focus-ring active:brightness-95 disabled:pointer-events-none disabled:opacity-45;
     background: var(--raised);
     box-shadow: var(--lift-1);
   }
@@ -577,6 +619,31 @@ p {
     @apply text-ink;
     background: var(--lit);
   }
+  /* Sizes. Compact sits inside a table row or beside a line of text; large is the action a
+     form or dialog exists for. An icon-only button is as wide as it is tall. */
+  .btn-sm {
+    @apply min-h-(--control-sm) gap-1.5 px-2.5 py-1 text-caption;
+  }
+  .btn-lg {
+    @apply min-h-(--control-lg) px-5 py-2.5;
+  }
+  .btn-icon {
+    @apply min-w-(--control-md) px-0;
+  }
+  .btn-sm.btn-icon {
+    @apply min-w-(--control-sm);
+  }
+  .btn-lg.btn-icon {
+    @apply min-w-(--control-lg);
+  }
+  /* A control drawn as text — an inline link, a "More about this" disclosure, a checkbox's
+     whole label, a menu row — still needs a full-size target, though nothing outlines it. */
+  .hit-target {
+    @apply inline-flex min-h-(--control-lg) items-center;
+  }
+  .hit-target-square {
+    @apply inline-flex min-h-(--control-lg) min-w-(--control-lg) items-center justify-center;
+  }
 
   /* A segmented control, as macOS draws one: a recessed capsule track with the chosen
      segment raised out of it. Used for switching between views of the same page. */
@@ -585,7 +652,7 @@ p {
     background: var(--lit);
   }
   .segment {
-    @apply min-h-9 rounded-full px-3.5 text-[13px] font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring;
+    @apply min-h-(--control-md) rounded-full px-3.5 text-label font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring;
   }
   .segment:hover {
     @apply text-ink;
@@ -598,9 +665,10 @@ p {
     box-shadow: var(--lift-1);
   }
 
-  /* Fields are a solid fill with a hairline edge; focus adds the accent halo. */
+  /* Fields are a solid fill with a hairline edge; focus adds the accent halo. One height
+     everywhere: a field is where a form is filled in, so it is always the form size. */
   .input {
-    @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply min-h-(--control-lg) w-full min-w-0 max-w-full rounded-field border-0 px-3 py-2 text-body text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
     background: var(--field);
     box-shadow: inset 0 0 0 1px var(--field-edge);
   }
@@ -671,7 +739,7 @@ p {
     @apply grid grid-cols-4 gap-2 max-[420px]:grid-cols-2 max-[420px]:gap-3;
   }
   .job-stages > li {
-    @apply flex min-w-0 items-center gap-1.5 pt-2.5 text-[0.6875rem] text-ink-4;
+    @apply flex min-w-0 items-center gap-1.5 pt-2.5 text-micro text-ink-4;
     border-top: 2px solid var(--divide);
     overflow-wrap: anywhere;
   }
@@ -708,7 +776,7 @@ p {
   /* A field or section label. Sentence case and a little bolder, the way macOS labels
      a group, rather than tracked capitals. */
   .label {
-    @apply mb-1 block text-xs font-semibold text-ink-3;
+    @apply mb-1 block text-label font-semibold text-ink-2;
   }
 
   .badge {
@@ -751,6 +819,19 @@ p {
     background: var(--accent);
     opacity: 0.7;
     animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+
+  /* A finger needs 44px whatever the control's desktop size. Phone width counts as well as a
+     coarse pointer: a narrow window is held, not pointed at. */
+  @media (pointer: coarse), (max-width: 639px) {
+    .btn,
+    .segment {
+      min-height: var(--control-lg);
+    }
+    .btn-icon,
+    .btn-sm.btn-icon {
+      min-width: var(--control-lg);
+    }
   }
 }
 
@@ -812,7 +893,7 @@ p {
   max-width: calc(100vw - 2rem);
   max-height: calc(100dvh - 2rem);
   border: 0;
-  border-radius: 1.125rem;
+  border-radius: var(--radius-dialog);
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--lift-3);
