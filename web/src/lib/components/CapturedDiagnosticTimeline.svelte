@@ -38,7 +38,7 @@
           <time class="mt-1 block text-ink-3" datetime={event.receivedAt} title={`Local: ${event.occurredAt}`}>{new Date(event.receivedAt).toLocaleString()} · {event.currentStatus}</time>
           {#if event.details?.report}
             <details class="mt-2">
-              <summary class="min-h-11 cursor-pointer py-2 text-ink">{i18n.m.queue.col_verification} · {event.details.report.location}</summary>
+              <summary class="hit-target list-item cursor-pointer py-2 text-ink">{i18n.m.queue.col_verification} · {event.details.report.location}</summary>
               <ul class="space-y-1">{#each event.details.report.checks as check}<li class="flex flex-wrap justify-between gap-2"><span>{check.name}</span><strong class:text-bad={check.outcome === 'Failed'}>{check.outcome}</strong></li>{/each}</ul>
               {#if event.details.report.vmafHarmonicMean != null}<p class="mt-2 font-mono">VMAF: {event.details.report.vmafHarmonicMean.toFixed(2)}</p>{/if}
             </details>

@@ -321,7 +321,7 @@
             {#if worker.update?.state === 'updateAvailable' && worker.update.releaseUrl}
               <div class="callout tone-warn flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="worker-update">
                 <span>{t(i18n.m.workers.update_available, { current: worker.sidecarVersion, latest: worker.update.latestVersion ?? '' })}</span>
-                <a class="btn btn-ghost min-h-9 px-2 py-1 text-xs" href={worker.update.releaseUrl} target="_blank" rel="noopener noreferrer">{i18n.m.workers.update_open_release}</a>
+                <a class="btn btn-ghost px-2 py-1 text-xs" href={worker.update.releaseUrl} target="_blank" rel="noopener noreferrer">{i18n.m.workers.update_open_release}</a>
               </div>
             {/if}
 

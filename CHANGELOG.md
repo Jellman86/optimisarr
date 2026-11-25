@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Standardise text sizes, corner radii, labels, form fields, and button sizes across the web UI and Linux sidecar: typography now uses six `rem`-scaled roles that scale together on large displays, form fields and section labels share one consistent look across pages, and buttons use three clear sizes (compact, default, large) that automatically expand to 44px touch targets on touch screens and narrow phones. No migration.
+
 - Improve contrast and visual clarity across the web UI and Linux sidecar: input edges, off toggle tracks, and focus rings now clear WCAG 3:1 contrast in both light and dark themes, and focus rings in action menus, language selection, info tooltips, the sidebar mark, audio presets, and Quality Lab now share the same 3:1 outline. Passed, saved, healthy, and eligible states now render as ink text beside a solid check mark rather than bare blue text, keeping blue text reserved for clickable actions, and job stage trackers distinguish completed, actively running, waiting or paused, and pending stages by shape as well as spoken screen-reader status. No migration.
 
 - Include `libegl1` (`libEGL.so.1`) in the server container image so NVIDIA's injected Vulkan ICD (`libGLX_nvidia.so.0`) can expose `vkCreateInstance` for AI super-resolution (#548). Without `libegl1`, Docker containers on NVIDIA hosts with `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics` still failed to initialise the NVIDIA Vulkan driver and fell back to CPU `llvmpipe`. No migration. Reported by [Blorti](https://github.com/Blorti).

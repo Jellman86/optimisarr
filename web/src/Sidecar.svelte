@@ -145,7 +145,7 @@
     <div class="flex min-w-0 items-center gap-3">
       <BrandCanvas {style} {working} dark={theme.isDark} class="h-11 w-11 flex-none" />
       <div class="min-w-0">
-        <p class="text-[17px] font-semibold leading-tight tracking-tight text-ink">Optimisarr</p>
+        <p class="text-title font-semibold leading-tight tracking-tight text-ink">Optimisarr</p>
         <p class="label mb-0 mt-0.5 whitespace-nowrap">Linux sidecar</p>
       </div>
     </div>
@@ -153,7 +153,7 @@
       {#if server}
         <a class="btn whitespace-nowrap" href={server}><span class="hidden sm:inline">Open</span> Optimisarr<Icon name="arrow-up-right" class="h-3.5 w-3.5" /></a>
       {/if}
-      <button class="btn btn-ghost h-10 w-10 p-0" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
+      <button class="btn btn-ghost btn-icon" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
         <Icon name={theme.icon} class="h-4 w-4" />
       </button>
     </div>
@@ -269,10 +269,10 @@
               </div>
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-[11px] font-medium text-accent">{STAGES[step].active}</span>
+                  <span class="text-micro font-medium text-accent">{STAGES[step].active}</span>
                   <span class="badge tone-neutral font-mono">{job.encoder}</span>
                   <span class="badge font-mono {job.hardwareDecoder ? 'tone-ok' : 'tone-muted'}">{job.hardwareDecoder ? `GPU decode · ${job.hardwareDecoder}` : 'Software decode'}</span>
-                  {#if job.startedAt}<span class="ml-auto font-mono text-[11px] text-ink-3" title="Time on this worker">{sinceLabel(job.startedAt, now)}</span>{/if}
+                  {#if job.startedAt}<span class="ml-auto font-mono text-micro text-ink-3" title="Time on this worker">{sinceLabel(job.startedAt, now)}</span>{/if}
                 </div>
                 <h2 class="job-title">{job.title}</h2>
                 <div class="progress-track" role="progressbar" aria-label={`Progress for ${job.title}`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress != null ? Math.floor(progress) : undefined} aria-valuetext={progress == null ? STAGES[step].doing : undefined}>
@@ -381,7 +381,7 @@
                 <li class="flex items-start gap-2 text-sm">
                   <Icon name={item.delivered ? 'check' : 'warning'} class="mt-0.5 h-4 w-4 flex-none {item.delivered ? 'text-ok' : 'text-warn'}" />
                   <span class="min-w-0 flex-1"><span class="line-clamp-2 break-words text-ink">{item.title}</span><span class="text-xs text-ink-3">{item.delivered ? 'Returned to the server' : 'Stopped here; the server has the details'}</span></span>
-                  <span class="font-mono text-[11px] text-ink-3">{sinceLabel(item.finishedAt, now)} ago</span>
+                  <span class="font-mono text-micro text-ink-3">{sinceLabel(item.finishedAt, now)} ago</span>
                 </li>
               {/each}
             </ul>
@@ -392,7 +392,7 @@
       </div>
 
       <footer class="sidecar-footer">
-        <a class="btn btn-ghost min-h-11" href="/api/sidecar/diagnostics" download="optimisarr-sidecar-diagnostics.json">Export local diagnostics</a>
+        <a class="btn btn-ghost" href="/api/sidecar/diagnostics" download="optimisarr-sidecar-diagnostics.json">Export local diagnostics</a>
         <span class="font-mono">{status.name} · v{status.version}</span>
         <span>This page is read-only apart from pairing. Pause, drain and scheduling live on the server.</span>
       </footer>

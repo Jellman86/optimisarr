@@ -162,7 +162,7 @@
         {#if statusCapture}
           <span class="text-xs text-ink-3">{statusCapture.eventsStored.toLocaleString()} / {statusCapture.maximumEvents.toLocaleString()} {i18n.m.settings.diagnostics_events}</span>
         {/if}
-        <button class="btn btn-ghost ml-auto min-h-10 text-xs" disabled={busy || loading} onclick={() => refresh()}>{i18n.m.settings.diagnostics_refresh}</button>
+        <button class="btn btn-sm btn-ghost ml-auto" disabled={busy || loading} onclick={() => refresh()}>{i18n.m.settings.diagnostics_refresh}</button>
       </div>
 
       {#if activeCapture}
@@ -174,8 +174,8 @@
           <p class="mt-1 text-xs text-ink-3">
             {activeCapture.scopedJobId ? `${i18n.m.settings.diagnostics_job} #${activeCapture.scopedJobId}` : i18n.m.settings.diagnostics_all_jobs}
           </p>
-          <button class="btn mt-4 min-h-11" disabled={busy} onclick={() => stop(false)}>{i18n.m.settings.diagnostics_stop}</button>
-          <button class="btn mt-4 ml-2 min-h-11" disabled={busy} onclick={() => stop(true)}>{i18n.m.settings.diagnostics_stop_collect}</button>
+          <button class="btn mt-4" disabled={busy} onclick={() => stop(false)}>{i18n.m.settings.diagnostics_stop}</button>
+          <button class="btn mt-4 ml-2" disabled={busy} onclick={() => stop(true)}>{i18n.m.settings.diagnostics_stop_collect}</button>
         </div>
       {:else}
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -207,7 +207,7 @@
           <label class="label">{i18n.m.settings.diagnostics_storage}<input class="input mt-2 w-full" type="number" min="1" max="16" bind:value={maximumMiB} /></label>
         </div>
         <p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_participants}: {participants || i18n.m.settings.diagnostics_no_workers}</p>
-        <button class="btn btn-primary min-h-11" disabled={busy || loading} onclick={start}>{i18n.m.settings.diagnostics_start}</button>
+        <button class="btn btn-primary" disabled={busy || loading} onclick={start}>{i18n.m.settings.diagnostics_start}</button>
       {/if}
 
       {#if collecting}<p class="text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_collecting}</p>{/if}
@@ -219,8 +219,8 @@
         <p class="text-xs text-ink-3">{capture.pinned ? i18n.m.settings.diagnostics_pinned : capture.retainUntil ? `${capture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: ${date(capture.retainUntil)}` : ''}{capture.pinned || capture.retainUntil ? ' · ' : ''} {Math.ceil((capture.bytesStored ?? 0) / 1024)} KiB / {Math.round((capture.maximumBytes ?? 4194304) / 1024 / 1024)} MiB</p>
         {#if capture.eventLimitReached}<p class="text-sm text-warn" role="status">{i18n.m.settings.diagnostics_cap_reached}</p>{/if}
         <div class="flex flex-wrap gap-2">
-          <button class="btn min-h-11" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>
-          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn min-h-11" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
+          <button class="btn" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>
+          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
         </div>
         {#if capture.pinned}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_pinned_delete_hint}</p>{/if}
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -233,7 +233,7 @@
             <label class="label" for="diagnostic-export-job">{i18n.m.settings.diagnostics_export_job} ({i18n.m.settings.diagnostics_optional})</label>
             <input id="diagnostic-export-job" class="input w-full" disabled={busy} type="number" min="1" step="1" bind:value={exportJob} />
           </div>
-          <button class="btn min-h-11" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
+          <button class="btn" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
         </div>
       {/if}
       {#if error}<p class="text-sm text-bad" role="alert">{error}</p>{/if}

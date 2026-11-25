@@ -44,7 +44,7 @@
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.ready_to_replace}</div>
             <div class="mt-0.5 text-xs text-ink-3">{i18n.m.dashboard.ready_detail}</div>
           </div>
-          <button class="btn btn-primary flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_replace}</button>
+          <button class="btn btn-sm btn-primary flex-none" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_replace}</button>
         </li>
       {/if}
 
@@ -60,7 +60,7 @@
               {t(i18n.m.dashboard.reclaim_on_approve, { size: formatSize(stats?.quarantineReclaimableBytes ?? 0) })}
             </div>
           </div>
-          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/quarantine')}>{i18n.m.dashboard.action_review}</button>
+          <button class="btn btn-sm flex-none" onclick={() => router.go('/quarantine')}>{i18n.m.dashboard.action_review}</button>
         </li>
       {/if}
 
@@ -74,7 +74,7 @@
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.failed_heading}</div>
             <div class="mt-0.5 text-xs text-ink-3">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
           </div>
-          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue/failures')}>{i18n.m.dashboard.action_inspect}</button>
+          <button class="btn btn-sm flex-none" onclick={() => router.go('/queue/failures')}>{i18n.m.dashboard.action_inspect}</button>
         </li>
       {/if}
     </ul>

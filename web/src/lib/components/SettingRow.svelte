@@ -68,13 +68,13 @@
         {#if origin.changed}<span class="badge tone-accent">{i18n.m.settingRow.changed_by_you}</span>{/if}
         <span>{origin.text}</span>
         {#if origin.changed && origin.onreset}
-          <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium text-accent underline" onclick={origin.onreset}>{i18n.m.settingRow.reset}</button>
+          <button type="button" class="focus-ring hit-target rounded px-1 font-medium text-accent underline" onclick={origin.onreset}>{i18n.m.settingRow.reset}</button>
         {/if}
       </p>
     {/if}
     {#if more}
       <details class="setting-more mt-1">
-        <summary class="focus-ring inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
+        <summary class="focus-ring hit-target cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
           <Icon name="info" class="h-3.5 w-3.5" />
           <span class="when-closed">{i18n.m.settingRow.more}</span>
           <span class="when-open">{i18n.m.settingRow.less}</span>
@@ -89,7 +89,7 @@
       <p class="mt-2 text-xs leading-relaxed text-ink-3" data-setting-reason>
         {disabledReason}
         {#if reasonLink}
-          <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium text-accent underline" onclick={reasonLink.onclick}>{reasonLink.label}</button>
+          <button type="button" class="focus-ring hit-target rounded px-1 font-medium text-accent underline" onclick={reasonLink.onclick}>{reasonLink.label}</button>
         {/if}
       </p>
     {/if}

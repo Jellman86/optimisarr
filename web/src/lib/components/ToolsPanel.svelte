@@ -55,7 +55,7 @@
     description={i18n.m.shared.tools_intro}
   >
     <div class="mb-4 flex justify-end">
-      <button class="btn min-h-11 w-full sm:w-auto" onclick={() => load(true)} disabled={loading}>
+      <button class="btn w-full sm:w-auto" onclick={() => load(true)} disabled={loading}>
         {loading ? i18n.m.common.checking : i18n.m.shared.refresh}
       </button>
     </div>

@@ -47,7 +47,7 @@
       <li>{i18n.m.jobResult.replace_space}</li>
     </ul>
     <div class="mt-3">
-      <button class="btn btn-primary min-h-11" onclick={onreplace} disabled={dryRun || replaceBlocked}
+      <button class="btn btn-primary" onclick={onreplace} disabled={dryRun || replaceBlocked}
         aria-describedby={dryRun ? 'replace-locked-reason' : undefined}>
         {replacing ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
       </button>
@@ -71,7 +71,7 @@
           <strong>{i18n.m.jobResult.advice_target_title}</strong>
           {i18n.m.jobResult.advice_target_body}
           {#if job.libraryId}
-            <a class="focus-ring flex min-h-11 w-fit items-center rounded font-medium text-accent underline" href={`#/libraries/${job.libraryId}/configure/video`}>{i18n.m.jobResult.advice_target_action}</a>
+            <a class="focus-ring flex hit-target w-fit items-center rounded font-medium text-accent underline" href={`#/libraries/${job.libraryId}/configure/video`}>{i18n.m.jobResult.advice_target_action}</a>
           {/if}
         </li>
       {/if}

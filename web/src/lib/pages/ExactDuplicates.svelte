@@ -234,7 +234,7 @@
         </fieldset>
       </details>
     {/if}
-    <label class="mt-4 flex min-h-11 items-center gap-3 text-sm text-ink">
+    <label class="mt-4 flex hit-target items-center gap-3 text-sm text-ink">
       <input type="checkbox" class="h-4 w-4 accent-accent" bind:checked={forceRefresh} disabled={running || acting || loading} aria-describedby="duplicate-refresh-hint" />
       {i18n.m.duplicates.refresh}
     </label>
@@ -274,7 +274,7 @@
         {#if cleanupError}<p class="mt-2 text-sm text-bad" role="alert">{cleanupError}</p>{/if}
         {#if cleanup?.running}
           <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_running, { done: cleanup.done, total: cleanup.total, moved: cleanup.moved })}</p>
-          <button class="btn mt-3 min-h-11" onclick={stopCleanup}>{i18n.m.duplicates.cancel}</button>
+          <button class="btn mt-3" onclick={stopCleanup}>{i18n.m.duplicates.cancel}</button>
         {:else}
           {#if cleanup}
             <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_finished, { moved: cleanup.moved, size: formatSize(cleanup.bytesHeld) })} <a class="focus-ring underline" href="#/quarantine">{i18n.m.nav.quarantine}</a></p>
@@ -284,7 +284,7 @@
           {/if}
           {#if cleanupPreview && cleanupPreview.copies > 0}
             <p class="mt-2 text-sm text-ink-2">{t(i18n.m.duplicates.clean_summary, { copies: cleanupPreview.copies, groups: cleanupPreview.groups, size: formatSize(cleanupPreview.bytesToFree) })}</p>
-            <button class="btn btn-primary mt-3 min-h-11" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
+            <button class="btn btn-primary mt-3" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
           {:else if cleanupPreview && !cleanup}
             <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.clean_none}</p>
           {/if}
@@ -306,7 +306,7 @@
         {#if schedule}
           {#if schedule.supported}
             <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3" id="duplicate-schedule-hint">{i18n.m.duplicates.auto_hint}</p>
-            <label class="mt-3 flex min-h-11 items-center gap-3 text-sm text-ink">
+            <label class="mt-3 flex hit-target items-center gap-3 text-sm text-ink">
               <input type="checkbox" class="h-4 w-4 shrink-0 accent-accent" aria-describedby="duplicate-schedule-hint" checked={schedule.enabled}
                 disabled={savingSchedule} onchange={event => void setSchedule((event.currentTarget as HTMLInputElement).checked)} />
               {i18n.m.duplicates.auto_toggle}

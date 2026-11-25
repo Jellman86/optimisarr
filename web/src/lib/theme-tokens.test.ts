@@ -229,10 +229,10 @@ test('drift counters handle typed lengths, fractional heights and one-line style
 })
 
 const budgets = {
-  'arbitrary font sizes (text-[…px|rem])': { budget: 42, count: countArbitraryFontSizes },
+  'arbitrary font sizes (text-[…px|rem])': { budget: 0, count: countArbitraryFontSizes },
   'stroked edges (border-line)': { budget: 89, count: countStrokedEdges },
-  'per-control height overrides (min-h-11)': { budget: 165, count: countMinH11Overrides },
-  'lines of page-scoped CSS (<style>)': { budget: 852, count: countStyleLines },
+  'per-control height overrides (min-h-11)': { budget: 0, count: countMinH11Overrides },
+  'lines of page-scoped CSS (<style>)': { budget: 835, count: countStyleLines },
 }
 
 for (const [drift, { budget, count }] of Object.entries(budgets)) {
