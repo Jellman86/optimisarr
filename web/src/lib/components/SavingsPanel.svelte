@@ -4,6 +4,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import Icon from './Icon.svelte'
   import OkMark from './OkMark.svelte'
+  import PanelHeader from './PanelHeader.svelte'
 
   let {
     stats,
@@ -28,25 +29,22 @@
   let keptShare = $derived(stats && stats.originalBytes > 0 ? Math.min(100, (stats.optimisedBytes / stats.originalBytes) * 100) : 0)
 </script>
 
+{#snippet resetControls()}
+  {#if confirmingReset}
+    <button class="btn btn-sm btn-danger" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
+    <button class="btn btn-sm" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
+  {:else}
+    <button
+      class="btn btn-sm btn-ghost btn-icon text-ink-4"
+      title={i18n.m.dashboard.reset_title}
+      aria-label={i18n.m.dashboard.reset_title}
+      onclick={() => (confirmingReset = true)}
+    ><Icon name="trash" class="h-3.5 w-3.5" /></button>
+  {/if}
+{/snippet}
+
 <section class="card flex h-full flex-col" aria-labelledby="savings-heading">
-  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2.5">
-    <h2 id="savings-heading" class="label mb-0">{i18n.m.dashboard.total_saved}</h2>
-    {#if optimised}
-      {#if confirmingReset}
-        <span class="ml-auto flex flex-wrap items-center gap-1">
-          <button class="btn btn-sm btn-danger" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
-          <button class="btn btn-sm" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
-        </span>
-      {:else}
-        <button
-          class="btn btn-sm btn-ghost btn-icon ml-auto text-ink-4"
-          title={i18n.m.dashboard.reset_title}
-          aria-label={i18n.m.dashboard.reset_title}
-          onclick={() => (confirmingReset = true)}
-        ><Icon name="trash" class="h-3.5 w-3.5" /></button>
-      {/if}
-    {/if}
-  </div>
+  <PanelHeader as="h2" id="savings-heading" title={i18n.m.dashboard.total_saved} trailing={optimised ? resetControls : undefined} />
 
   <div class="flex flex-1 flex-col gap-4 p-4">
     <div>
@@ -76,7 +74,7 @@
 
   <!-- Health earns attention only when it changes: a quiet line that turns amber and says what is
        missing, rather than a card of its own for a status that is true almost always. -->
-  <dl class="m-0 grid grid-cols-2 border-t border-line text-xs">
+  <dl class="hairline-t m-0 grid grid-cols-2 text-xs">
     <div class="px-4 py-3">
       <dt class="label mb-0.5">{i18n.m.nav.libraries}</dt>
       <dd class="m-0 text-ink-2">
@@ -86,7 +84,7 @@
         })}
       </dd>
     </div>
-    <div class="border-l border-line px-4 py-3">
+    <div class="border-l border-line-soft px-4 py-3">
       <dt class="label mb-0.5">{i18n.m.dashboard.health}</dt>
       <dd class="m-0 flex items-center gap-1.5 {healthy ? 'text-ink-2' : 'text-warn'}" title={healthDetail}>
         {#if healthy}<OkMark />{:else}<Icon name="warning" class="h-3.5 w-3.5" />{/if}

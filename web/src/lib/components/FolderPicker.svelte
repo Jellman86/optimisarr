@@ -32,14 +32,14 @@
 </script>
 
 <dialog class="app-modal folder-dialog" use:modal={onClose} aria-label={i18n.m.shared.choose_folder}>
-  <div class="flex items-center justify-between border-b border-line p-4">
+  <div class="hairline-b flex items-center justify-between p-4">
     <h2 class="font-semibold text-ink">{i18n.m.shared.choose_folder}</h2>
     <button class="btn btn-ghost btn-icon" onclick={onClose} aria-label={i18n.m.shared.close}>
       <Icon name="x" class="h-5 w-5" />
     </button>
   </div>
 
-  <div class="border-b border-line p-3">
+  <div class="hairline-b p-3">
     <div class="flex items-center gap-2">
       <button
         class="btn btn-sm"
@@ -78,7 +78,7 @@
     {/if}
   </div>
 
-  <div class="flex flex-wrap items-center justify-between gap-2 border-t border-line p-3">
+  <div class="hairline-t flex flex-wrap items-center justify-between gap-2 p-3">
     <span class="truncate text-xs text-ink-3">{i18n.m.shared.select_highlighted}</span>
     <div class="flex gap-2">
       <button class="btn btn-lg" onclick={onClose}>{i18n.m.common.cancel}</button>

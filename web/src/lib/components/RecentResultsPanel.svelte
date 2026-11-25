@@ -4,6 +4,7 @@
   import { i18n } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import DataTable from './DataTable.svelte'
+  import PanelHeader from './PanelHeader.svelte'
   import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
@@ -18,13 +19,13 @@
 </script>
 
 <section class="results card @container flex h-full flex-col overflow-clip" aria-labelledby="recent-results-heading">
-  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
-    <h2 id="recent-results-heading" class="label mb-0">{i18n.m.dashboard.recent_results}</h2>
-    <span class="hidden text-xs text-ink-3 @min-[88rem]:inline">{i18n.m.dashboard.recent_results_hint}</span>
-    <button class="ml-auto rounded text-xs font-semibold text-accent hover:underline focus-ring" onclick={() => router.go('/queue')}>
-      {i18n.m.dashboard.queue_history}
-    </button>
-  </div>
+  <PanelHeader as="h2" id="recent-results-heading" title={i18n.m.dashboard.recent_results} hint={i18n.m.dashboard.recent_results_hint} hintClass="hidden @min-[88rem]:inline">
+    {#snippet trailing()}
+      <button class="rounded text-xs font-semibold text-accent hover:underline focus-ring" onclick={() => router.go('/queue')}>
+        {i18n.m.dashboard.queue_history}
+      </button>
+    {/snippet}
+  </PanelHeader>
 
   <DataTable bare density="compact" rowCount={results?.length ?? 0} loading={results === null} labelledby="recent-results-heading">
     {#snippet head()}

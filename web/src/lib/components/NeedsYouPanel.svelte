@@ -5,6 +5,7 @@
   import { router } from '../stores/ui.svelte'
   import Icon from './Icon.svelte'
   import OkMark from './OkMark.svelte'
+  import PanelHeader from './PanelHeader.svelte'
   import { jobFailureShortLabel } from '../i18n/jobErrors'
 
   let { stats, failures = [] }: { stats: Stats | null; failures?: FailureGroup[] } = $props()
@@ -26,16 +27,14 @@
 </script>
 
 <div class="card h-full">
-  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
-    <span class="label mb-0">{i18n.m.dashboard.needs_you}</span>
-  </div>
+  <PanelHeader title={i18n.m.dashboard.needs_you} />
 
   {#if nothingWaiting}
     <p class="px-4 py-5 text-sm text-ink-3">{i18n.m.dashboard.needs_you_none}</p>
   {:else}
-    <ul class="m-0 list-none p-0">
+    <ul class="m-0 list-none divide-y divide-line-soft p-0">
       {#if ready > 0}
-        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+        <li class="flex items-center gap-3 px-4 py-3">
           <span class="flex w-16 flex-none items-center gap-2 text-ink">
             <OkMark class="h-4 w-4" />
             <span class="text-xl font-semibold tabular-nums">{ready.toLocaleString()}</span>
@@ -49,7 +48,7 @@
       {/if}
 
       {#if quarantined > 0}
-        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+        <li class="flex items-center gap-3 px-4 py-3">
           <span class="flex w-16 flex-none items-center gap-2 text-ink-2">
             <Icon name="clock" class="h-4 w-4" />
             <span class="text-xl font-semibold tabular-nums">{quarantined.toLocaleString()}</span>
@@ -65,7 +64,7 @@
       {/if}
 
       {#if failed > 0}
-        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+        <li class="flex items-center gap-3 px-4 py-3">
           <span class="flex w-16 flex-none items-center gap-2 text-bad">
             <Icon name="warning" class="h-4 w-4" />
             <span class="text-xl font-semibold tabular-nums">{failed.toLocaleString()}</span>

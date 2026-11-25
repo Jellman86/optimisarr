@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Unify banners, panel headers, detail dialogs, and Settings rows across the web UI: inline banners now render as flat callouts (with graphite styling for neutral info banners instead of clickable blue), dashboard and modal headers use quiet hairlines instead of dark strokes, Inventory and Queue inspection dialogs share a single responsive dialog shell, and Encoding and AI super-resolution settings now use the same `SettingRow` layout as Libraries with larger body-sized explanations and highlighted changed rows. No migration.
+
 - Unify operational tables across Inventory, Queue, Quarantine, Candidate lists, and Recent results onto a shared `DataTable` layout: every list now shares the same panel header, hairline row dividers, body-sized text, hover and selection highlight, and consistent loading/empty/error states (a failed Quarantine load no longer shows the empty-list message below the error banner). Recent results now renders as a semantic table with non-wrapping figures, and column headers are ready for sorting. No migration.
 
 - Unify view switchers, filter pills, and metadata chips across the web UI and Linux sidecar: Queue, Inventory, Libraries, Quarantine, and Candidate tables now share the same segmented controls and calm lit-fill filter pills, keeping the solid primary accent fill reserved for primary actions like Save and Replace. Encoder, worker, language, and media-fact chips now use borderless filled capsules with tabular numbers for quantities and monospace reserved for machine identifiers. Also removes unused sidebar placeholder code and adds accessible group labels for screen readers. No migration.

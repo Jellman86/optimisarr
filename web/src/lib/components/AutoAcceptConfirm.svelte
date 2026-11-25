@@ -19,7 +19,7 @@
 </script>
 
 <dialog class="app-modal auto-accept-dialog" use:modal={oncancel} aria-labelledby={`${id}-title`} aria-describedby={`${id}-risk ${id}-quarantine`}>
-  <div class="flex min-w-0 items-start gap-4 border-b border-line px-5 py-5 sm:px-6">
+  <div class="hairline-b flex min-w-0 items-start gap-4 px-5 py-5 sm:px-6">
     <span class="warning-signal mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-bad-line bg-bad-soft text-bad" data-auto-accept-warning>
       <Icon name="warning" class="h-6 w-6" />
     </span>
@@ -38,7 +38,7 @@
     </label>
     <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.autoAccept.saveNotice}</p>
   </div>
-  <div class="flex flex-col gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+  <div class="hairline-t flex flex-col gap-2 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
     <button type="button" class="btn btn-lg justify-center" use:focusCancel onclick={oncancel}>{i18n.m.autoAccept.cancel}</button>
     <button type="button" class="btn btn-lg btn-danger justify-center" disabled={!acknowledged} onclick={onaccept}>{i18n.m.autoAccept.enable}</button>
   </div>

@@ -31,6 +31,7 @@
   import { router } from '../stores/ui.svelte'
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
+  import SettingRow from '../components/SettingRow.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Icon from '../components/Icon.svelte'
   import OkMark from '../components/OkMark.svelte'
@@ -624,6 +625,18 @@ let settings = $state<Settings>({
     return changedFields.has(field)
   }
 
+  function isSrChanged(field: keyof Settings['superResolution']): boolean {
+    return savedSettings != null && settings.superResolution[field] !== savedSettings.superResolution[field]
+  }
+
+  function revertSr(field: keyof Settings['superResolution']) {
+    if (!savedSettings) return
+    settings = detach({
+      ...settings,
+      superResolution: { ...settings.superResolution, [field]: savedSettings.superResolution[field] },
+    })
+  }
+
   function revert(field: keyof Settings | 'minFreeDiskBytes') {
     if (!savedSettings) return
     if (field === 'minFreeDiskBytes') {
@@ -955,7 +968,18 @@ let settings = $state<Settings>({
   {#if isChanged(field)}
     <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
       {tr(i18n.m.settings.was_value, { value: previous })}
-      <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
+      <button type="button" class="focus-ring rounded underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
+        {i18n.m.settings.put_back}
+      </button>
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet wasSrChanged(field: keyof Settings['superResolution'], previous: string)}
+  {#if isSrChanged(field)}
+    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
+      {tr(i18n.m.settings.was_value, { value: previous })}
+      <button type="button" class="focus-ring rounded underline underline-offset-2 hover:no-underline" onclick={() => revertSr(field)}>
         {i18n.m.settings.put_back}
       </button>
     </span>
@@ -1040,35 +1064,31 @@ let settings = $state<Settings>({
     title={i18n.m.nav.queue}
     description={i18n.m.settings.queue_desc}
   >
-    <div class="settings-fields">
-      <div class="settings-field {isChanged('maxConcurrentJobs') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label><p>{i18n.m.settings.concurrency_hint}</p></div>
+    <div>
+      <SettingRow label={i18n.m.settings.max_jobs} sentence={i18n.m.settings.concurrency_hint} controlId="max-jobs" tip={i18n.m.settings.max_jobs_tip} changed={isChanged('maxConcurrentJobs')}>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
         {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
-      </div>
+      </SettingRow>
 
       <details class="workload-details">
         <summary class="focus-ring">{i18n.m.settings.workload_advanced}</summary>
         <p class="workload-intro">{i18n.m.settings.workload_intro}</p>
-        <div class="settings-field {isChanged('workloadConcurrencyMode') ? 'settings-field-changed' : ''}">
-          <div class="settings-field-label"><label class="label" for="workload-mode">{i18n.m.settings.workload_mode} <InfoTip text={i18n.m.settings.workload_mode_tip} /></label><p>{i18n.m.settings.workload_mode_hint}</p></div>
+        <SettingRow label={i18n.m.settings.workload_mode} sentence={i18n.m.settings.workload_mode_hint} controlId="workload-mode" tip={i18n.m.settings.workload_mode_tip} changed={isChanged('workloadConcurrencyMode')}>
           <select id="workload-mode" class="input" bind:value={settings.workloadConcurrencyMode}>
             <option value="Automatic">{i18n.m.settings.workload_automatic}</option>
             <option value="Manual">{i18n.m.settings.workload_manual}</option>
           </select>
           {@render wasChanged('workloadConcurrencyMode', String(savedSettings?.workloadConcurrencyMode ?? ''))}
-        </div>
+        </SettingRow>
         {#if settings.workloadConcurrencyMode === 'Manual'}
-          <div class="settings-field {isChanged('nonVideoSlots') ? 'settings-field-changed' : ''}">
-            <div class="settings-field-label"><label class="label" for="non-video-slots">{i18n.m.settings.workload_nonvideo} <InfoTip text={i18n.m.settings.workload_nonvideo_tip} /></label><p>{i18n.m.settings.workload_nonvideo_hint}</p></div>
+          <SettingRow label={i18n.m.settings.workload_nonvideo} sentence={i18n.m.settings.workload_nonvideo_hint} controlId="non-video-slots" tip={i18n.m.settings.workload_nonvideo_tip} changed={isChanged('nonVideoSlots')}>
             <input id="non-video-slots" class="input" type="number" min="0" max="4" step="1" bind:value={settings.nonVideoSlots} />
             {@render wasChanged('nonVideoSlots', String(savedSettings?.nonVideoSlots ?? ''))}
-          </div>
-          <div class="settings-field {isChanged('evidenceValidationSlots') ? 'settings-field-changed' : ''}">
-            <div class="settings-field-label"><label class="label" for="evidence-slots">{i18n.m.settings.workload_evidence} <InfoTip text={i18n.m.settings.workload_evidence_tip} /></label><p>{i18n.m.settings.workload_evidence_hint}</p></div>
+          </SettingRow>
+          <SettingRow label={i18n.m.settings.workload_evidence} sentence={i18n.m.settings.workload_evidence_hint} controlId="evidence-slots" tip={i18n.m.settings.workload_evidence_tip} changed={isChanged('evidenceValidationSlots')}>
             <input id="evidence-slots" class="input" type="number" min="1" max="4" step="1" bind:value={settings.evidenceValidationSlots} />
             {@render wasChanged('evidenceValidationSlots', String(savedSettings?.evidenceValidationSlots ?? ''))}
-          </div>
+          </SettingRow>
         {/if}
         <div class="workload-preview" aria-live="polite">
           <span>{i18n.m.settings.workload_effective}</span>
@@ -1077,8 +1097,7 @@ let settings = $state<Settings>({
         </div>
       </details>
 
-      <div class="settings-field {isChanged('encoderMode') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label><p>{i18n.m.settings.encoder_hint}</p></div>
+      <SettingRow label={i18n.m.settings.encoder_mode} sentence={i18n.m.settings.encoder_hint} controlId="encoder-mode" tip={i18n.m.settings.encoder_mode_tip} changed={isChanged('encoderMode')}>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
@@ -1087,22 +1106,20 @@ let settings = $state<Settings>({
           <option value="Vaapi">VAAPI</option>
         </select>
         {@render wasChanged('encoderMode', String(savedSettings?.encoderMode ?? ''))}
-      </div>
+      </SettingRow>
 
-      <div class="settings-field {isChanged('cpuThreadLimit') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label><p>{i18n.m.settings.threads_hint}</p></div>
+      <SettingRow label={i18n.m.settings.cpu_threads} sentence={i18n.m.settings.threads_hint} controlId="cpu-threads" tip={i18n.m.settings.cpu_threads_tip} changed={isChanged('cpuThreadLimit')}>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
         {@render wasChanged('cpuThreadLimit', String(savedSettings?.cpuThreadLimit ?? ''))}
-      </div>
+      </SettingRow>
 
-      <div class="settings-field {isChanged('libraryScanIntervalHours') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label><p>{i18n.m.settings.scan_hint}</p></div>
+      <SettingRow label={i18n.m.settings.scan_interval} sentence={i18n.m.settings.scan_hint} controlId="scan-interval" tip={i18n.m.settings.scan_interval_tip} changed={isChanged('libraryScanIntervalHours')}>
         <div class="flex min-w-0 items-center gap-2">
           <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
           <span class="flex-none text-sm text-ink-3">{i18n.m.settings.hours}</span>
         </div>
         {@render wasChanged('libraryScanIntervalHours', String(savedSettings?.libraryScanIntervalHours ?? ''))}
-      </div>
+      </SettingRow>
 
     </div>
 
@@ -1137,45 +1154,39 @@ let settings = $state<Settings>({
     title={i18n.m.settings.sr_engine_title}
     description={i18n.m.settings.sr_engine_desc}
   >
-    <div class="settings-fields">
-      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label">
-          <label class="label" for="sr-enabled">{i18n.m.settings.sr_enable}</label>
-          <p>{i18n.m.settings.sr_enable_hint}</p>
-        </div>
-        <Toggle bind:checked={settings.superResolution.enabled} label={i18n.m.settings.sr_enable} />
-        {@render wasChanged('superResolution', '')}
-      </div>
+    <div>
+      <SettingRow label={i18n.m.settings.sr_enable} sentence={i18n.m.settings.sr_enable_hint} changed={isSrChanged('enabled')}>
+        <Toggle bind:checked={settings.superResolution.enabled} label={i18n.m.settings.sr_enable} bare />
+        {@render wasSrChanged('enabled', savedSettings?.superResolution.enabled ? i18n.m.settings.enabled : i18n.m.common.off)}
+      </SettingRow>
 
       <!-- Every engine setting stays hidden until the experimental switch is on. -->
       {#if settings.superResolution.enabled}
-      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="sr-engine">{i18n.m.settings.sr_engine}</label><p>{i18n.m.settings.sr_engine_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_engine} sentence={i18n.m.settings.sr_engine_hint} controlId="sr-engine">
         <input id="sr-engine" class="input" value="Real-CUGAN (realcugan-ncnn-vulkan)" disabled />
         <p class="text-xs text-ink-3 mt-2">{i18n.m.settings.sr_engine_note}</p>
-      </div>
+      </SettingRow>
 
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-preset">{i18n.m.settings.sr_preset} <InfoTip text={i18n.m.settings.sr_preset_tip} /></label><p>{i18n.m.settings.sr_preset_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_preset} sentence={i18n.m.settings.sr_preset_hint} controlId="sr-preset" tip={i18n.m.settings.sr_preset_tip} changed={isSrChanged('preset')}>
         <select id="sr-preset" class="input" bind:value={settings.superResolution.preset}>
           <option value="mixed">{i18n.m.settings.sr_preset_mixed}</option>
           <option value="pro">{i18n.m.settings.sr_preset_pro}</option>
           <option value="nose">{i18n.m.settings.sr_preset_nose}</option>
         </select>
-      </div>
+        {@render wasSrChanged('preset', String(savedSettings?.superResolution.preset ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-scale">{i18n.m.settings.sr_scale} <InfoTip text={i18n.m.settings.sr_scale_tip} /></label><p>{i18n.m.settings.sr_scale_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_scale} sentence={i18n.m.settings.sr_scale_hint} controlId="sr-scale" tip={i18n.m.settings.sr_scale_tip} changed={isSrChanged('scale')}>
         <select id="sr-scale" class="input" bind:value={settings.superResolution.scale}>
           <option value={2}>{i18n.m.settings.sr_scale_2}</option>
           <option value={3}>{i18n.m.settings.sr_scale_3}</option>
           <option value={4}>{i18n.m.settings.sr_scale_4}</option>
         </select>
-      </div>
+        {@render wasSrChanged('scale', `${savedSettings?.superResolution.scale ?? 2}×`)}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-noise">{i18n.m.settings.sr_noise} <InfoTip text={i18n.m.settings.sr_noise_tip} /></label><p>{i18n.m.settings.sr_noise_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_noise} sentence={i18n.m.settings.sr_noise_hint} controlId="sr-noise" tip={i18n.m.settings.sr_noise_tip} changed={isSrChanged('noiseLevel')}>
         <select id="sr-noise" class="input" bind:value={settings.superResolution.noiseLevel}>
           <option value={-1}>{i18n.m.settings.sr_noise_conservative}</option>
           <option value={0}>{i18n.m.settings.sr_noise_none}</option>
@@ -1183,10 +1194,10 @@ let settings = $state<Settings>({
           <option value={2}>{i18n.m.settings.sr_noise_2}</option>
           <option value={3}>{i18n.m.settings.sr_noise_3}</option>
         </select>
-      </div>
+        {@render wasSrChanged('noiseLevel', String(savedSettings?.superResolution.noiseLevel ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-device">{i18n.m.settings.sr_device} <InfoTip text={i18n.m.settings.sr_device_tip} /></label><p>{i18n.m.settings.sr_device_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_device} sentence={i18n.m.settings.sr_device_hint} controlId="sr-device" tip={i18n.m.settings.sr_device_tip} changed={isSrChanged('device')}>
         <select id="sr-device" class="input" bind:value={settings.superResolution.device}>
           <option value="auto">{i18n.m.settings.sr_device_auto}</option>
           <option value="cpu">{i18n.m.settings.sr_device_cpu}</option>
@@ -1195,27 +1206,28 @@ let settings = $state<Settings>({
           {/each}
         </select>
         {#if settings.superResolution.device === 'cpu'}<p class="text-xs text-warn mt-2">{i18n.m.settings.sr_device_no_cpu}</p>{/if}
-      </div>
+        {@render wasSrChanged('device', String(savedSettings?.superResolution.device ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-binary">{i18n.m.settings.sr_binary}</label><p>{i18n.m.settings.sr_binary_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_binary} sentence={i18n.m.settings.sr_binary_hint} controlId="sr-binary" changed={isSrChanged('binaryPath')}>
         <input id="sr-binary" class="input" bind:value={settings.superResolution.binaryPath} placeholder="realcugan-ncnn-vulkan" />
-      </div>
+        {@render wasSrChanged('binaryPath', String(savedSettings?.superResolution.binaryPath ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-models">{i18n.m.settings.sr_models}</label><p>{i18n.m.settings.sr_models_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_models} sentence={i18n.m.settings.sr_models_hint} controlId="sr-models" changed={isSrChanged('modelsPath')}>
         <input id="sr-models" class="input" bind:value={settings.superResolution.modelsPath} placeholder="/opt/realcugan-ncnn-vulkan/models" />
-      </div>
+        {@render wasSrChanged('modelsPath', String(savedSettings?.superResolution.modelsPath ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-esrgan-binary">{i18n.m.settings.sr_esrgan_binary}</label><p>{i18n.m.settings.sr_esrgan_binary_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_esrgan_binary} sentence={i18n.m.settings.sr_esrgan_binary_hint} controlId="sr-esrgan-binary" changed={isSrChanged('realEsrganBinaryPath')}>
         <input id="sr-esrgan-binary" class="input" bind:value={settings.superResolution.realEsrganBinaryPath} placeholder="realesrgan-ncnn-vulkan" />
-      </div>
+        {@render wasSrChanged('realEsrganBinaryPath', String(savedSettings?.superResolution.realEsrganBinaryPath ?? ''))}
+      </SettingRow>
 
-      <div class="settings-field">
-        <div class="settings-field-label"><label class="label" for="sr-esrgan-models">{i18n.m.settings.sr_esrgan_models}</label><p>{i18n.m.settings.sr_esrgan_models_hint}</p></div>
+      <SettingRow label={i18n.m.settings.sr_esrgan_models} sentence={i18n.m.settings.sr_esrgan_models_hint} controlId="sr-esrgan-models" changed={isSrChanged('realEsrganModelsPath')}>
         <input id="sr-esrgan-models" class="input" bind:value={settings.superResolution.realEsrganModelsPath} placeholder="/opt/realesrgan" />
-      </div>
+        {@render wasSrChanged('realEsrganModelsPath', String(savedSettings?.superResolution.realEsrganModelsPath ?? ''))}
+      </SettingRow>
 
       <div class="settings-video-fields">
         <button type="button" class="btn btn-ghost" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
@@ -1344,7 +1356,7 @@ let settings = $state<Settings>({
       />
     </div>
     <div class="mt-5 border-t border-line pt-5">
-      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'settings-field-changed' : ''}">
+      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'bg-accent-soft' : ''}">
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
         <div class="flex min-w-0 items-center gap-2">
           <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
@@ -1498,7 +1510,7 @@ let settings = $state<Settings>({
               <p class="mt-1 font-mono text-lg tracking-widest text-accent">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
-              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line divide-line">
+              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line">
                 {#each plexServers as server}
                   <li>
                     <button
@@ -1897,18 +1909,6 @@ let settings = $state<Settings>({
     color: var(--accent-on); background: var(--accent-fill); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), var(--lift-1);
   }
   .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
-  .settings-fields { display: grid; }
-  .settings-field {
-    /* Label and control stay a readable distance apart however wide the page is: the columns
-       stop growing and the row keeps to the left rather than spreading across the screen. */
-    display: grid; grid-template-columns: minmax(0, 40rem) minmax(10rem, 24rem); justify-content: start; align-items: center;
-    min-width: 0; column-gap: 2rem; padding: 1rem 0; border-bottom: 1px solid var(--divide-soft);
-  }
-  .settings-field:first-child { padding-top: 0; }
-  .settings-field:last-child { border-bottom: 0; padding-bottom: 0; }
-  .settings-field > span { grid-column: 2; }
-  .settings-field-label p { margin-top: .3rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
-  .settings-field-changed { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .settings-video-fields {
     display: grid; gap: 1.5rem;
     margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--divide);
@@ -1929,8 +1929,7 @@ let settings = $state<Settings>({
   }
   @media (max-width: 639px) {
     .settings-page-header { margin-bottom: 1.5rem; }
-    .settings-room-grid, .settings-field, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-    .settings-field > span { grid-column: 1; }
+    .settings-room-grid, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
     .settings-room { min-height: 10rem; padding: 1.125rem; }
     .settings-room-heading { margin-bottom: 1.25rem; }
   }

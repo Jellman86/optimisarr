@@ -3,6 +3,7 @@
   import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { modal } from '../modal'
+  import DetailDialog from '../components/DetailDialog.svelte'
   import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
   import WorkingJob from '../components/WorkingJob.svelte'
   import PosterGlow from '../components/PosterGlow.svelte'
@@ -833,237 +834,8 @@
       {@const suspended = isJobSuspended(selectedJob, queueStatus)}
       {@const earlierAttempts = attemptHistory(selectedJob)}
       {@const lastAttempt = earlierAttempts.at(-1)}
-      <dialog id="queue-job-dialog" class="app-modal queue-detail" use:modal={closeDetails} aria-labelledby="queue-detail-label queue-detail-title">
-        <header class="queue-detail-heading">
-          <PosterGlow mediaFileId={selectedJob.mediaFileId} />
-          <div class="queue-detail-poster"><Thumbnail mediaFileId={selectedJob.mediaFileId} size="poster" /></div>
-          <div class="queue-detail-identity">
-            <p id="queue-detail-label">{i18n.m.queue.job_details}</p>
-            <h2 id="queue-detail-title" tabindex="-1">{heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}</h2>
-            <div class="queue-detail-status">
-              <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : selectedJob.finalizing ? i18n.m.queue.phase_finalizing : statusLabel(selectedJob.status)}</span>
-              {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
-              {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
-            </div>
-            {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 && !isWorkingJob(selectedJob)}
-              {@const change = sizeChangePercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
-              <p class="queue-detail-sizes">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{' '}<strong><SizeChange sourceSizeBytes={selectedJob.sourceSizeBytes} outputSizeBytes={selectedJob.outputSizeBytes} label={sizeChangeSentence(change)} /></strong></p>
-            {/if}
-          </div>
-          <button class="btn btn-ghost" onclick={closeDetails} aria-label={i18n.m.queue.close_details}><Icon name="x" /></button>
-        </header>
-        <div class="queue-detail-body">
-          {#if selectedJob.status === 'Queued' && selectedJob.waitingForResources}
-            <div class="callout tone-warn mb-4 p-4" role="status">
-              <p class="font-semibold">{i18n.m.queue.waiting_resources_title}</p>
-              <p class="mt-1 text-xs leading-relaxed">{i18n.m.queue.waiting_resources_detail}</p>
-            </div>
-          {/if}
-          {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
-          {#if selectedJob.retryReason === 'SoftwareDecode' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
-            <div class="callout tone-warn mb-4 p-4" role="status">
-              <p class="font-semibold">{i18n.m.queue.retry_software_title}</p>
-              <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
-            </div>
-          {/if}
-          {#if selectedJob.retryReason === 'AvoidIntelQsv' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
-            <div class="callout tone-warn mb-4 p-4" role="status">
-              <p class="font-semibold">{i18n.m.queue.retry_qsv_title}</p>
-              <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_qsv_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server })}</p>
-            </div>
-          {/if}
-          {#if selectedJob.status !== 'Queued' && selectedJob.status !== 'AwaitingSizeReview'}
-            <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
-              <h3>{i18n.m.queue.execution_path}</h3>
-              <div><span>{i18n.m.queue.step_encode}</span><strong>{selectedJob.workerName ?? i18n.m.dashboard.this_server}</strong></div>
-              <div><span>{i18n.m.queue.step_verify}</span><strong>{selectedJob.sidecarVerification ? selectedJob.workerName ?? i18n.m.queue.lane_workers : i18n.m.dashboard.this_server}</strong></div>
-              <div><span>{i18n.m.queue.step_replace}</span><strong>{i18n.m.dashboard.this_server}</strong></div>
-            </section>
-          {/if}
-          {#if isWorkingJob(selectedJob)}
-            <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
-            <JobStages job={selectedJob} queue={queueStatus} />
-            {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
-          {:else if selectedJob.status === 'ReadyToReplace'}
-            <JobStages job={selectedJob} queue={queueStatus} />
-          {/if}
-          {#if selectedJob.status === 'Cancelled' && selectedJob.errorMessage}
-            <p class="callout mt-4 p-4 text-sm" role="status" data-testid="job-cancelled-reason">{selectedJob.errorMessage}</p>
-          {/if}
-          {#if selectedJob.status === 'Failed'}
-            {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
-            <div class="callout tone-bad mt-4 p-4" role="status">
-              <p class="font-semibold">{story.headline}</p>
-              <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
-              {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
-              {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
-              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.map((name) => plainCheckName(name, i18n.m.checkNames)).join(' · ') })}</p>{/if}
-            </div>
-            {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
-          {/if}
-          <JobResult job={selectedJob} checks={parseReport(selectedJob)} {dryRun} {retentionDays}
-            canRetryHigher={canRetryHigher(selectedJob)}
-            replacing={replacingId === selectedJob.id} replaceBlocked={replacingAll || replacingId !== null}
-            onreplace={() => selectedJob && replace(selectedJob)} onunlocked={() => (dryRun = false)} />
-          {#if selectedJob.status === 'AwaitingSizeReview'}
-            <div class="callout tone-warn mb-4 p-4" role="status">
-              <p class="font-semibold">{i18n.m.queue.size_review_title}</p>
-              <p class="mt-1 text-xs leading-relaxed">{selectedJob.errorMessage ?? i18n.m.queue.size_review_detail}</p>
-            </div>
-          {/if}
-          <div class="queue-detail-specs">
-      <!-- Details -->
-      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 ">
-        {#if selectedJob.superResolutionRun}
-        <div class="flex justify-between gap-4" data-testid="job-super-resolution-run">
-          <dt class="text-ink-3">{i18n.m.queue.detail_super_resolution}</dt>
-          <dd class="text-right">{selectedJob.superResolutionRun}</dd>
-        </div>
-        {/if}
-        {#if selectedJob.videoEncoder != null || selectedJob.videoQualityMode != null}
-        <div class="flex justify-between gap-4">
-          <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>
-          <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-ink-4">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
-        </div>
-        <div class="flex justify-between gap-4">
-          <dt class="text-ink-3">{i18n.m.queue.detail_quality}</dt>
-          <dd class="text-right">
-            {#if selectedJob.videoQualityMode && selectedJob.effectiveVideoQuality != null}
-              {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
-              {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
-                <span class="text-ink-4">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
-                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.queue.detail_quality })} text={i18n.m.queue.quality_effective_tip} />
-              {/if}
-            {:else}—{/if}
-          </dd>
-        </div>
-        {/if}
-        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
-      </dl>
-
-      {#if report?.context?.vmafSampling}
-        <p class="mt-3 text-xs text-ink-3">
-          <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
-          {vmafSamplingLabel(report.context.vmafSampling)}
-        </p>
-      {/if}
-
-      <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
-           hero's live status. Useful while encoding and for diagnosing a failed job. -->
-      {#if selectedJob.ffmpegArguments}
-        <details class="mt-4 text-xs text-ink-3">
-          <summary class="cursor-pointer">{i18n.m.queue.ffmpeg_command}</summary>
-          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-caption leading-relaxed text-ink-2">ffmpeg {selectedJob.ffmpegArguments}</pre>
-        </details>
-      {/if}
-
-      <!-- The audio filter this job's command actually applied, so the operator can see what was
-           done to the audio without reading the whole command. -->
-      {#if selectedJob.appliedAudioFilter}
-        <p class="mt-3 text-xs text-ink-3">
-          <span class="font-medium">{i18n.m.queue.applied_audio_filter}:</span>
-          <span class="font-mono">{selectedJob.appliedAudioFilter}</span>
-        </p>
-      {/if}
-
-      <!-- Verification report, when one exists -->
-      {#if parseReport(selectedJob)}
-        {@const checks = parseReport(selectedJob)}
-        <div class="mt-4 border-t border-line-soft pt-4 border-line">
-          {#if checks}<VerificationChecks {checks} />{/if}
-          <AudioQualityReport report={fullReport(selectedJob)?.audioQuality ?? null} />
-          <SoundtrackQualityReport report={fullReport(selectedJob)?.soundtrackQuality ?? null} />
-          <ImagePerceptualReport report={fullReport(selectedJob)?.imagePerceptualQuality ?? null} />
-        </div>
-      {/if}
-      <PerceptualSearchReport report={searchReport(selectedJob)} active={selectedJob.status === 'Probing' || selectedJob.status === 'Leased'} />
-      <SoundtrackSearchReport report={soundtrackSearch(selectedJob)} active={selectedJob.status === 'Probing'} />
-      {#if earlierAttempts.length > 0}
-        <section class="attempt-timeline" aria-label={i18n.m.queue.attempts}>
-          <h3>{i18n.m.queue.attempts}</h3>
-          <ol class="attempt-list" aria-label={i18n.m.queue.attempts}>
-            <li class="attempt-item current">
-              <div class="attempt-card">
-                <div class="attempt-card-top">
-                  <strong>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt ?? earlierAttempts.length + 1 })} · {i18n.m.queue.attempt_current}</strong>
-                  <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
-                </div>
-                <p>{selectedJob.workerName ?? i18n.m.dashboard.this_server} · {selectedJob.videoEncoder ?? '—'}</p>
-                {#if selectedJob.retryReason === 'SoftwareDecode'}<p class="attempt-reason">{i18n.m.queue.retry_software_title}</p>{/if}
-                {#if selectedJob.retryReason === 'AvoidIntelQsv'}<p class="attempt-reason">{i18n.m.queue.retry_qsv_title}</p>{/if}
-              </div>
-            </li>
-            {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
-              <li class="attempt-item">
-                <div class="attempt-card">
-                  <div class="attempt-card-top">
-                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {attempt.outcome === 'Failed' ? i18n.m.queue.attempt_failed : i18n.m.queue.attempt_rejected}</strong>
-                    <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
-                  </div>
-                  <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
-                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason === 'WorkerHandback' ? i18n.m.queue.attempt_worker_handback : attempt.reason}</p>{/if}
-                  {#if (attempt.reason === 'WorkerHandback' || attempt.reason === 'IntelQsvTimestamps') && attempt.processLog}
-                    <details class="attempt-checks">
-                      <summary>{i18n.m.queue.attempt_ffmpeg_said}</summary>
-                      <pre class="attempt-log">{attempt.processLog}</pre>
-                    </details>
-                  {/if}
-                  {#if attemptChecks(attempt).length > 0}
-                    <details class="attempt-checks">
-                      <summary>{i18n.m.queue.attempt_checks}</summary>
-                      <div class="mt-3"><VerificationChecks checks={attemptChecks(attempt)} /></div>
-                    </details>
-                  {/if}
-                </div>
-              </li>
-            {/each}
-          </ol>
-        </section>
-      {/if}
-
-      {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} recording={diagnosticCapture.status === 'Recording'} />{/if}
-      <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
-        <div>
-          <h3>{i18n.m.settings.diagnostics_title}</h3>
-          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) : i18n.m.settings.diagnostics_desc}</p>{/if}
-        </div>
-        {#if diagnosticLookupPending}
-          <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
-        {:else if diagnosticCapture}
-          <button class="btn" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
-          <button class="btn" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
-          {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
-        {:else}
-          <button class="btn" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
-        {/if}
-        {#if diagnosticSummaryError}<p class="basis-full text-sm text-bad" role="alert">{diagnosticSummaryError}</p>{/if}
-        {#if diagnosticSummaryText}
-          <div class="basis-full min-w-0">
-            <p id="diagnostic-copy-help" class="mb-2 text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_copy_manual}</p>
-            <textarea class="input w-full min-w-0 font-mono text-xs" rows="8" readonly value={diagnosticSummaryText}
-              aria-label={i18n.m.settings.diagnostics_copy_summary} aria-describedby="diagnostic-copy-help"
-              onfocus={event => event.currentTarget.select()} onclick={event => event.currentTarget.select()}></textarea>
-          </div>
-        {/if}
-      </section>
-
-          </div>
-          {#if selectedJob.status === 'Transcoding' || selectedJob.status === 'Verifying'}
-            <div class="queue-usage-heading">{i18n.m.dashboard.this_server} · {i18n.m.queue.host_usage}</div>
-            <div class="queue-usage">
-              <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="var(--accent)" />
-              {#if selectedJob.status === 'Transcoding'}<UsageGraph label="GPU" data={activity.gpuHistory} current={activity.metrics?.gpuPercent ?? null} color="var(--ink-3)" unavailable={gpuUnavailable} detail={activity.metrics?.gpuEngine} />{/if}
-            </div>
-          {/if}
-          <div class="queue-path"><span>{i18n.m.queue.col_file}</span><p>{selectedJob.relativePath ?? '—'}</p></div>
-          {#if selectedJob.acceptedBelowTargetAt}<p class="text-xs text-ink-2" data-accepted-below-target>{i18n.m.queue.accepted_below_target}</p>{/if}
-        </div>
-        {#if isActive(selectedJob.status) || selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
-        <footer class="queue-detail-actions">
-                <!-- Actions -->
-      <div class="flex flex-wrap gap-2">
+      {@const hasActions = isActive(selectedJob.status) || selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
+      {#snippet jobActions()}
         {#if selectedJob.status === 'AwaitingSizeReview'}
           <button class="btn btn-primary" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
             {approvingSizeId === selectedJob.id ? i18n.m.common.loading_short : i18n.m.queue.action_encode_anyway}
@@ -1097,19 +869,248 @@
             {removingId === selectedJob.id ? i18n.m.queue.action_stopping : i18n.m.queue.action_stop_remove}
           </button>
         {/if}
+      {/snippet}
+      {#snippet jobActionNotes()}
+        {#if selectedJob.status === 'Failed' && selectedJob.belowTarget}
+          {@const refusal = selectedJob.belowTarget.eligible ? null : belowTargetRefusal(selectedJob.belowTarget.refusal)}
+          {#if selectedJob.belowTarget.eligible && dryRun}
+            <p id="accept-below-target-locked" class="mt-2 text-xs text-ink-3">{i18n.m.jobResult.locked_reason}</p>
+          {:else if refusal}
+            <p class="mt-2 text-xs text-ink-3" data-accept-below-target-refused>{belowTargetHeading(selectedJob)}. {refusal}</p>
+          {/if}
+        {/if}
+      {/snippet}
+      <DetailDialog
+        id="queue-job-dialog"
+        size="wide"
+        title={heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}
+        titleId="queue-detail-title"
+        focusableTitle
+        eyebrow={i18n.m.queue.job_details}
+        eyebrowId="queue-detail-label"
+        closeLabel={i18n.m.queue.close_details}
+        onclose={closeDetails}
+        actions={hasActions ? jobActions : undefined}
+        footer={hasActions ? jobActionNotes : undefined}
+      >
+        {#snippet backdrop()}<PosterGlow mediaFileId={selectedJob.mediaFileId} />{/snippet}
+        {#snippet leading()}<Thumbnail mediaFileId={selectedJob.mediaFileId} size="poster" />{/snippet}
+        {#snippet meta()}
+          <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : selectedJob.finalizing ? i18n.m.queue.phase_finalizing : statusLabel(selectedJob.status)}</span>
+          {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
+          {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
+          {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 && !isWorkingJob(selectedJob)}
+            {@const change = sizeChangePercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
+            <p class="queue-detail-sizes basis-full text-body tabular-nums">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{' '}<strong class="font-semibold"><SizeChange sourceSizeBytes={selectedJob.sourceSizeBytes} outputSizeBytes={selectedJob.outputSizeBytes} label={sizeChangeSentence(change)} /></strong></p>
+          {/if}
+        {/snippet}
+        {#if selectedJob.status === 'Queued' && selectedJob.waitingForResources}
+          <div class="callout tone-warn mb-4 p-4" role="status">
+            <p class="font-semibold">{i18n.m.queue.waiting_resources_title}</p>
+            <p class="mt-1 text-xs leading-relaxed">{i18n.m.queue.waiting_resources_detail}</p>
+          </div>
+        {/if}
+        {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
+        {#if selectedJob.retryReason === 'SoftwareDecode' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
+          <div class="callout tone-warn mb-4 p-4" role="status">
+            <p class="font-semibold">{i18n.m.queue.retry_software_title}</p>
+            <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
+          </div>
+        {/if}
+        {#if selectedJob.retryReason === 'AvoidIntelQsv' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
+          <div class="callout tone-warn mb-4 p-4" role="status">
+            <p class="font-semibold">{i18n.m.queue.retry_qsv_title}</p>
+            <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_qsv_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server })}</p>
+          </div>
+        {/if}
+        {#if selectedJob.status !== 'Queued' && selectedJob.status !== 'AwaitingSizeReview'}
+          <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
+            <h3>{i18n.m.queue.execution_path}</h3>
+            <div><span>{i18n.m.queue.step_encode}</span><strong>{selectedJob.workerName ?? i18n.m.dashboard.this_server}</strong></div>
+            <div><span>{i18n.m.queue.step_verify}</span><strong>{selectedJob.sidecarVerification ? selectedJob.workerName ?? i18n.m.queue.lane_workers : i18n.m.dashboard.this_server}</strong></div>
+            <div><span>{i18n.m.queue.step_replace}</span><strong>{i18n.m.dashboard.this_server}</strong></div>
+          </section>
+        {/if}
+        {#if isWorkingJob(selectedJob)}
+          <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
+          <JobStages job={selectedJob} queue={queueStatus} />
+          {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
+        {:else if selectedJob.status === 'ReadyToReplace'}
+          <JobStages job={selectedJob} queue={queueStatus} />
+        {/if}
+        {#if selectedJob.status === 'Cancelled' && selectedJob.errorMessage}
+          <p class="callout mt-4 p-4 text-sm" role="status" data-testid="job-cancelled-reason">{selectedJob.errorMessage}</p>
+        {/if}
+        {#if selectedJob.status === 'Failed'}
+          {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
+          <div class="callout tone-bad mt-4 p-4" role="status">
+            <p class="font-semibold">{story.headline}</p>
+            <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
+            {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
+            {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
+            {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.map((name) => plainCheckName(name, i18n.m.checkNames)).join(' · ') })}</p>{/if}
+          </div>
+          {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
+        {/if}
+        <JobResult job={selectedJob} checks={parseReport(selectedJob)} {dryRun} {retentionDays}
+          canRetryHigher={canRetryHigher(selectedJob)}
+          replacing={replacingId === selectedJob.id} replaceBlocked={replacingAll || replacingId !== null}
+          onreplace={() => selectedJob && replace(selectedJob)} onunlocked={() => (dryRun = false)} />
+        {#if selectedJob.status === 'AwaitingSizeReview'}
+          <div class="callout tone-warn mb-4 p-4" role="status">
+            <p class="font-semibold">{i18n.m.queue.size_review_title}</p>
+            <p class="mt-1 text-xs leading-relaxed">{selectedJob.errorMessage ?? i18n.m.queue.size_review_detail}</p>
+          </div>
+        {/if}
+        <div class="queue-detail-specs">
+    <!-- Details -->
+    <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 ">
+      {#if selectedJob.superResolutionRun}
+      <div class="flex justify-between gap-4" data-testid="job-super-resolution-run">
+        <dt class="text-ink-3">{i18n.m.queue.detail_super_resolution}</dt>
+        <dd class="text-right">{selectedJob.superResolutionRun}</dd>
       </div>
-      {#if selectedJob.status === 'Failed' && selectedJob.belowTarget}
-        {@const refusal = selectedJob.belowTarget.eligible ? null : belowTargetRefusal(selectedJob.belowTarget.refusal)}
-        {#if selectedJob.belowTarget.eligible && dryRun}
-          <p id="accept-below-target-locked" class="mt-2 text-xs text-ink-3">{i18n.m.jobResult.locked_reason}</p>
-        {:else if refusal}
-          <p class="mt-2 text-xs text-ink-3" data-accept-below-target-refused>{belowTargetHeading(selectedJob)}. {refusal}</p>
-        {/if}
       {/if}
+      {#if selectedJob.videoEncoder != null || selectedJob.videoQualityMode != null}
+      <div class="flex justify-between gap-4">
+        <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>
+        <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-ink-4">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-ink-3">{i18n.m.queue.detail_quality}</dt>
+        <dd class="text-right">
+          {#if selectedJob.videoQualityMode && selectedJob.effectiveVideoQuality != null}
+            {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
+            {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
+              <span class="text-ink-4">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
+              <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.queue.detail_quality })} text={i18n.m.queue.quality_effective_tip} />
+            {/if}
+          {:else}—{/if}
+        </dd>
+      </div>
+      {/if}
+      <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
+      <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
+      <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+    </dl>
 
-        </footer>
+    {#if report?.context?.vmafSampling}
+      <p class="mt-3 text-xs text-ink-3">
+        <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
+        {vmafSamplingLabel(report.context.vmafSampling)}
+      </p>
+    {/if}
+
+    <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
+         hero's live status. Useful while encoding and for diagnosing a failed job. -->
+    {#if selectedJob.ffmpegArguments}
+      <details class="mt-4 text-xs text-ink-3">
+        <summary class="cursor-pointer">{i18n.m.queue.ffmpeg_command}</summary>
+        <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-caption leading-relaxed text-ink-2">ffmpeg {selectedJob.ffmpegArguments}</pre>
+      </details>
+    {/if}
+
+    <!-- The audio filter this job's command actually applied, so the operator can see what was
+         done to the audio without reading the whole command. -->
+    {#if selectedJob.appliedAudioFilter}
+      <p class="mt-3 text-xs text-ink-3">
+        <span class="font-medium">{i18n.m.queue.applied_audio_filter}:</span>
+        <span class="font-mono">{selectedJob.appliedAudioFilter}</span>
+      </p>
+    {/if}
+
+    <!-- Verification report, when one exists -->
+    {#if parseReport(selectedJob)}
+      {@const checks = parseReport(selectedJob)}
+      <div class="mt-4 border-t border-line-soft pt-4">
+        {#if checks}<VerificationChecks {checks} />{/if}
+        <AudioQualityReport report={fullReport(selectedJob)?.audioQuality ?? null} />
+        <SoundtrackQualityReport report={fullReport(selectedJob)?.soundtrackQuality ?? null} />
+        <ImagePerceptualReport report={fullReport(selectedJob)?.imagePerceptualQuality ?? null} />
+      </div>
+    {/if}
+    <PerceptualSearchReport report={searchReport(selectedJob)} active={selectedJob.status === 'Probing' || selectedJob.status === 'Leased'} />
+    <SoundtrackSearchReport report={soundtrackSearch(selectedJob)} active={selectedJob.status === 'Probing'} />
+    {#if earlierAttempts.length > 0}
+      <section class="attempt-timeline" aria-label={i18n.m.queue.attempts}>
+        <h3>{i18n.m.queue.attempts}</h3>
+        <ol class="attempt-list" aria-label={i18n.m.queue.attempts}>
+          <li class="attempt-item current">
+            <div class="attempt-card">
+              <div class="attempt-card-top">
+                <strong>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt ?? earlierAttempts.length + 1 })} · {i18n.m.queue.attempt_current}</strong>
+                <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
+              </div>
+              <p>{selectedJob.workerName ?? i18n.m.dashboard.this_server} · {selectedJob.videoEncoder ?? '—'}</p>
+              {#if selectedJob.retryReason === 'SoftwareDecode'}<p class="attempt-reason">{i18n.m.queue.retry_software_title}</p>{/if}
+              {#if selectedJob.retryReason === 'AvoidIntelQsv'}<p class="attempt-reason">{i18n.m.queue.retry_qsv_title}</p>{/if}
+            </div>
+          </li>
+          {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
+            <li class="attempt-item">
+              <div class="attempt-card">
+                <div class="attempt-card-top">
+                  <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {attempt.outcome === 'Failed' ? i18n.m.queue.attempt_failed : i18n.m.queue.attempt_rejected}</strong>
+                  <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
+                </div>
+                <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
+                {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason === 'WorkerHandback' ? i18n.m.queue.attempt_worker_handback : attempt.reason}</p>{/if}
+                {#if (attempt.reason === 'WorkerHandback' || attempt.reason === 'IntelQsvTimestamps') && attempt.processLog}
+                  <details class="attempt-checks">
+                    <summary>{i18n.m.queue.attempt_ffmpeg_said}</summary>
+                    <pre class="attempt-log">{attempt.processLog}</pre>
+                  </details>
+                {/if}
+                {#if attemptChecks(attempt).length > 0}
+                  <details class="attempt-checks">
+                    <summary>{i18n.m.queue.attempt_checks}</summary>
+                    <div class="mt-3"><VerificationChecks checks={attemptChecks(attempt)} /></div>
+                  </details>
+                {/if}
+              </div>
+            </li>
+          {/each}
+        </ol>
+      </section>
+    {/if}
+
+    {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} recording={diagnosticCapture.status === 'Recording'} />{/if}
+    <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
+      <div>
+        <h3>{i18n.m.settings.diagnostics_title}</h3>
+        {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) : i18n.m.settings.diagnostics_desc}</p>{/if}
+      </div>
+      {#if diagnosticLookupPending}
+        <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
+      {:else if diagnosticCapture}
+        <button class="btn" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
+        <button class="btn" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
+        {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
+      {:else}
+        <button class="btn" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
+      {/if}
+      {#if diagnosticSummaryError}<p class="basis-full text-sm text-bad" role="alert">{diagnosticSummaryError}</p>{/if}
+      {#if diagnosticSummaryText}
+        <div class="basis-full min-w-0">
+          <p id="diagnostic-copy-help" class="mb-2 text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_copy_manual}</p>
+          <textarea class="input w-full min-w-0 font-mono text-xs" rows="8" readonly value={diagnosticSummaryText}
+            aria-label={i18n.m.settings.diagnostics_copy_summary} aria-describedby="diagnostic-copy-help"
+            onfocus={event => event.currentTarget.select()} onclick={event => event.currentTarget.select()}></textarea>
+        </div>
+      {/if}
+    </section>
+
+        </div>
+        {#if selectedJob.status === 'Transcoding' || selectedJob.status === 'Verifying'}
+          <div class="queue-usage-heading">{i18n.m.dashboard.this_server} · {i18n.m.queue.host_usage}</div>
+          <div class="queue-usage">
+            <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="var(--accent)" />
+            {#if selectedJob.status === 'Transcoding'}<UsageGraph label="GPU" data={activity.gpuHistory} current={activity.metrics?.gpuPercent ?? null} color="var(--ink-3)" unavailable={gpuUnavailable} detail={activity.metrics?.gpuEngine} />{/if}
+          </div>
         {/if}
-      </dialog>
+        <div class="queue-path"><span>{i18n.m.queue.col_file}</span><p>{selectedJob.relativePath ?? '—'}</p></div>
+        {#if selectedJob.acceptedBelowTargetAt}<p class="text-xs text-ink-2" data-accepted-below-target>{i18n.m.queue.accepted_below_target}</p>{/if}
+      </DetailDialog>
     {/if}
 
     <section id="queue-list" aria-labelledby="queue-list-title">
@@ -1293,18 +1294,6 @@
   @media(max-width: 420px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-lane { padding: .75rem; } }
   @media(max-width: 340px) { .queue-lane-grid { grid-template-columns: 1fr; } }
   @media(max-width: 420px) { .queue-execution-path { grid-template-columns: 1fr; } }
-  .queue-detail { width: 52rem; grid-template-rows: auto minmax(0, 1fr) auto; }
-  .queue-detail-heading { position: relative; isolation: isolate; display: flex; align-items: center; gap: 1.5rem; padding: 1.5rem 2rem; background: var(--panel); box-shadow: inset 0 -1px 0 var(--divide-soft); }.queue-detail-heading > :not(:global(.poster-glow)) { position: relative; z-index: 1; }
-  .queue-detail-poster { flex-shrink: 0; overflow: hidden; border-radius: .625rem; box-shadow: var(--lift-3); }
-  .queue-detail-poster :global([data-thumbnail]) { width: 5rem; height: 7.5rem; }
-  .queue-detail-identity { min-width: 0; padding-right: 1.75rem; }
-  .queue-detail-heading p { font-size: .6875rem; color: var(--ink-3); margin-bottom: .625rem; }
-  .queue-detail-heading h2 { font-size: clamp(1.125rem, 3vw, 1.5rem); line-height: 1.3; font-weight: 650; letter-spacing: -.025em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .queue-detail-heading .btn { position: absolute; right: .75rem; top: .75rem; min-height: 2.75rem; min-width: 2.75rem; }
-  .queue-detail-sizes { margin-top: .5rem; color: var(--ink-2); font-size: .875rem; font-variant-numeric: tabular-nums; }
-  .queue-detail-sizes strong { font-weight: 600; }
-  .queue-detail-status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; margin-top: .75rem; font-size: .75rem; color: var(--ink-3); overflow-wrap: anywhere; }
-  .queue-detail-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 1.5rem 2rem; }
   .attempt-timeline { margin-top: 1.5rem; border-top: 1px solid var(--divide-soft); padding-top: 1.25rem; }
   .attempt-timeline h3, .queue-diagnostic-action h3 { color: var(--ink); font-size: .875rem; font-weight: 650; }
   .attempt-list { list-style: none; margin: 1rem 0 0; padding: 0 0 0 .375rem; }
@@ -1330,7 +1319,7 @@
   .queue-diagnostic-action .btn { flex: none; }
   .queue-diagnostic-pending { flex: none; color: var(--ink-3); font-size: .75rem; }
   .queue-detail-specs:first-child { margin-top: 0; }
-  .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
+  .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   /* The filters and the batch bar share one grid cell, sized to the taller of the two, so
      picking a row swaps one for the other and the table below never moves. */
   .queue-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
@@ -1340,23 +1329,7 @@
   .queue-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-toolbar-actions .btn { font-size: .75rem; }
   /* Clearing failed and cancelled jobs is quiet until it is pointed at, then it says what it does. */
   .queue-clear-errors { color: var(--ink-3); }.queue-clear-errors:hover { color: var(--bad); background: var(--bad-soft); }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; } }
+  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
   @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer, .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: none; } }
-  @media(max-width: 639px) {
-    .queue-detail-heading { gap: 1rem; }
-    .queue-detail-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; }
-    .queue-detail-actions > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .queue-detail-actions :global(.btn:only-child) { grid-column: 1/-1; }
-    .queue-detail-actions :global(.btn) { white-space: normal; }
-  }
-  @media(max-height: 540px) {
-    .queue-detail-heading { gap: 1rem; padding: .75rem 1rem; }
-    .queue-detail-poster :global([data-thumbnail]) { width: 2.5rem; height: 3.75rem; }
-    .queue-detail-heading h2 { -webkit-line-clamp: 1; line-clamp: 1; font-size: 1.125rem; }
-    .queue-detail-heading p { margin-bottom: .25rem; }
-    .queue-detail-status { margin-top: .375rem; }
-    .queue-detail-body { padding: 1rem; }
-    .queue-detail-actions { padding: .5rem 1rem; }
-  }
 </style>

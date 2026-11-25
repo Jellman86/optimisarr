@@ -62,7 +62,7 @@
     aria-describedby={`${id}-body`}
     data-confirm-dialog
   >
-    <div class="flex min-w-0 items-start gap-3 border-b border-line px-5 py-4 sm:px-6">
+    <div class="hairline-b flex min-w-0 items-start gap-3 px-5 py-4 sm:px-6">
       {#if danger}
         <span class="confirm-signal mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-bad-line bg-bad-soft text-bad">
           <Icon name="warning" class="h-5 w-5" />
@@ -73,7 +73,7 @@
     <div id={`${id}-body`} class="min-h-0 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-ink-2 sm:px-6">
       {@render body()}
     </div>
-    <div class="flex flex-col gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+    <div class="hairline-t flex flex-col gap-2 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
       <button type="button" class="btn btn-lg justify-center" bind:this={cancelButton} onclick={cancel} disabled={busy}>
         {i18n.m.common.cancel}
       </button>
