@@ -50,20 +50,84 @@ public static class CpuLoadCalculator
 /// cadences, and a CPU figure is the busy fraction <em>since that sampler last looked</em>. Sharing
 /// one would leave each caller reporting whatever window the other happened to leave behind.</para>
 /// </summary>
-public sealed class MachineLoadSampler(
-    Func<CpuTicks?>? readCpu = null,
-    Func<double?>? readGpu = null)
+public sealed class MachineLoadSampler
 {
     private readonly Lock _gate = new();
-    private readonly Func<CpuTicks?> _readCpu = readCpu ?? ReadSystemTimes;
-    private readonly Func<double?> _readGpu = readGpu ?? CompositeGpu;
+    private readonly Func<CpuTicks?> _readCpu;
+    private readonly Func<double?> _readGpu;
+    private readonly TimeSpan _gpuRefreshInterval = TimeSpan.FromSeconds(5);
     private CpuTicks? _previous;
+    private double? _cachedGpu;
+    private bool _gpuRefreshing;
+    private DateTimeOffset _lastGpuRefresh;
+
+    public MachineLoadSampler(Func<CpuTicks?>? readCpu = null, Func<double?>? readGpu = null)
+    {
+        _readCpu = readCpu ?? ReadSystemTimes;
+        _readGpu = readGpu ?? (() => ReadCachedGpu());
+    }
 
     /// <summary>Null when neither figure could be read, so a caller sends nothing rather than a body of absences.</summary>
     public MachineLoad? Sample()
     {
+        EnsureGpuRefresh(); // cheap: spawns a background refresh only when the cached value is stale
         var load = new MachineLoad(SampleCpu(), _readGpu());
         return load.IsEmpty ? null : load;
+    }
+
+    // The GPU utilisation read is expensive (a Windows perf-counter enumeration of every GPU
+    // engine instance), so Sample() must never perform it inline — the local monitor serving the
+    // tray snapshot gives a response only three seconds to come back, and a 3s GPU read blew that
+    // deadline, dropping the tray to "Worker offline" and killing its Open-server link. The cached
+    // value is returned instantly instead, and refreshed in the background every few seconds.
+    private double? ReadCachedGpu()
+    {
+        lock (_gate)
+        {
+            return _cachedGpu;
+        }
+    }
+
+    private void EnsureGpuRefresh()
+    {
+        lock (_gate)
+        {
+            if (_gpuRefreshing)
+            {
+                return;
+            }
+
+            var due = _lastGpuRefresh == default
+                || DateTimeOffset.UtcNow - _lastGpuRefresh >= _gpuRefreshInterval;
+            if (!due)
+            {
+                return;
+            }
+
+            _gpuRefreshing = true;
+            _lastGpuRefresh = DateTimeOffset.UtcNow;
+        }
+
+        _ = Task.Run(RefreshGpuInBackground);
+    }
+
+    private void RefreshGpuInBackground()
+    {
+        double? value;
+        try
+        {
+            value = CompositeGpu();
+        }
+        catch
+        {
+            value = null;
+        }
+
+        lock (_gate)
+        {
+            _cachedGpu = value;
+            _gpuRefreshing = false;
+        }
     }
 
     private double? SampleCpu()
