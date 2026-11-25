@@ -35,6 +35,7 @@
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
+  import DataTable from '../components/DataTable.svelte'
   import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
   import SelectionToolbar from '../components/SelectionToolbar.svelte'
   import Segmented from '../components/Segmented.svelte'
@@ -1167,32 +1168,29 @@
           </div>
         </div>
       {/if}
-      {#if loading}<div class="queue-empty" role="status">{i18n.m.common.loading_short}</div>
-      {:else if visibleJobs.length > 0}
-        {#if batchOutcome}
-          <BatchResult
-            title={batchOutcome.title}
-            succeeded={batchOutcome.succeeded}
-            failures={batchOutcome.failures}
-            ondismiss={() => (batchOutcome = null)}
-          />
-        {/if}
-        <div class="queue-table-surface"><table class="queue-table">
-          <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr></thead>
-          <tbody>{#each pagedJobs as job (job.id)}
-            <tr class:selected-row={selectedJobId === job.id}>
-              <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
-              <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
-              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
-              <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification group inline-flex cursor-pointer items-center gap-1 focus-ring" class:text-ink-2={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{#if job.verificationPassed}<OkMark class="h-3 w-3" />{/if}<span class="underline decoration-ink-4/75 underline-offset-[3px] group-hover:decoration-current">{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</span></button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
-              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
-            </tr>
-          {/each}</tbody>
-        </table></div>
-        <div class="queue-pagination"><span>{t(i18n.m.queue.range, { start: (queuePageStart + 1).toLocaleString(), end: Math.min(queuePageStart + QUEUE_PAGE_SIZE, visibleJobs.length).toLocaleString(), total: visibleJobs.length.toLocaleString() })}</span>
-          {#if queuePageCount > 1}<div><button class="btn btn-ghost" onclick={() => goToQueuePage(queuePage - 1)} disabled={queuePage <= 1} aria-label={i18n.m.queue.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.queue.page_of, { page: Math.min(queuePage, queuePageCount), count: queuePageCount })}</span><button class="btn btn-ghost" onclick={() => goToQueuePage(queuePage + 1)} disabled={queuePage >= queuePageCount} aria-label={i18n.m.queue.next_page}><Icon name="arrow-right" /></button></div>{/if}
-        </div>
-      {:else if !loadError}<p class="queue-empty">{jobs.length > 0 ? i18n.m.queue.no_matches : i18n.m.queue.empty}</p>{/if}
+      {#if batchOutcome && visibleJobs.length > 0}
+        <BatchResult
+          title={batchOutcome.title}
+          succeeded={batchOutcome.succeeded}
+          failures={batchOutcome.failures}
+          ondismiss={() => (batchOutcome = null)}
+        />
+      {/if}
+      <DataTable rowCount={pagedJobs.length} {loading} error={loadError} labelledby="queue-list-title" footer={visibleJobs.length > 0 ? queuePagination : undefined}>
+        {#snippet head()}
+          <tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col" class="w-[37%] sm:w-1/4">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column hidden w-[17%] sm:table-cell">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column hidden w-[15%] sm:table-cell"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr>
+        {/snippet}
+        {#each pagedJobs as job (job.id)}
+          <tr class:selected-row={selectedJobId === job.id}>
+            <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
+            <td><button id={`queue-job-${job.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring sm:gap-3.5" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span class="min-w-0"><strong class="block text-caption font-medium text-ink group-hover:text-accent sm:text-label">{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small class="mt-1.5 block text-micro text-ink-3">{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
+            <td><span class="badge whitespace-normal {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="mt-1.5 block text-micro text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
+            <td class="verification-column hidden sm:table-cell">{#if job.verificationPassed !== null}<button class="group inline-flex rounded text-left cursor-pointer items-center gap-1 focus-ring" class:text-ink-2={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{#if job.verificationPassed}<OkMark class="h-3 w-3" />{/if}<span class="underline decoration-ink-4/75 underline-offset-[3px] group-hover:decoration-current">{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</span></button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="mt-1.5 block text-micro text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
+            <td class="action-column hidden sm:table-cell">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-sm btn-ghost max-w-full whitespace-normal" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-sm btn-primary max-w-full whitespace-normal" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-sm btn-ghost max-w-full whitespace-normal" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
+          </tr>
+        {/each}
+        {#snippet empty()}{jobs.length > 0 ? i18n.m.queue.no_matches : i18n.m.queue.empty}{/snippet}
+      </DataTable>
     </section>
   {/if}
 
@@ -1230,6 +1228,11 @@
     {/snippet}
   </ConfirmDialog>
 </div>
+
+{#snippet queuePagination()}
+  <span>{t(i18n.m.queue.range, { start: (queuePageStart + 1).toLocaleString(), end: Math.min(queuePageStart + QUEUE_PAGE_SIZE, visibleJobs.length).toLocaleString(), total: visibleJobs.length.toLocaleString() })}</span>
+  {#if queuePageCount > 1}<div class="data-table-pages"><button class="btn btn-ghost btn-icon" onclick={() => goToQueuePage(queuePage - 1)} disabled={queuePage <= 1} aria-label={i18n.m.queue.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.queue.page_of, { page: Math.min(queuePage, queuePageCount), count: queuePageCount })}</span><button class="btn btn-ghost btn-icon" onclick={() => goToQueuePage(queuePage + 1)} disabled={queuePage >= queuePageCount} aria-label={i18n.m.queue.next_page}><Icon name="arrow-right" /></button></div>{/if}
+{/snippet}
 
 {#if replacementTarget}
   <dialog id="queue-replacement-dialog" class="app-modal replacement-confirmation" use:modal={closeReplacement} aria-labelledby="replacement-title" aria-busy={replacementPending}>
@@ -1337,9 +1340,7 @@
   .queue-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-toolbar-actions .btn { font-size: .75rem; }
   /* Clearing failed and cancelled jobs is quiet until it is pointed at, then it says what it does. */
   .queue-clear-errors { color: var(--ink-3); }.queue-clear-errors:hover { color: var(--bad); background: var(--bad-soft); }
-  .queue-table-surface { border-radius: 14px; background: var(--panel); box-shadow: var(--lift-2); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--panel); box-shadow: inset 0 -1px 0 var(--divide); color: var(--ink-3); padding: .75rem 1rem; font-size: .75rem; font-weight: 600; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 40%; }.queue-table th:nth-child(3) { width: 25%; }.queue-table th:nth-child(4) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-table .selection-column { padding: 1rem .75rem; }.queue-table .selection-column :global(.checkbox) { display: block; }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
-  .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 63%; }.queue-table th:nth-child(3) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
   @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer, .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: none; } }
   @media(max-width: 639px) {

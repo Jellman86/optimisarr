@@ -5,6 +5,7 @@
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import DataTable from '../components/DataTable.svelte'
   import Segmented from '../components/Segmented.svelte'
   import Icon from '../components/Icon.svelte'
   import SizeChange from '../components/SizeChange.svelte'
@@ -374,80 +375,62 @@
   </div>
 {/if}
 
-{#if loading}
-  <div class="card p-8 text-center text-ink-3">{i18n.m.common.loading_short}</div>
-{:else if kind === 'duplicate'}
-  <!-- Only the duplicates above were asked for. -->
-{:else if replacements.length > 0}
-  <div class="card overflow-hidden">
-    <div bind:this={tableScrollEl} data-quarantine-list class="max-h-[65vh] overflow-auto">
-      <table class="quarantine-table w-full table-fixed text-sm">
-        <thead class="table-head">
-          <tr>
-            <th class="px-4 py-3">{i18n.m.quarantine.col_status}</th>
-            <th class="px-4 py-3">{i18n.m.quarantine.col_replaced_file}</th>
-            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.quarantine.col_size_change}</th>
-            <th class="hidden px-4 py-3 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-line-soft">
-          {#each replacements as r (r.id)}
-            <tr
-              class="text-ink-2 hover:bg-lit"
-            >
-              <td class="px-4 py-2">
-                {#if duplicates.length > 0}<span class="badge mb-1 tone-neutral">{i18n.m.quarantine.kind_optimisation}</span>{/if}
-                {#if r.status === 'Replaced'}
-                  <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
-                {:else if r.status === 'Purged'}
-                  <span class="badge tone-muted" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
-                {:else}
-                  <span class="badge tone-muted">{i18n.m.quarantine.status_rolled_back}</span>
-                {/if}
-                {#if r.crossFilesystem}
-                  <span class="badge ml-1 tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
-                {/if}
-              </td>
-              <td class="px-4 py-2">
-                <div class="flex items-center gap-3">
-                <Thumbnail mediaFileId={r.mediaFileId} alt="" />
-                <div class="min-w-0">
-                <a id={`replacement-${r.id}`} class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
-                {#if r.status === 'Purged'}
-                  <div class="text-caption text-ink-3">{i18n.m.quarantine.original_purged}</div>
-                {:else if r.status === 'Replaced'}
-                  <div class="max-w-md truncate font-mono text-caption text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
-                {/if}
-                </div>
-                </div>
-              </td>
-              <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
-                {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}
-                (<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)
-              </td>
-              <td class="hidden px-4 py-2 text-xs text-ink-3 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <p class="mt-2 text-xs text-ink-3">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
-{:else if duplicates.length === 0}
-  <div class="card p-8 text-center text-ink-3">
-    {i18n.m.quarantine.empty}
-  </div>
+{#if loading || (kind !== 'duplicate' && (replacements.length > 0 || duplicates.length === 0))}
+  <DataTable rowCount={replacements.length} {loading} error={loadError} label={i18n.m.nav.quarantine} density="compact" scroll="contained" bind:scroller={tableScrollEl} data-quarantine-list class="quarantine-table" footer={replacements.length > 0 ? replacementCount : undefined}>
+    {#snippet head()}
+      <tr>
+        <th scope="col" class="w-28 sm:w-32">{i18n.m.quarantine.col_status}</th>
+        <th scope="col">{i18n.m.quarantine.col_replaced_file}</th>
+        <th scope="col" class="hidden w-48 lg:w-52 sm:table-cell">{i18n.m.quarantine.col_size_change}</th>
+        <th scope="col" class="hidden w-44 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
+      </tr>
+    {/snippet}
+    {#each replacements as r (r.id)}
+      <tr>
+        <td>
+          {#if duplicates.length > 0}<span class="badge mb-1 tone-neutral">{i18n.m.quarantine.kind_optimisation}</span>{/if}
+          {#if r.status === 'Replaced'}
+            <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
+          {:else if r.status === 'Purged'}
+            <span class="badge tone-muted" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
+          {:else}
+            <span class="badge tone-muted">{i18n.m.quarantine.status_rolled_back}</span>
+          {/if}
+          {#if r.crossFilesystem}
+            <span class="badge ml-1 tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
+          {/if}
+        </td>
+        <td>
+          <div class="flex items-center gap-3">
+          <Thumbnail mediaFileId={r.mediaFileId} alt="" />
+          <div class="min-w-0">
+          <a id={`replacement-${r.id}`} class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
+          {#if r.status === 'Purged'}
+            <div class="text-caption text-ink-3">{i18n.m.quarantine.original_purged}</div>
+          {:else if r.status === 'Replaced'}
+            <div class="max-w-md truncate font-mono text-caption text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
+          {/if}
+          </div>
+          </div>
+        </td>
+        <td class="hidden text-caption tabular-nums sm:table-cell">
+          <span class="whitespace-nowrap">{formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}</span>
+          <span class="whitespace-nowrap">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span>
+        </td>
+        <td class="hidden text-caption text-ink-3 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
+      </tr>
+    {/each}
+    {#snippet empty()}{i18n.m.quarantine.empty}{/snippet}
+  </DataTable>
 {/if}
+
+{#snippet replacementCount()}<span>{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</span>{/snippet}
 
 
 {/if}
 
 <style>
-  .quarantine-table th:first-child { width: 8rem; }
-  .quarantine-table th:nth-child(3) { width: 11rem; }
-  .quarantine-table th:nth-child(4) { width: 11rem; }
   [data-quarantine-review] :global(.card) { transition: box-shadow 180ms ease; }
   [data-quarantine-review] :global(.card:hover), [data-quarantine-review] :global(.card:focus-within) { box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
-  @media (max-width: 639px) { .quarantine-table th:first-child { width: 7rem; } }
   @media (prefers-reduced-motion: reduce) { [data-quarantine-review] :global(.card) { transition: none; } }
 </style>

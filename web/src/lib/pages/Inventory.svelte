@@ -6,6 +6,7 @@
   import Banner from '../components/Banner.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
+  import DataTable from '../components/DataTable.svelte'
   import FilterBar, { type FilterItem } from '../components/FilterBar.svelte'
   import Icon from '../components/Icon.svelte'
   import InventoryDetail from '../components/InventoryDetail.svelte'
@@ -270,7 +271,7 @@
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
     <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
-    <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
+    <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading && rows.length > 0 ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
   {#if bulkOutcome}
     <BatchResult
@@ -296,34 +297,36 @@
       {#if !bulkBusy}<button type="button" class="btn ml-2" onclick={resumeProbeBatch}>{i18n.m.setup.retry}</button>{/if}
     </p>
   {/if}
-  <div class="inventory-surface" aria-busy={loading}>
-    {#if rows.length}
-      <table class="inventory-table">
-        <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th><th scope="col">{i18n.m.inventory.col_file}</th><th scope="col" class="size-column">{i18n.m.inventory.col_size}</th><th scope="col" class="format-column">{i18n.m.inventory.col_format}</th><th scope="col">{i18n.m.inventory.rule_verdict}</th></tr></thead>
-        <tbody>{#each rows as row (row.file.id)}{@const file = row.file}
-          <tr class:selected-row={selected?.file.id === file.id}>
-            <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
-            <td><button id={`inventory-file-${file.id}`} class="inventory-file focus-ring" onclick={() => selectRow(row)}>
-              <Thumbnail mediaFileId={file.id} />
-              <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
-            </button></td>
-            <td class="size-column inventory-size">{formatSize(file.sizeBytes)}</td>
-            <td class="format-column"><span class="inventory-codec">{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="inventory-resolution">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
-            <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="inventory-reason" title={row.reason}>{row.reason}</span>{/if}</td>
-          </tr>
-        {/each}</tbody>
-      </table>
-    {:else if !loading && !error}
-      <div class="inventory-empty"><Icon name="film" class="h-7 w-7 text-ink-4" /><p>{counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p></div>
-    {:else}<div class="inventory-empty">{loading ? i18n.m.common.loading_short : i18n.m.inventory.error_load}</div>{/if}
-  </div>
-  {#if total > 0}
-    <footer class="inventory-pagination">
-      <span>{t(i18n.m.inventory.range, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + pageSize, total).toLocaleString(), total: total.toLocaleString() })}</span>
-      <div><button class="btn btn-ghost" onclick={() => goToPage(page - 1)} disabled={page <= 1 || loading} aria-label={i18n.m.inventory.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span><button class="btn btn-ghost" onclick={() => goToPage(page + 1)} disabled={page >= pageCount || loading} aria-label={i18n.m.inventory.next_page}><Icon name="arrow-right" /></button></div>
-    </footer>
-  {/if}
+  <DataTable rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
+    {#snippet head()}
+      <tr>
+        <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
+        <th scope="col">{i18n.m.inventory.col_file}</th>
+        <th scope="col" class="hidden w-[13%] sm:table-cell">{i18n.m.inventory.col_size}</th>
+        <th scope="col" class="hidden w-[21%] sm:table-cell">{i18n.m.inventory.col_format}</th>
+        <th scope="col" class="w-[28%] sm:w-[19%]">{i18n.m.inventory.rule_verdict}</th>
+      </tr>
+    {/snippet}
+    {#each rows as row (row.file.id)}{@const file = row.file}
+      <tr class:selected-row={selected?.file.id === file.id}>
+        <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
+        <td><button id={`inventory-file-${file.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring sm:gap-3.5" onclick={() => selectRow(row)}>
+          <Thumbnail mediaFileId={file.id} />
+          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent">{fileName(file.relativePath)}</span><span class="mt-1.5 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="sm:hidden">{' · '}{formatSize(file.sizeBytes)}</span></span></span>
+        </button></td>
+        <td class="hidden whitespace-nowrap tabular-nums sm:table-cell">{formatSize(file.sizeBytes)}</td>
+        <td class="hidden sm:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
+        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4" title={row.reason}>{row.reason}</span>{/if}</td>
+      </tr>
+    {/each}
+    {#snippet empty()}<Icon name="film" class="h-7 w-7 text-ink-4" /><p>{counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>{/snippet}
+  </DataTable>
 </div>
+
+{#snippet pagination()}
+  <span>{t(i18n.m.inventory.range, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + pageSize, total).toLocaleString(), total: total.toLocaleString() })}</span>
+  <div class="data-table-pages"><button class="btn btn-ghost btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1 || loading} aria-label={i18n.m.inventory.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span><button class="btn btn-ghost btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount || loading} aria-label={i18n.m.inventory.next_page}><Icon name="arrow-right" /></button></div>
+{/snippet}
 
 {#if selected}
   {#key selected.file.id}
@@ -364,12 +367,9 @@
 </ConfirmDialog>
 
 <style>
-
   .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
   .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }
   .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
-  .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 2.75rem; }.inventory-table th:nth-child(2) { width: 44%; }.inventory-table th:nth-child(3) { width: 13%; }.inventory-table th:nth-child(4) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
-  .inventory-table .selection-column { padding-left: .75rem; padding-right: .25rem; }.inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }.inventory-reason { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .25rem; color: var(--ink-4); font-size: .6875rem; line-height: 1.4; }
-  .inventory-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-3); font-size: .875rem; display: grid; justify-items: center; gap: 1rem; }.inventory-pagination { margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--ink-3); font-size: .75rem; }.inventory-pagination > div { display: flex; align-items: center; gap: .625rem; }.inventory-pagination .btn { min-width: 2.5rem; min-height: 2.5rem; }
-  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 2.5rem; }.inventory-table th:nth-child(2) { width: 70%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
+  .inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }
+  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-verdict { font-size: .6875rem; gap: .375rem; } }
 </style>

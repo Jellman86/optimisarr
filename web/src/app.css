@@ -810,9 +810,104 @@ p {
   /* The header row of a table inside a card: it sticks, it sits on the panel, and it is
      divided from the rows by a hairline. */
   .table-head {
-    @apply sticky top-0 z-10 text-left text-xs font-semibold text-ink-3;
+    @apply sticky top-0 z-10 text-left text-caption font-semibold text-ink-3;
     background: var(--panel);
     box-shadow: inset 0 -1px 0 var(--divide);
+  }
+
+  /* The operational list (DataTable.svelte). Rows are divided by hairlines, never strokes; the
+     row under the pointer and the open row share the lit fill. The surface clips rather than
+     scrolls by default, so the header sticks to the page as a long list goes by. */
+  .data-table-frame {
+    @apply min-w-0;
+  }
+  .data-table-surface {
+    overflow: clip;
+  }
+  .data-table-scroll-inline {
+    overflow-x: auto;
+  }
+  .data-table-scroll-contained {
+    overflow: auto;
+    max-height: var(--data-table-max-height, 65vh);
+  }
+  .data-table {
+    @apply w-full text-left text-body text-ink-2;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .data-table-fixed {
+    table-layout: fixed;
+  }
+  /* The cells carry the header's fill and hairline too: a table section does not paint a shadow
+     of its own in every engine. */
+  .data-table th {
+    @apply px-4 py-3 align-bottom font-semibold;
+    background: var(--panel);
+    box-shadow: inset 0 -1px 0 var(--divide);
+  }
+  .data-table td {
+    @apply px-4 py-3.5 align-middle;
+    border-top: 1px solid var(--divide-soft);
+    overflow-wrap: anywhere;
+    transition: background-color 120ms ease-out;
+  }
+  .data-table tbody tr:first-child td {
+    border-top: 0;
+  }
+  .data-table tbody tr:hover td,
+  .data-table tbody tr.selected-row td {
+    background: var(--lit);
+  }
+  .data-table-compact th,
+  .data-table-compact td {
+    @apply py-2;
+  }
+  /* The pick-a-row checkbox sits in the same narrow column, at the same inset, in every list. */
+  .data-table .selection-column {
+    @apply w-12 pr-1 pl-3;
+  }
+  .data-table .selection-column .checkbox {
+    @apply block;
+  }
+  /* A sortable header is a button inside a `th[aria-sort]`; the arrow follows the attribute. */
+  .table-sort {
+    @apply -mx-1 inline-flex items-center gap-1 rounded px-1 font-semibold focus-ring;
+    color: inherit;
+  }
+  .table-sort:hover {
+    @apply text-ink;
+  }
+  .table-sort::after {
+    content: '↕' / '';
+    @apply text-ink-4;
+  }
+  th[aria-sort='ascending'] .table-sort::after {
+    content: '↑' / '';
+    @apply text-ink-2;
+  }
+  th[aria-sort='descending'] .table-sort::after {
+    content: '↓' / '';
+    @apply text-ink-2;
+  }
+  /* Loading, empty and error read the same in every list: one calm, centred line. */
+  .data-table-state {
+    @apply grid justify-items-center gap-4 px-6 py-12 text-center text-body text-ink-3;
+  }
+  .data-table-footer {
+    @apply mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-caption text-ink-3;
+  }
+  .data-table-pages {
+    @apply flex items-center gap-2;
+  }
+  @media (max-width: 639px) {
+    .data-table th,
+    .data-table td {
+      @apply px-3;
+    }
+    .data-table .selection-column {
+      @apply w-10 pr-1 pl-3;
+    }
   }
 
   /* A tooltip is the one surface drawn in the opposite value to the page, so it
@@ -850,7 +945,8 @@ p {
   @media (pointer: coarse), (max-width: 639px) {
     .btn,
     .segment,
-    .filter-pill {
+    .filter-pill,
+    .table-sort {
       min-height: var(--control-lg);
     }
     .btn-icon,
@@ -866,7 +962,8 @@ p {
   .choice,
   .card-interactive,
   .switch-track,
-  .switch-knob {
+  .switch-knob,
+  .data-table td {
     transition: none;
   }
   .choice:hover,

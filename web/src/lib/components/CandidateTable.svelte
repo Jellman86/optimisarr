@@ -11,6 +11,7 @@
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import BatchResult from './BatchResult.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import DataTable from './DataTable.svelte'
   import FilterBar from './FilterBar.svelte'
   import PreviewCompare from './PreviewCompare.svelte'
   import SelectionCheckbox from './SelectionCheckbox.svelte'
@@ -138,120 +139,110 @@
       {/snippet}
     </SelectionToolbar>
   {/if}
-
-  <div class="card overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="border-b border-line text-left text-xs font-semibold text-ink-3">
-        <tr>
-          <th class="w-10 px-4 py-3">
-            <SelectionCheckbox
-              checked={selection.isEverySelected(visibleIds)}
-              indeterminate={selection.isSomeSelected(visibleIds) && !selection.isEverySelected(visibleIds)}
-              label={i18n.m.selection.select_all}
-              onchange={toggleSelectAll}
-            />
-          </th>
-          <th class="px-4 py-3">{i18n.m.shared.col_status}</th>
-          <th class="px-4 py-3">{i18n.m.shared.col_file}</th>
-          <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.shared.col_size}</th>
-          <th class="hidden px-4 py-3 md:table-cell">{i18n.m.shared.col_codec}</th>
-          <!-- The rule profile is constant within one library, so the column is redundant when scoped. -->
-          {#if !scoped}<th class="hidden px-4 py-3 lg:table-cell">{i18n.m.shared.col_profile}</th>{/if}
-          <th class="px-4 py-3">{i18n.m.shared.col_reason}</th>
-          <th class="px-4 py-3"></th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-line-soft">
-        {#each pagedVisible as candidate (candidate.mediaFileId)}
-          <tr class="text-ink-2">
-            <td class="px-4 py-2">
-              <SelectionCheckbox
-                checked={selection.isSelected(candidate.mediaFileId)}
-                label={t(i18n.m.selection.select_row, { name: candidate.relativePath })}
-                onchange={(extend) => toggleSelection(candidate.mediaFileId, extend)}
-              />
-            </td>
-            <td class="px-4 py-2">
-              {#if candidate.eligible}
-                <span class="badge tone-ok">{i18n.m.shared.eligible}</span>
-              {:else}
-                <span class="badge tone-muted">{i18n.m.shared.skipped}</span>
-              {/if}
-            </td>
-            <td class="px-4 py-2">
-              <div class="flex items-center gap-3">
-                <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
-                <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
-                  {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
-                    <span class="badge mr-1 tone-muted">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
-                  {/if}{candidate.relativePath}
-                </span>
-              </div>
-            </td>
-            <td class="hidden px-4 py-2 sm:table-cell">{formatSize(candidate.sizeBytes)}</td>
-            <td class="hidden px-4 py-2 md:table-cell">
-              {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 tone-warn">HDR</span>{/if}
-            </td>
-            <!-- The rule profile is a video preset; it is meaningless for audio/image files,
-                 which are governed by their own audio/image rules. -->
-            {#if !scoped}
-              <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
-            {/if}
-            <td class="px-4 py-2 text-xs text-ink-3">{candidate.reason}</td>
-            <td class="px-4 py-2 text-right">
-              {#if candidate.eligible}
-                <button class="btn btn-sm" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
-              {/if}
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
-
-  <ConfirmDialog
-    bind:open={confirmOpen}
-    title={plural(selection.count, i18n.m.shared.batch_confirm_exclude_title_one, i18n.m.shared.batch_confirm_exclude_title_other, selection.count.toLocaleString())}
-    confirmLabel={i18n.m.shared.batch_exclude}
-    danger={true}
-    busy={busy}
-    onconfirm={excludeSelected}
-    oncancel={() => (confirmOpen = false)}
-  >
-    {#snippet body()}
-      <p>{i18n.m.shared.batch_confirm_exclude_body}</p>
-      <p class="mt-2">{i18n.m.shared.batch_confirm_exclude_existing}</p>
-    {/snippet}
-  </ConfirmDialog>
-
-  {#if previewing}
-    <PreviewCompare
-      mediaFileId={previewing.mediaFileId}
-      mediaKind={previewing.mediaKind}
-      relativePath={previewing.relativePath}
-      onClose={() => (previewing = null)}
-    />
-  {/if}
-  <div class="mt-2 flex items-center justify-between text-xs text-ink-4">
-    <span>
-      {#if offered.length > 0}
-        {offered.length === candidates.length
-          ? t(i18n.m.shared.candidate_range_all, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, offered.length).toLocaleString(), total: offered.length.toLocaleString() })
-          : t(i18n.m.shared.candidate_range_filtered, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, offered.length).toLocaleString(), visible: offered.length.toLocaleString(), total: candidates.length.toLocaleString() })}
-      {:else}
-        0
-      {/if}
-    </span>
-    {#if pageCount > 1}
-      <span class="flex items-center gap-2">
-        <button class="btn btn-sm btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
-        <span>{t(i18n.m.shared.page_of, { page: Math.min(page, pageCount).toLocaleString(), count: pageCount.toLocaleString() })}</span>
-        <button class="btn btn-sm btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
-      </span>
-    {/if}
-  </div>
-{:else}
-  <div class="card p-8 text-center text-ink-3">
-    {i18n.m.shared.candidates_empty}
-  </div>
 {/if}
+
+<DataTable rowCount={pagedVisible.length} label={i18n.m.libraries.tab_candidates} layout="auto" scroll="inline" density="compact" footer={offered.length > 0 ? range : undefined}>
+  {#snippet head()}
+    <tr>
+      <th scope="col" class="selection-column">
+        <SelectionCheckbox
+          checked={selection.isEverySelected(visibleIds)}
+          indeterminate={selection.isSomeSelected(visibleIds) && !selection.isEverySelected(visibleIds)}
+          label={i18n.m.selection.select_all}
+          onchange={toggleSelectAll}
+        />
+      </th>
+      <th scope="col">{i18n.m.shared.col_status}</th>
+      <th scope="col">{i18n.m.shared.col_file}</th>
+      <th scope="col" class="hidden sm:table-cell">{i18n.m.shared.col_size}</th>
+      <th scope="col" class="hidden md:table-cell">{i18n.m.shared.col_codec}</th>
+      <!-- The rule profile is constant within one library, so the column is redundant when scoped. -->
+      {#if !scoped}<th scope="col" class="hidden lg:table-cell">{i18n.m.shared.col_profile}</th>{/if}
+      <th scope="col">{i18n.m.shared.col_reason}</th>
+      <th scope="col"><span class="sr-only">{i18n.m.shared.preview}</span></th>
+    </tr>
+  {/snippet}
+  {#each pagedVisible as candidate (candidate.mediaFileId)}
+    <tr>
+      <td class="selection-column">
+        <SelectionCheckbox
+          checked={selection.isSelected(candidate.mediaFileId)}
+          label={t(i18n.m.selection.select_row, { name: candidate.relativePath })}
+          onchange={(extend) => toggleSelection(candidate.mediaFileId, extend)}
+        />
+      </td>
+      <td>
+        {#if candidate.eligible}
+          <span class="badge tone-ok">{i18n.m.shared.eligible}</span>
+        {:else}
+          <span class="badge tone-muted">{i18n.m.shared.skipped}</span>
+        {/if}
+      </td>
+      <td>
+        <div class="flex items-center gap-3">
+          <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
+          <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
+            {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
+              <span class="badge mr-1 tone-muted">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
+            {/if}{candidate.relativePath}
+          </span>
+        </div>
+      </td>
+      <td class="hidden whitespace-nowrap tabular-nums sm:table-cell">{formatSize(candidate.sizeBytes)}</td>
+      <td class="hidden md:table-cell">
+        {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 tone-warn">HDR</span>{/if}
+      </td>
+      <!-- The rule profile is a video preset; it is meaningless for audio/image files,
+           which are governed by their own audio/image rules. -->
+      {#if !scoped}
+        <td class="hidden text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
+      {/if}
+      <td class="text-xs text-ink-3">{candidate.reason}</td>
+      <td class="text-right">
+        {#if candidate.eligible}
+          <button class="btn btn-sm" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
+        {/if}
+      </td>
+    </tr>
+  {/each}
+  {#snippet empty()}{candidates.length > 0 ? i18n.m.inventory.empty_filter : i18n.m.shared.candidates_empty}{/snippet}
+</DataTable>
+
+<ConfirmDialog
+  bind:open={confirmOpen}
+  title={plural(selection.count, i18n.m.shared.batch_confirm_exclude_title_one, i18n.m.shared.batch_confirm_exclude_title_other, selection.count.toLocaleString())}
+  confirmLabel={i18n.m.shared.batch_exclude}
+  danger={true}
+  busy={busy}
+  onconfirm={excludeSelected}
+  oncancel={() => (confirmOpen = false)}
+>
+  {#snippet body()}
+    <p>{i18n.m.shared.batch_confirm_exclude_body}</p>
+    <p class="mt-2">{i18n.m.shared.batch_confirm_exclude_existing}</p>
+  {/snippet}
+</ConfirmDialog>
+
+{#if previewing}
+  <PreviewCompare
+    mediaFileId={previewing.mediaFileId}
+    mediaKind={previewing.mediaKind}
+    relativePath={previewing.relativePath}
+    onClose={() => (previewing = null)}
+  />
+{/if}
+
+{#snippet range()}
+  <span>
+    {offered.length === candidates.length
+      ? t(i18n.m.shared.candidate_range_all, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, offered.length).toLocaleString(), total: offered.length.toLocaleString() })
+      : t(i18n.m.shared.candidate_range_filtered, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, offered.length).toLocaleString(), visible: offered.length.toLocaleString(), total: candidates.length.toLocaleString() })}
+  </span>
+  {#if pageCount > 1}
+    <span class="data-table-pages">
+      <button class="btn btn-sm btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
+      <span>{t(i18n.m.shared.page_of, { page: Math.min(page, pageCount).toLocaleString(), count: pageCount.toLocaleString() })}</span>
+      <button class="btn btn-sm btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
+    </span>
+  {/if}
+{/snippet}
