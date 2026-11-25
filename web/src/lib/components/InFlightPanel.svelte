@@ -11,6 +11,7 @@
   import { jobLocation, verificationPhase } from '../job-presentation'
   import { counts } from '../stores/counts.svelte'
   import PlaybackHolds from './PlaybackHolds.svelte'
+  import PanelHeader from './PanelHeader.svelte'
 
   let { jobs, state: queueState, lastResult = null }: {
     jobs: Job[]
@@ -72,15 +73,16 @@
 </script>
 
 <div class="card h-full">
-  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
-    <span class="label mb-0">{i18n.m.dashboard.in_flight}</span>
-    <span class="ml-auto text-xs tabular-nums text-ink-3">
-      {t(i18n.m.dashboard.in_flight_counts, {
-        running: jobs.length.toLocaleString(),
-        queued: (queueState?.queued ?? 0).toLocaleString(),
-      })}
-    </span>
-  </div>
+  <PanelHeader title={i18n.m.dashboard.in_flight}>
+    {#snippet trailing()}
+      <span class="text-xs tabular-nums text-ink-3">
+        {t(i18n.m.dashboard.in_flight_counts, {
+          running: jobs.length.toLocaleString(),
+          queued: (queueState?.queued ?? 0).toLocaleString(),
+        })}
+      </span>
+    {/snippet}
+  </PanelHeader>
 
   {#if jobs.length === 0}
     <!-- An empty list is not an error, and it is not the same as an idle server. The status bar
@@ -121,10 +123,10 @@
       </section>
     {/if}
   {:else}
-    <ul class="m-0 list-none p-0">
+    <ul class="m-0 list-none divide-y divide-line-soft p-0">
       {#each shown as job (job.id)}
         {@const title = mediaTitle(job.relativePath)}
-        <li class="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 md:grid-cols-[1fr_200px_140px] md:items-center">
+        <li class="grid gap-3 px-4 py-3 md:grid-cols-[1fr_200px_140px] md:items-center">
           <div class="min-w-0">
             <div class="flex min-w-0 items-center gap-3">
               <Thumbnail mediaFileId={job.mediaFileId} size="sm" />
@@ -170,7 +172,7 @@
     </ul>
     {#if hidden > 0}
       <button
-        class="w-full border-t border-line px-4 py-2.5 text-left text-xs text-ink-3 transition-colors hover:text-accent"
+        class="hairline-t w-full px-4 py-2.5 text-left text-xs text-ink-3 transition-colors hover:text-accent"
         onclick={() => router.go('/queue')}
       >{t(i18n.m.dashboard.in_flight_more, { count: hidden.toLocaleString() })}</button>
     {/if}

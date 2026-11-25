@@ -3,6 +3,7 @@
   import { formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { savingsBars } from '../savings-chart'
+  import PanelHeader from './PanelHeader.svelte'
 
   let { days }: { days: DailySaving[] | null } = $props()
 
@@ -45,15 +46,14 @@
   }
 </script>
 
+{#snippet daySummary()}
+  <span class="text-xs tabular-nums {hoveredBar ? 'text-ink' : 'text-ink-3'}" aria-hidden={hoveredBar ? 'true' : undefined}>
+    {hoveredBar ? dayDetail(hoveredBar) : summary}
+  </span>
+{/snippet}
+
 <section class="card flex h-full flex-col" aria-labelledby="saved-per-day-heading">
-  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
-    <h2 id="saved-per-day-heading" class="label mb-0">{i18n.m.dashboard.saved_per_day}</h2>
-    {#if chart && chart.totalBytes > 0}
-      <span class="ml-auto text-xs tabular-nums {hoveredBar ? 'text-ink' : 'text-ink-3'}" aria-hidden={hoveredBar ? 'true' : undefined}>
-        {hoveredBar ? dayDetail(hoveredBar) : summary}
-      </span>
-    {/if}
-  </div>
+  <PanelHeader as="h2" id="saved-per-day-heading" title={i18n.m.dashboard.saved_per_day} trailing={chart && chart.totalBytes > 0 ? daySummary : undefined} />
 
   {#if !chart || !days}
     <div class="flex-1 p-4" aria-hidden="true"><div class="h-full min-h-40 animate-pulse rounded-lg bg-[var(--lit)]"></div></div>

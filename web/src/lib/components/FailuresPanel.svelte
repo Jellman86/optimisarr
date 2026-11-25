@@ -84,7 +84,7 @@
   <div class="space-y-4">
     {#each groups as group (group.category)}
       <div class="card overflow-hidden">
-        <div class="flex items-start gap-3 border-b border-line-soft p-4 border-line">
+        <div class="hairline-b flex items-start gap-3 p-4">
           <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-bad" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
@@ -157,7 +157,7 @@
         </ul>
 
         {#if group.count > group.samples.length}
-          <div class="border-t border-line-soft px-4 py-2 text-xs text-ink-4 border-line">
+          <div class="border-t border-line-soft px-4 py-2 text-xs text-ink-4">
             {t(i18n.m.shared.failures_showing, { shown: group.samples.length, total: group.count })}
           </div>
         {/if}
