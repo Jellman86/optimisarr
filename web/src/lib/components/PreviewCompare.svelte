@@ -9,6 +9,7 @@
   import VerificationChecks from './VerificationChecks.svelte'
   import MediaCompare from './MediaCompare.svelte'
   import Icon from './Icon.svelte'
+  import OkMark from './OkMark.svelte'
   import Thumbnail from './Thumbnail.svelte'
   import { modal } from '../modal'
   import { i18n, t } from '../i18n/i18n.svelte'
@@ -163,7 +164,7 @@
     {:else if isRunning || !preview}
       <div class="progress-track mt-2"><div class="progress-indeterminate"></div></div>
     {:else if preview.status === 'Completed'}
-      <p class="mt-2 text-[11px] text-ok">{i18n.m.shared.ready_expand}</p>
+      <p class="mt-2 flex items-center gap-1 text-[11px] text-ink-2"><OkMark class="h-3 w-3" />{i18n.m.shared.ready_expand}</p>
     {/if}
   </div>
 {:else}

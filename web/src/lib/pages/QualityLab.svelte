@@ -799,7 +799,7 @@
               {#if switching}<span class="text-xs font-medium text-accent" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
               {#if activeSample && activeSample.sampleCount > 1}<span class="hidden text-xs text-ink-4 min-[360px]:inline">{sceneLabel(activeScene + 1, activeSample.sampleCount)}</span>{/if}
               {#if session.mediaKind === 'Video'}
-                <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-accent" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
+                <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-ring" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
                   <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d={fullscreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5'} /></svg>
                 </button>
               {/if}
@@ -862,7 +862,7 @@
               <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                 <div class="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label={i18n.m.calibration.switch_sample}>
                   {#each variants as variant}
-                    <button class="min-h-11 min-w-11 rounded-full px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-accent {activeName === variant.name ? 'bg-accent-fill text-accent-on' : 'bg-white/10 text-white hover:bg-white/20'}" aria-pressed={activeName === variant.name} aria-label={variant.isOriginal ? i18n.m.calibration.show_original : t(i18n.m.calibration.show_sample, { name: variant.name })} aria-keyshortcuts={variant.isOriginal ? 'O' : variant.name} onclick={() => chooseVariant(variant.name)}>{variant.isOriginal ? 'O' : variant.name}</button>
+                    <button class="min-h-11 min-w-11 rounded-full px-3 text-sm font-bold focus-ring {activeName === variant.name ? 'bg-accent-fill text-accent-on' : 'bg-white/10 text-white hover:bg-white/20'}" aria-pressed={activeName === variant.name} aria-label={variant.isOriginal ? i18n.m.calibration.show_original : t(i18n.m.calibration.show_sample, { name: variant.name })} aria-keyshortcuts={variant.isOriginal ? 'O' : variant.name} onclick={() => chooseVariant(variant.name)}>{variant.isOriginal ? 'O' : variant.name}</button>
                   {/each}
                 </div>
                 <span class="text-xs text-white/60">{i18n.m.calibration.shortcut_hint}</span>
@@ -881,7 +881,7 @@
                 <dt class="text-warn">{i18n.m.calibration.playback_time}</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · {sceneButton(activeScene + 1)}</dd>
               </dl>
               {#if session.mediaKind === 'Video' && browserStreamUrl}
-                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-warn-line px-3 py-2 text-xs font-semibold text-warn-strong hover:bg-warn-soft focus-visible:outline-2 focus-visible:outline-warn" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
+                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-warn-line px-3 py-2 text-xs font-semibold text-warn-strong hover:bg-warn-soft focus-ring" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
               {/if}
             </div>
           {/if}

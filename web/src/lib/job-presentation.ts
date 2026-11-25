@@ -27,6 +27,12 @@ export function isJobSuspended(job: JobState, queue: { runningEncodesSuspended: 
   return job.status === 'Transcoding' && queue?.runningEncodesSuspended === true && queue.manualPauseMode === 'suspended'
 }
 
+export function isJobStageActive(job: JobState, queue: { runningEncodesSuspended: boolean; manualPauseMode: string } | null): boolean {
+  if (job.finalizing === true) return true
+  if (isJobSuspended(job, queue)) return false
+  return ['Probing', 'Transcoding', 'Verifying', 'Leased'].includes(job.status)
+}
+
 export function jobPercent(job: JobState): number | null {
   const value = job.progress
   if (value == null || !Number.isFinite(value)) return null

@@ -15,6 +15,7 @@
   import FilesChoice from '../components/FilesChoice.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import LanguageSelect from '../components/LanguageSelect.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
@@ -675,7 +676,7 @@
               <Icon name="retry" class="h-4 w-4 motion-reduce:animate-none {retesting ? 'animate-spin' : ''}" />
               {retesting ? w.testing : w.test_again}
             </button>
-            {#if retestMessage}<span class="text-sm text-ok">{retestMessage}</span>{/if}
+            {#if retestMessage}<span class="inline-flex items-center gap-1.5 text-sm text-ink-2"><OkMark />{retestMessage}</span>{/if}
           </div>
         {:else if viewStep === 2}
           <h1 tabindex="-1" class="page-title">{w.library_heading}</h1>
@@ -696,7 +697,7 @@
                         {#if isVideoLibrary(library.mediaType)}<span class="badge tone-neutral">{presetName(library.ruleProfile, i18n.m)}</span>{/if}
                       </div>
                       <div class="mt-1 break-all font-mono text-xs text-ink-3">{library.path}</div>
-                      <div class="mt-2 text-xs font-medium {access?.ok ? 'text-ok' : 'text-warn'}">{access?.ok ? w.folder_ok : access?.message ?? i18n.m.setup.access_checking}</div>
+                      <div class="mt-2 flex items-center gap-1.5 text-xs font-medium {access?.ok ? 'text-ink-2' : 'text-warn'}">{#if access?.ok}<OkMark class="h-3 w-3" />{/if}{access?.ok ? w.folder_ok : access?.message ?? i18n.m.setup.access_checking}</div>
                       {#if access && !access.ok}<p class="callout tone-warn mt-2 text-xs leading-5">{recoverySteps()}</p>{/if}
                       {#if scan}
                         <div class="mt-2 text-xs {scan.state === 'failed' ? 'text-bad' : 'text-ink-2'}" role="status" data-setup-scan={scan.state}>{scanText(scan)}</div>

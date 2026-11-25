@@ -38,7 +38,7 @@
     </div>
     <div class="grid grid-cols-6">
       {#each stops as stop, index}
-        <button type="button" class="flex min-h-16 min-w-0 flex-col items-center gap-2 rounded-md px-0.5 py-2 text-[10px] leading-4 transition-colors hover:bg-lit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:text-xs"
+        <button type="button" class="flex min-h-16 min-w-0 flex-col items-center gap-2 rounded-md px-0.5 py-2 text-[10px] leading-4 transition-colors hover:bg-lit focus-ring sm:text-xs"
           class:text-accent={selected === index} class:text-ink-3={selected !== index}
           title={t(i18n.m.audio_encoding.budget, { codec: codec.toUpperCase(), bitrate: stop.bitrate })}
           aria-pressed={selected === index} onclick={() => onselect(stop.mode)}>

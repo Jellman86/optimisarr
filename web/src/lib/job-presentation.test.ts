@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { jobPercent, jobStep, isWorkingJob, isJobSuspended, jobLocation, verificationPhase, localWorkloadCapacity } from './job-presentation.ts'
+import { jobPercent, jobStep, isWorkingJob, isJobSuspended, isJobStageActive, jobLocation, verificationPhase, localWorkloadCapacity } from './job-presentation.ts'
 
 test('location and verification route describe the current attempt', () => {
   assert.equal(jobLocation({ status: 'Leased', remoteStage: 'Encoding' }), 'worker')
@@ -43,6 +43,19 @@ test('only confirmed full suspension labels a local encode as paused', () => {
   assert.equal(isJobSuspended({ status: 'Leased' }, status), false)
   assert.equal(isJobSuspended({ status: 'Verifying' }, status), false)
   assert.equal(isJobSuspended({ status: 'Transcoding' }, { ...status, manualPauseMode: 'partial' }), false)
+})
+
+test('only actively running stages pulse; waiting and suspended work stays still', () => {
+  const suspended = { runningEncodesSuspended: true, manualPauseMode: 'suspended' }
+  assert.equal(isJobStageActive({ status: 'Probing' }, null), true)
+  assert.equal(isJobStageActive({ status: 'Transcoding' }, null), true)
+  assert.equal(isJobStageActive({ status: 'Verifying' }, null), true)
+  assert.equal(isJobStageActive({ status: 'Leased', remoteStage: 'Encoding' }, suspended), true)
+  assert.equal(isJobStageActive({ status: 'Transcoding' }, suspended), false)
+  assert.equal(isJobStageActive({ status: 'AwaitingVerification' }, null), false)
+  assert.equal(isJobStageActive({ status: 'ReadyToReplace' }, null), false)
+  assert.equal(isJobStageActive({ status: 'ReadyToReplace', finalizing: true }, null), true)
+  assert.equal(isJobStageActive({ status: 'Completed' }, null), false)
 })
 
 test('local slot totals exclude workers and safe replacement capacity', () => {

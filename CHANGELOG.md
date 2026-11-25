@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Improve contrast and visual clarity across the web UI and Linux sidecar: input edges, off toggle tracks, and focus rings now clear WCAG 3:1 contrast in both light and dark themes, and focus rings in action menus, language selection, info tooltips, the sidebar mark, audio presets, and Quality Lab now share the same 3:1 outline. Passed, saved, healthy, and eligible states now render as ink text beside a solid check mark rather than bare blue text, keeping blue text reserved for clickable actions, and job stage trackers distinguish completed, actively running, waiting or paused, and pending stages by shape as well as spoken screen-reader status. No migration.
+
 - Include `libegl1` (`libEGL.so.1`) in the server container image so NVIDIA's injected Vulkan ICD (`libGLX_nvidia.so.0`) can expose `vkCreateInstance` for AI super-resolution (#548). Without `libegl1`, Docker containers on NVIDIA hosts with `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics` still failed to initialise the NVIDIA Vulkan driver and fell back to CPU `llvmpipe`. No migration. Reported by [Blorti](https://github.com/Blorti).
 
 - Show Vulkan driver diagnostics under **Technical details** after the AI super-resolution sample test (#548). Device detection now reads past loader messages and checks every reported device. If the container still falls back to the CPU with NVIDIA `graphics` enabled, enable Vulkan loader tracing to see which driver manifests were found and any errors loading them.

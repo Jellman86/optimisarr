@@ -9,6 +9,7 @@
   import { brandAsset, parseBrandStyle } from './lib/brand-style'
   import BrandCanvas from './lib/components/BrandCanvas.svelte'
   import Icon from './lib/components/Icon.svelte'
+  import OkMark from './lib/components/OkMark.svelte'
   import {
     STAGES, createSpeedTracker, encodedPercent, formatPairingCode, isCompletePairingCode,
     remainingSeconds, serverHost, sinceLabel, stageIndex, timecode, workerState,
@@ -175,7 +176,7 @@
         <div class="status-strip-state">
           <span class="h-2 w-2 flex-none rounded-full {view.tone === 'live' ? 'animate-pulse bg-accent' : view.tone === 'ok' ? 'bg-ok' : view.tone === 'warn' ? 'bg-warn' : view.tone === 'bad' ? 'bg-bad' : 'bg-ink-5'}" aria-hidden="true"></span>
           <span class="label mb-0">State</span>
-          <span class="font-mono text-sm font-medium {view.tone === 'live' ? 'text-accent' : view.tone === 'ok' ? 'text-ok' : view.tone === 'warn' ? 'text-warn' : view.tone === 'bad' ? 'text-bad' : 'text-ink-2'}">{view.label}</span>
+          <span class="font-mono text-sm font-medium {view.tone === 'live' ? 'text-accent' : view.tone === 'ok' ? 'text-ink' : view.tone === 'warn' ? 'text-warn' : view.tone === 'bad' ? 'text-bad' : 'text-ink-2'}">{view.label}</span>
           <span class="status-strip-reason" title={view.detail}>{view.detail}</span>
         </div>
         <div class="status-strip-fact"><span class="label mb-0">Slots</span><span class="fact-value">{status.jobs.length} / {status.concurrency}</span></div>
@@ -288,9 +289,9 @@
                   {/if}
                 </div>
                 <p class="text-xs text-ink-3">{STAGES[step].doing}</p>
-                <ol class="job-stages" aria-label="Stages on this worker">
+                <ol class="job-stages mt-4 max-sm:grid-cols-2" aria-label="Stages on this worker">
                   {#each STAGES as stage, index}
-                    <li class:stage-done={index < step} class:stage-current={index === step} aria-current={index === step ? 'step' : undefined}>{#if index < step}<span class="mr-1" aria-hidden="true">✓</span>{/if}{stage.label}</li>
+                    <li class:stage-done={index < step} class:stage-current={index === step} aria-current={index === step ? 'step' : undefined}>{#if index < step}<OkMark />{:else if index === step}<span class="stage-live" aria-hidden="true"></span>{:else}<span class="stage-pending" aria-hidden="true"></span>{/if}<span class="min-w-0">{stage.label}{#if index < step}<span class="sr-only"> (done)</span>{/if}</span></li>
                   {/each}
                 </ol>
                 <div class="facts">
@@ -424,10 +425,6 @@
   .job-title { margin: .5rem 0 .9rem; font-size: 1.3rem; line-height: 1.3; letter-spacing: -.025em; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
   .readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem 1rem; margin: .6rem 0 .25rem; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
   .readout strong { font-size: 1rem; color: var(--ink); font-weight: 600; }
-  .job-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin-top: 1rem; }
-  .job-stages li { padding-top: .55rem; border-top: 2px solid var(--edge); font-size: .6875rem; color: var(--ink-3); }
-  .job-stages .stage-done { color: var(--ok); border-color: var(--ok); }
-  .job-stages .stage-current { color: var(--accent); border-color: var(--accent); }
   .facts { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: 1rem; font: .72rem var(--font-mono); color: var(--ink-3); }
   .frame { position: relative; margin: 0; aspect-ratio: 16 / 9; border-radius: .6rem; overflow: hidden; display: grid; place-items: center; background: var(--sunken); box-shadow: var(--inset-1); align-self: start; }
   .spectrum-caption { grid-column: 2 / -1; }
@@ -465,6 +462,5 @@
     .poster { width: 3.75rem; }
     .job-title { font-size: 1.1rem; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .job-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 </style>

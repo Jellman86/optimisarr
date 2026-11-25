@@ -141,7 +141,7 @@
           </div>
 
           <div>
-            <div class="mb-1.5 text-[11px] font-semibold {verifying(job) ? 'text-ok' : 'text-accent'}">
+            <div class="mb-1.5 text-[11px] font-semibold text-accent">
               {stageLabel(job)}
             </div>
             <div class="progress-track">

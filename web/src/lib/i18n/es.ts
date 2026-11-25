@@ -775,6 +775,7 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     step_encode: "Codificar",
     step_verify: "Verificar",
     step_replace: "Reemplazar",
+    step_done: "completado",
     host_usage: "Uso del equipo",
     remote_job: "Procesando en {worker}",
     no_matches: "Ninguna tarea coincide con este filtro.",

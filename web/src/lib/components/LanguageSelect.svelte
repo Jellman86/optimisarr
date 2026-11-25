@@ -158,7 +158,7 @@
           role="option"
           aria-selected={locale.code === i18n.locale}
           data-locale={locale.code}
-          class="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus:outline-none"
+          class="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus-ring-inset"
           class:text-accent={locale.code === i18n.locale}
           onclick={() => selectLocale(locale.code)}
           onkeydown={(event) => moveFocus(event, index)}

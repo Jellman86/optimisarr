@@ -3,6 +3,7 @@
   import { formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Icon from './Icon.svelte'
+  import OkMark from './OkMark.svelte'
 
   let {
     stats,
@@ -87,8 +88,8 @@
     </div>
     <div class="border-l border-line px-4 py-3">
       <dt class="label mb-0.5">{i18n.m.dashboard.health}</dt>
-      <dd class="m-0 flex items-center gap-1.5 {healthy ? 'text-ok' : 'text-warn'}" title={healthDetail}>
-        <Icon name={healthy ? 'check' : 'warning'} class="h-3.5 w-3.5" />
+      <dd class="m-0 flex items-center gap-1.5 {healthy ? 'text-ink-2' : 'text-warn'}" title={healthDetail}>
+        {#if healthy}<OkMark />{:else}<Icon name="warning" class="h-3.5 w-3.5" />{/if}
         {healthy ? i18n.m.dashboard.health_ok : i18n.m.dashboard.needs_attention}
       </dd>
     </div>

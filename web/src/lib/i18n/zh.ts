@@ -762,6 +762,7 @@ export const zh: Messages = {
     step_encode: "编码",
     step_verify: "验证",
     step_replace: "替换",
+    step_done: "已完成",
     host_usage: "主机使用率",
     remote_job: "正在 {worker} 上处理",
     no_matches: "没有符合此筛选条件的任务。",

@@ -99,7 +99,7 @@
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-50 {item.danger
+          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-ring-inset disabled:pointer-events-none disabled:opacity-50 {item.danger
  ? 'text-bad hover:bg-bad-soft'
  : 'text-ink-2 hover:bg-raised'}"
           disabled={item.disabled}

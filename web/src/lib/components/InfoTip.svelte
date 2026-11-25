@@ -20,7 +20,7 @@
 <span class="group relative -m-[15px] inline-flex align-middle {cls}">
   <button
     type="button"
-    class="inline-flex h-11 w-11 items-center justify-center text-ink-4 transition-colors hover:text-ink-2 focus-visible:text-accent focus-visible:outline-none"
+    class="inline-flex h-11 w-11 items-center justify-center rounded-full text-ink-4 transition-colors hover:text-ink-2 focus-visible:text-accent focus-ring-inset"
     aria-label={accessibleLabel}
     aria-describedby={tooltipId}
     onclick={(e) => {
