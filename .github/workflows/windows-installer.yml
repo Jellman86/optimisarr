@@ -1,3 +1,4 @@
+# fork: dispatchable via gh workflow run (gnolnos/optimisarr)
 name: Windows sidecar installer
 on:
   workflow_dispatch:
@@ -92,3 +93,4 @@ jobs:
           fail_on_unmatched_files: true
           draft: true
           make_latest: false
+
