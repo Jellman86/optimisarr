@@ -1040,7 +1040,7 @@ test('library tab headings describe the displayed content and restore the page h
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Which files')
 })
 
-test('the page list fills the page being read and nothing else', async ({ page }) => {
+test('the page list lights the page being read and keeps the accent fill for Save', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/checks')
   const current = pageTab(page, 'Checks')
@@ -1053,8 +1053,12 @@ test('the page list fills the page being read and nothing else', async ({ page }
     probe.remove()
     return value
   })
-  await expect(current).toHaveCSS('background-color', fill)
-  await expect(pageTab(page, 'Video')).not.toHaveCSS('background-color', fill)
+  // The page being read is a lit fill in semibold ink; the accent fill means "the action that
+  // advances the work", so a navigation pill never wears it.
+  await expect(current).not.toHaveCSS('background-color', fill)
+  await expect(current).toHaveCSS('background-image', /gradient/)
+  await expect(current).toHaveCSS('font-weight', '600')
+  await expect(pageTab(page, 'Video')).toHaveCSS('background-image', 'none')
   await pageTab(page, 'Video').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video')
   await expect(pageTab(page, 'Video')).toHaveAttribute('aria-current', 'page')

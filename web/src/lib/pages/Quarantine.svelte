@@ -5,6 +5,7 @@
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import Segmented from '../components/Segmented.svelte'
   import Icon from '../components/Icon.svelte'
   import SizeChange from '../components/SizeChange.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
@@ -311,11 +312,11 @@
 {#if loadError}<Banner kind="error" class="mb-4">{loadError}<button class="btn ml-3" onclick={load}>{i18n.m.setup.retry}</button></Banner>{/if}
 
 {#if duplicates.length > 0 && replacements.length > 0}
-  <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label={i18n.m.quarantine.kind_label}>
-    {#each [['all', i18n.m.quarantine.kind_all, replacements.length + duplicates.length], ['optimisation', i18n.m.quarantine.kind_optimisation, replacements.length], ['duplicate', i18n.m.quarantine.kind_duplicate, duplicates.length]] as const as [value, label, count] (value)}
-      <button class="btn {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { chosenKind = value }}>{label} ({count})</button>
-    {/each}
-  </div>
+  <Segmented class="mb-4" label={i18n.m.quarantine.kind_label} value={kind} onselect={(value) => { chosenKind = value }} items={[
+    { value: 'all', label: i18n.m.quarantine.kind_all, count: replacements.length + duplicates.length },
+    { value: 'optimisation', label: i18n.m.quarantine.kind_optimisation, count: replacements.length },
+    { value: 'duplicate', label: i18n.m.quarantine.kind_duplicate, count: duplicates.length },
+  ]} />
 {/if}
 
 {#if duplicates.length > 0 && kind !== 'optimisation'}

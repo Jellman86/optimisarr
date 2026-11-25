@@ -12,6 +12,8 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import Chip from '../components/Chip.svelte'
+  import Segmented from '../components/Segmented.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
@@ -1086,6 +1088,13 @@
     } finally {
       editorCandidatesLoading = false
     }
+  }
+
+  // The Excluded tab is fetched when it is opened, so it shows exclusions made since the editor loaded.
+  function selectEditorTab(tab: typeof activeTab) {
+    if (tab === activeTab) return
+    activeTab = tab
+    if (tab === 'excluded' && editingId) void loadEditorExclusions(editingId)
   }
 
   async function loadEditorExclusions(libraryId: number) {
@@ -2210,7 +2219,7 @@
         {:else if audioLanguageInput.codes.length > 0}
           <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
-            {#each audioLanguageInput.codes as code (code)}<span class="badge tone-accent font-mono uppercase">{code}</span>{/each}
+            {#each audioLanguageInput.codes as code (code)}<Chip tone="accent" mono class="uppercase">{code}</Chip>{/each}
           </div>
         {/if}
       </SettingRow>
@@ -2229,7 +2238,7 @@
         {:else if subtitleLanguageInput.codes.length > 0}
           <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
-            {#each subtitleLanguageInput.codes as code (code)}<span class="badge tone-accent font-mono uppercase">{code}</span>{/each}
+            {#each subtitleLanguageInput.codes as code (code)}<Chip tone="accent" mono class="uppercase">{code}</Chip>{/each}
           </div>
         {/if}
       </SettingRow>
@@ -2596,18 +2605,19 @@
 
 {#if editingId !== null}
   {#if editingId !== 0}
-    <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
-      <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.nav.settings}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
-      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}><span>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading}{' '}({editorEligibleCount}){/if}</span></button>
-      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}><span>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading}{' '}({editorExclusions.length}){/if}</span></button>
-    </nav>
+    {#snippet unsavedMark()}<span class="ml-1 text-warn" title={i18n.m.libraries.unsaved_title} aria-hidden="true">●</span><span class="sr-only"> ({i18n.m.libraries.unsaved_title})</span>{/snippet}
+    <Segmented as="nav" class="mb-4" label={i18n.m.libraries.configure} value={activeTab} onselect={selectEditorTab} items={[
+      { value: 'rules', label: i18n.m.nav.settings, suffix: isDirty ? unsavedMark : undefined },
+      { value: 'candidates', label: i18n.m.libraries.tab_candidates, count: editorCandidatesLoading ? undefined : editorEligibleCount },
+      { value: 'excluded', label: i18n.m.libraries.tab_excluded, count: editorExclusionsLoading ? undefined : editorExclusions.length },
+    ]} />
   {/if}
 
   {#if activeTab === 'rules' || editingId === 0}
     <!-- Every page is one step from every other; the one being read is filled. -->
     <nav class="mb-6 flex flex-wrap gap-2" aria-label={i18n.m.libraryEditor.pages_label}>
       {#each pages as candidate (candidate)}
-        <button type="button" class="choice hit-target justify-center rounded-full px-4 text-sm font-medium {page === candidate ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}"
+        <button type="button" class="choice hit-target justify-center rounded-full px-4 text-sm {page === candidate ? 'choice-selected font-semibold' : 'font-medium text-ink-2'}"
           aria-current={page === candidate ? 'page' : undefined} onclick={() => goPage(candidate)}>{pageNames[candidate]}</button>
       {/each}
     </nav>

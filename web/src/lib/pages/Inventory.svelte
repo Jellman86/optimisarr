@@ -6,6 +6,7 @@
   import Banner from '../components/Banner.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
+  import FilterBar, { type FilterItem } from '../components/FilterBar.svelte'
   import Icon from '../components/Icon.svelte'
   import InventoryDetail from '../components/InventoryDetail.svelte'
   import OkMark from '../components/OkMark.svelte'
@@ -250,11 +251,11 @@
   function goToPage(next: number) { page = Math.max(1, Math.min(next, pageCount)); selected = null; selection.clear() }
   let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)))
   let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
-  let filters = $derived([
-    { key: 'all' as InventoryFilter, label: t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() }) },
-    { key: 'eligible' as InventoryFilter, label: t(i18n.m.inventory.filter_eligible, { count: counts.eligible.toLocaleString() }) },
-    { key: 'skipped' as InventoryFilter, label: t(i18n.m.inventory.filter_skipped, { count: counts.skipped.toLocaleString() }) },
-    { key: 'unprobed' as InventoryFilter, label: t(i18n.m.inventory.filter_unprobed, { count: counts.unprobed.toLocaleString() }) },
+  let filters: FilterItem<InventoryFilter>[] = $derived([
+    { value: 'all', label: t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() }) },
+    { value: 'eligible', label: t(i18n.m.inventory.filter_eligible, { count: counts.eligible.toLocaleString() }) },
+    { value: 'skipped', label: t(i18n.m.inventory.filter_skipped, { count: counts.skipped.toLocaleString() }) },
+    { value: 'unprobed', label: t(i18n.m.inventory.filter_unprobed, { count: counts.unprobed.toLocaleString() }) },
   ])
 </script>
 
@@ -268,7 +269,7 @@
   {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
-    <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
+    <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
     <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
   {#if bulkOutcome}
@@ -366,9 +367,9 @@
 
   .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
   .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }
-  .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-filters { display: flex; flex-wrap: wrap; gap: .375rem; }.inventory-filters button { padding: .625rem .875rem; border-radius: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-filters button:hover { color: var(--ink); background: var(--lit); }.inventory-filters button.filter-active { color: var(--ink); background: var(--raised); box-shadow: var(--lift-1); }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
+  .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
   .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 2.75rem; }.inventory-table th:nth-child(2) { width: 44%; }.inventory-table th:nth-child(3) { width: 13%; }.inventory-table th:nth-child(4) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
   .inventory-table .selection-column { padding-left: .75rem; padding-right: .25rem; }.inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }.inventory-reason { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .25rem; color: var(--ink-4); font-size: .6875rem; line-height: 1.4; }
   .inventory-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-3); font-size: .875rem; display: grid; justify-items: center; gap: 1rem; }.inventory-pagination { margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--ink-3); font-size: .75rem; }.inventory-pagination > div { display: flex; align-items: center; gap: .625rem; }.inventory-pagination .btn { min-width: 2.5rem; min-height: 2.5rem; }
-  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-filters { gap: .125rem; }.inventory-filters button { padding: .75rem .625rem; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 2.5rem; }.inventory-table th:nth-child(2) { width: 70%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
+  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 2.5rem; }.inventory-table th:nth-child(2) { width: 70%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
 </style>
