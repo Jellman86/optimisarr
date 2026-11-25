@@ -8,6 +8,7 @@
   import { theme } from './lib/stores/ui.svelte'
   import { brandAsset, parseBrandStyle } from './lib/brand-style'
   import BrandCanvas from './lib/components/BrandCanvas.svelte'
+  import Chip from './lib/components/Chip.svelte'
   import Icon from './lib/components/Icon.svelte'
   import OkMark from './lib/components/OkMark.svelte'
   import {
@@ -245,7 +246,7 @@
             </ul>
             <p class="label mt-5">What this machine proved</p>
             {#if status.capabilities}
-              <div class="flex flex-wrap gap-1.5">{#each status.capabilities.videoEncoders as encoder}<span class="badge tone-neutral font-mono">{encoder}</span>{:else}<span class="text-sm text-ink-3">No working video encoder was found.</span>{/each}</div>
+              <div class="flex flex-wrap gap-1.5">{#each status.capabilities.videoEncoders as encoder}<Chip mono>{encoder}</Chip>{:else}<span class="text-sm text-ink-3">No working video encoder was found.</span>{/each}</div>
             {:else}
               <p class="flex items-center gap-2 text-sm text-ink-3"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>Running real test encodes…</p>
             {/if}
@@ -270,8 +271,8 @@
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="text-micro font-medium text-accent">{STAGES[step].active}</span>
-                  <span class="badge tone-neutral font-mono">{job.encoder}</span>
-                  <span class="badge font-mono {job.hardwareDecoder ? 'tone-ok' : 'tone-muted'}">{job.hardwareDecoder ? `GPU decode · ${job.hardwareDecoder}` : 'Software decode'}</span>
+                  <Chip mono>{job.encoder}</Chip>
+                  {#if job.hardwareDecoder}<Chip tone="ok">GPU decode · <span class="font-mono">{job.hardwareDecoder}</span></Chip>{:else}<Chip tone="muted">Software decode</Chip>{/if}
                   {#if job.startedAt}<span class="ml-auto font-mono text-micro text-ink-3" title="Time on this worker">{sinceLabel(job.startedAt, now)}</span>{/if}
                 </div>
                 <h2 class="job-title">{job.title}</h2>
@@ -294,14 +295,14 @@
                     <li class:stage-done={index < step} class:stage-current={index === step} aria-current={index === step ? 'step' : undefined}>{#if index < step}<OkMark />{:else if index === step}<span class="stage-live" aria-hidden="true"></span>{:else}<span class="stage-pending" aria-hidden="true"></span>{/if}<span class="min-w-0">{stage.label}{#if index < step}<span class="sr-only"> (done)</span>{/if}</span></li>
                   {/each}
                 </ol>
-                <div class="facts">
-                  {#if job.sourceMedia?.videoCodec}<span>{job.sourceMedia.videoCodec.toUpperCase()}</span>{/if}
+                <div class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-caption tabular-nums text-ink-3">
+                  {#if job.sourceMedia?.videoCodec}<span class="font-mono">{job.sourceMedia.videoCodec.toUpperCase()}</span>{/if}
                   {#if job.sourceMedia?.width && job.sourceMedia.height}<span>{job.sourceMedia.width} × {job.sourceMedia.height}</span>{/if}
                   {#if duration}<span>{timecode(duration)}</span>{/if}
                   {#if job.sourceBytes}<span>{formatSize(job.sourceBytes)}</span>{/if}
-                  {#if job.sourceMedia?.pixelFormat}<span>{job.sourceMedia.pixelFormat}</span>{/if}
-                  {#if job.sourceMedia?.audioCodecs}<span>Audio {job.sourceMedia.audioCodecs}</span>{/if}
-                  {#if job.outputExtension}<span>→ {job.outputExtension.toUpperCase()}</span>{/if}
+                  {#if job.sourceMedia?.pixelFormat}<span class="font-mono">{job.sourceMedia.pixelFormat}</span>{/if}
+                  {#if job.sourceMedia?.audioCodecs}<span>Audio <span class="font-mono">{job.sourceMedia.audioCodecs}</span></span>{/if}
+                  {#if job.outputExtension}<span>→ <span class="font-mono">{job.outputExtension.toUpperCase()}</span></span>{/if}
                   <span>Job {job.jobId}</span>
                 </div>
               </div>
@@ -360,13 +361,13 @@
           <h2 id="hardware-title" class="text-base font-semibold text-ink">Proved on this machine</h2>
           {#if status.capabilities}
             <p class="label mt-3">Video encoders</p>
-            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.videoEncoders as encoder}<span class="badge tone-neutral font-mono">{encoder}</span>{:else}<span class="text-sm text-ink-3">None available</span>{/each}</div>
-            <p class="eyebrow mt-4 mb-2">Audio encoders</p>
-            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.audioEncoders ?? [] as encoder}<span class="badge tone-neutral font-mono">{encoder}</span>{:else}<span class="text-sm text-ink-3">None reported</span>{/each}</div>
+            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.videoEncoders as encoder}<Chip mono>{encoder}</Chip>{:else}<span class="text-sm text-ink-3">None available</span>{/each}</div>
+            <p class="label mt-3">Audio encoders</p>
+            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.audioEncoders ?? [] as encoder}<Chip mono>{encoder}</Chip>{:else}<span class="text-sm text-ink-3">None reported</span>{/each}</div>
             <p class="label mt-3">Hardware decode</p>
-            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.hardwareDecoders as decoder}<span class="badge tone-ok font-mono">{decoder}</span>{:else}<span class="text-sm text-ink-3">Software only</span>{/each}</div>
+            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.hardwareDecoders as decoder}<Chip tone="ok" mono>{decoder}</Chip>{:else}<span class="text-sm text-ink-3">Software only</span>{/each}</div>
             <p class="label mt-3">Quality measurement</p>
-            <span class="badge tone-neutral font-mono">{status.capabilities.vmaf === 'Cuda' ? 'VMAF · CUDA' : status.capabilities.vmaf === 'Cpu' ? 'VMAF · CPU' : 'Unavailable'}</span>
+            <Chip>{status.capabilities.vmaf === 'Cuda' ? 'VMAF · CUDA' : status.capabilities.vmaf === 'Cpu' ? 'VMAF · CPU' : 'Unavailable'}</Chip>
           {:else}
             <p class="mt-3 flex items-center gap-2 text-sm text-ink-3"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>Running real test encodes…</p>
           {/if}
@@ -425,7 +426,6 @@
   .job-title { margin: .5rem 0 .9rem; font-size: 1.3rem; line-height: 1.3; letter-spacing: -.025em; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
   .readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem 1rem; margin: .6rem 0 .25rem; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
   .readout strong { font-size: 1rem; color: var(--ink); font-weight: 600; }
-  .facts { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: 1rem; font: .72rem var(--font-mono); color: var(--ink-3); }
   .frame { position: relative; margin: 0; aspect-ratio: 16 / 9; border-radius: .6rem; overflow: hidden; display: grid; place-items: center; background: var(--sunken); box-shadow: var(--inset-1); align-self: start; }
   .spectrum-caption { grid-column: 2 / -1; }
   .audio-spectrum { aspect-ratio: 10 / 3; }

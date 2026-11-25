@@ -6,6 +6,7 @@
   import { api, type Worker, type WorkerJob, type WorkerPairingCode } from '../api'
   import { formatSize } from '../format'
   import Banner from './Banner.svelte'
+  import Chip from './Chip.svelte'
   import ConfigSection from './ConfigSection.svelte'
   import { i18n, t } from '../i18n/i18n.svelte'
 
@@ -328,18 +329,18 @@
             <!-- What it proved, not what its platform implies: the same list the claim route matches on. -->
             <div class="flex flex-wrap gap-1.5 text-xs">
               {#each worker.videoEncoders as encoder (encoder)}
-                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-ink-2">{encoder}</span>
+                <Chip mono>{encoder}</Chip>
               {/each}
               <!-- Audio matters as much as video: a library set to Opus or MP3 is only offered to
                    a worker whose FFmpeg carries that encoder. -->
               {#each worker.audioEncoders ?? [] as encoder (encoder)}
-                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-ink-3">{encoder}</span>
+                <Chip tone="muted" mono>{encoder}</Chip>
               {/each}
               {#if worker.hardwareDecoders.length > 0}
-                <span class="rounded-md border border-line px-2 py-0.5 text-ink-2">{t(i18n.m.workers.hw_decode, { list: worker.hardwareDecoders.join(', ') })}</span>
+                <Chip>{t(i18n.m.workers.hw_decode, { list: worker.hardwareDecoders.join(', ') })}</Chip>
               {/if}
               {#if worker.vmaf !== 'None'}
-                <span class="rounded-md border border-line px-2 py-0.5 text-ink-2">{i18n.m.workers.vmaf_on_worker}</span>
+                <Chip>{i18n.m.workers.vmaf_on_worker}</Chip>
               {/if}
             </div>
 

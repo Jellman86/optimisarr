@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Job, OptimisationResult } from '../api'
   import { formatRelative, formatSize, mediaTitle } from '../format'
+  import Chip from './Chip.svelte'
   import PosterGlow from './PosterGlow.svelte'
   import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
@@ -134,8 +135,8 @@
               >{title.primary ?? fileName(job.relativePath)}{#if title.episode}{' '}<span class="font-normal text-ink-3">{[title.episode, title.secondary].filter(Boolean).join(' · ')}</span>{/if}</button>
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-3">
-              {#if job.videoEncoder}<span class="badge border border-line font-mono font-normal">{job.videoEncoder}</span>{/if}
-              {#if job.effectiveVideoQuality != null}<span class="badge border border-line font-mono font-normal">CRF {job.effectiveVideoQuality}</span>{/if}
+              {#if job.videoEncoder}<Chip mono>{job.videoEncoder}</Chip>{/if}
+              {#if job.effectiveVideoQuality != null}<Chip class="tabular-nums">CRF {job.effectiveVideoQuality}</Chip>{/if}
               <span class="truncate" title={job.workerName && !job.remoteStage ? t(i18n.m.queue.now_returned, { worker: job.workerName }) : undefined}>{locationLabel(job)}</span>
             </div>
           </div>

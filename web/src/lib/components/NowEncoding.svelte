@@ -11,6 +11,7 @@
   import { jobPercent } from '../job-presentation'
   import { leadActivity, type LeadPhase } from '../lead-job'
   import Icon from './Icon.svelte'
+  import Chip from './Chip.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
   let { collapsed = false }: { collapsed?: boolean } = $props()
@@ -97,7 +98,7 @@
           </span>
           {#if job.videoEncoder}
             <span class="flex">
-              <span class="badge font-mono {activity.hardwareActive ? 'tone-ok' : 'tone-neutral'}">{job.videoEncoder}</span>
+              <Chip tone={activity.hardwareActive ? 'ok' : 'neutral'} mono>{job.videoEncoder}</Chip>
             </span>
           {/if}
         </span>

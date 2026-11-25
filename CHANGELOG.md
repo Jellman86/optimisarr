@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Unify view switchers, filter pills, and metadata chips across the web UI and Linux sidecar: Queue, Inventory, Libraries, Quarantine, and Candidate tables now share the same segmented controls and calm lit-fill filter pills, keeping the solid primary accent fill reserved for primary actions like Save and Replace. Encoder, worker, language, and media-fact chips now use borderless filled capsules with tabular numbers for quantities and monospace reserved for machine identifiers. Also removes unused sidebar placeholder code and adds accessible group labels for screen readers. No migration.
+
 - Standardise text sizes, corner radii, labels, form fields, and button sizes across the web UI and Linux sidecar: typography now uses six `rem`-scaled roles that scale together on large displays, form fields and section labels share one consistent look across pages, and buttons use three clear sizes (compact, default, large) that automatically expand to 44px touch targets on touch screens and narrow phones. No migration.
 
 - Improve contrast and visual clarity across the web UI and Linux sidecar: input edges, off toggle tracks, and focus rings now clear WCAG 3:1 contrast in both light and dark themes, and focus rings in action menus, language selection, info tooltips, the sidebar mark, audio presets, and Quality Lab now share the same 3:1 outline. Passed, saved, healthy, and eligible states now render as ink text beside a solid check mark rather than bare blue text, keeping blue text reserved for clickable actions, and job stage trackers distinguish completed, actively running, waiting or paused, and pending stages by shape as well as spoken screen-reader status. No migration.

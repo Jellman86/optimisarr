@@ -427,9 +427,6 @@ p {
     @apply text-ink;
     background: var(--lit);
   }
-  .nav-button-disabled {
-    @apply cursor-not-allowed text-ink-4;
-  }
 
   /* The card: a grouped surface. A solid fill and a soft shadow; no outline. */
   .card {
@@ -652,7 +649,7 @@ p {
     background: var(--lit);
   }
   .segment {
-    @apply min-h-(--control-md) rounded-full px-3.5 text-label font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring;
+    @apply inline-flex min-h-(--control-md) items-center justify-center rounded-full px-3.5 text-label font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring disabled:pointer-events-none disabled:opacity-45;
   }
   .segment:hover {
     @apply text-ink;
@@ -663,6 +660,25 @@ p {
     @apply font-semibold text-ink;
     background: var(--control-on);
     box-shadow: var(--lift-1);
+  }
+
+  /* A row of filters over a list. Resting pills are quiet text; the chosen one is a lit fill
+     with its label in ink, as a sidebar marks the row you are on. Never the accent fill, which
+     belongs to the one action that advances the work. */
+  .filter-bar {
+    @apply flex flex-wrap items-center gap-1;
+  }
+  .filter-pill {
+    @apply inline-flex min-h-(--control-md) items-center rounded-full px-3 text-label font-medium whitespace-nowrap text-ink-3 transition-colors focus-ring;
+  }
+  .filter-pill:hover {
+    @apply text-ink;
+    background: var(--lit);
+  }
+  .filter-pill-on,
+  .filter-pill-on:hover {
+    @apply font-semibold text-ink;
+    background: var(--accent-soft);
   }
 
   /* Fields are a solid fill with a hairline edge; focus adds the accent halo. One height
@@ -782,6 +798,14 @@ p {
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
   }
+  /* A fact rather than a verdict: an encoder, a language, where a job runs. A fill, never an
+     outline; the tone class gives its colour. */
+  .chip {
+    @apply inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-micro font-medium;
+  }
+  .chip-mono {
+    @apply font-mono;
+  }
 
   /* The header row of a table inside a card: it sticks, it sits on the panel, and it is
      divided from the rows by a hairline. */
@@ -825,7 +849,8 @@ p {
      coarse pointer: a narrow window is held, not pointed at. */
   @media (pointer: coarse), (max-width: 639px) {
     .btn,
-    .segment {
+    .segment,
+    .filter-pill {
       min-height: var(--control-lg);
     }
     .btn-icon,

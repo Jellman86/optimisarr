@@ -393,8 +393,6 @@ export const zh: Messages = {
     theme_light: '浅色主题',
     theme_dark: '深色主题',
     collapse_sidebar: "折叠侧边栏",
-    coming_soon: "{label} — 即将推出",
-    soon: "即将推出"
   },
   app: {
     tagline: "安全媒体库优化器",
@@ -692,6 +690,7 @@ export const zh: Messages = {
     batch_reprobe_cancelled: '已停止重新探测。',
     batch_reprobe_failed: '重新探测未完成。未处理的文件仍保持选中；请先检查已完成的结果，再重试。',
     batch_reprobe_result: '重新探测',
+    filter_label: '筛选文件',
     filter_all: "全部 ({count})",
     filter_eligible: "符合资格 ({count})",
     filter_skipped: "已跳过 ({count})",
@@ -763,6 +762,8 @@ export const zh: Messages = {
     step_verify: "验证",
     step_replace: "替换",
     step_done: "已完成",
+    view_label: '队列视图',
+    filter_label: '筛选任务',
     host_usage: "主机使用率",
     remote_job: "正在 {worker} 上处理",
     no_matches: "没有符合此筛选条件的任务。",
@@ -1793,6 +1794,7 @@ export const zh: Messages = {
     previous_page: "上一页",
     next_page: "下一页",
     page_of: "{count} 的页面 {page}",
+    candidates_filter_label: '筛选候选文件',
     candidates_empty: "还没有候选文件。请先在“媒体清单”页面探测一些文件；候选文件会从已探测的媒体中评估。",
     media_audio: "声音的",
     media_image: "图像",
