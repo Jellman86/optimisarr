@@ -184,6 +184,58 @@ public static class Program
         ?? @"C:\OptimisarrWork";
 
     /// <summary>
+    /// How many jobs this machine will take at once. Configurable so a Windows box with both a
+    /// discrete GPU and an iGPU can fill them both; clamped to the same safe range the Linux and
+    /// macOS workers enforce, so a typo cannot offer the server more concurrency than the machine
+    /// (or this worker) can hold. Read from a durable override file the tray writes, then the
+    /// environment variable, so the tray can set it without elevation or PATH fiddling.
+    /// </summary>
+    internal static int ConfiguredConcurrency()
+    {
+        var fromFile = ReadOverrideFile("concurrency");
+        if (TryParseConcurrency(fromFile, out var fileValue))
+        {
+            return fileValue;
+        }
+
+        return TryParseConcurrency(
+            Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_CONCURRENCY"), out var envValue)
+            ? envValue : 1;
+    }
+
+    private static bool TryParseConcurrency(string? text, out int value)
+    {
+        value = 0;
+        if (text is null || !int.TryParse(text, out var parsed))
+        {
+            return false;
+        }
+
+        if (parsed is < 1 or > 4)
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+
+    private static string? ReadOverrideFile(string name)
+    {
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Optimisarr", "Sidecar", name);
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null; // unreadable override defers to the environment knob.
+        }
+    }
+
+    /// <summary>
     /// Free space where the work would actually happen, not on the system drive. The server uses
     /// this to decide whether to offer a job at all, so reporting the wrong volume would have it
     /// hand over work this machine has nowhere to put.
