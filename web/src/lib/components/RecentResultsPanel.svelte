@@ -3,6 +3,7 @@
   import { formatRelative, formatSize, mediaTitle, sizeBarShares, sizeChangeStatus } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
+  import DataTable from './DataTable.svelte'
   import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
@@ -16,48 +17,48 @@
   })
 </script>
 
-<section class="results card flex h-full flex-col" aria-labelledby="recent-results-heading">
+<section class="results card @container flex h-full flex-col overflow-clip" aria-labelledby="recent-results-heading">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <h2 id="recent-results-heading" class="label mb-0">{i18n.m.dashboard.recent_results}</h2>
-    <span class="results-hint text-xs text-ink-3">{i18n.m.dashboard.recent_results_hint}</span>
+    <span class="hidden text-xs text-ink-3 @min-[88rem]:inline">{i18n.m.dashboard.recent_results_hint}</span>
     <button class="ml-auto rounded text-xs font-semibold text-accent hover:underline focus-ring" onclick={() => router.go('/queue')}>
       {i18n.m.dashboard.queue_history}
     </button>
   </div>
 
-  {#if results === null}
-    <div class="p-4" aria-hidden="true"><div class="h-40 animate-pulse rounded-lg bg-[var(--lit)]"></div></div>
-  {:else if results.length === 0}
-    <p class="px-4 py-5 text-sm text-ink-3">{i18n.m.dashboard.recent_results_empty}</p>
-  {:else}
-    <div class="results-table" role="table" aria-labelledby="recent-results-heading">
-      <div class="results-row results-head" role="row">
-        <span role="columnheader">{i18n.m.dashboard.col_title}</span>
-        <span role="columnheader" class="col-library">{i18n.m.dashboard.col_library}</span>
-        <span role="columnheader">{i18n.m.dashboard.col_sizes}</span>
-        <span role="columnheader">{i18n.m.dashboard.col_size_change}</span>
-        <span role="columnheader" class="col-vmaf">{i18n.m.dashboard.col_vmaf}</span>
-        <span role="columnheader" class="col-encoder">{i18n.m.dashboard.col_encoder}</span>
-        <span role="columnheader" class="col-where">{i18n.m.dashboard.col_where}</span>
-        <span role="columnheader" class="col-finished">{i18n.m.dashboard.col_finished}</span>
-      </div>
-      {#each results as result (result.jobId)}
-        {@const title = mediaTitle(result.relativePath)}
-        {@const status = sizeChangeStatus(result.sourceSizeBytes, result.outputSizeBytes)}
-        {@const shares = sizeBarShares(result.sourceSizeBytes, result.outputSizeBytes)}
-        <div class="results-row" role="row">
-          <span role="cell" class="flex min-w-0 items-center gap-3">
-            <Thumbnail mediaFileId={result.mediaFileId} size="md" />
+  <DataTable bare density="compact" rowCount={results?.length ?? 0} loading={results === null} labelledby="recent-results-heading">
+    {#snippet head()}
+      <tr>
+        <th scope="col">{i18n.m.dashboard.col_title}</th>
+        <th scope="col" class="hidden w-[12%] @min-[64rem]:table-cell">{i18n.m.dashboard.col_library}</th>
+        <th scope="col" class="w-[30%] @min-[44rem]:w-[26%] @min-[64rem]:w-1/5">{i18n.m.dashboard.col_sizes}</th>
+        <th scope="col" class="w-22 @min-[44rem]:w-24">{i18n.m.dashboard.col_size_change}</th>
+        <th scope="col" class="hidden w-20 @min-[64rem]:table-cell">{i18n.m.dashboard.col_vmaf}</th>
+        <th scope="col" class="hidden w-[10%] @min-[88rem]:table-cell">{i18n.m.dashboard.col_encoder}</th>
+        <th scope="col" class="hidden w-[10%] @min-[88rem]:table-cell">{i18n.m.dashboard.col_where}</th>
+        <th scope="col" class="hidden w-[14%] @min-[44rem]:table-cell @min-[64rem]:w-[11%]">{i18n.m.dashboard.col_finished}</th>
+      </tr>
+    {/snippet}
+    {#each results ?? [] as result (result.jobId)}
+      {@const title = mediaTitle(result.relativePath)}
+      {@const status = sizeChangeStatus(result.sourceSizeBytes, result.outputSizeBytes)}
+      {@const shares = sizeBarShares(result.sourceSizeBytes, result.outputSizeBytes)}
+      <tr>
+        <td>
+          <div class="flex min-w-0 items-center gap-3">
+            <Thumbnail mediaFileId={result.mediaFileId} />
             <span class="min-w-0">
-              <span class="block truncate text-sm font-semibold text-ink">{title.primary ?? i18n.m.dashboard.unnamed_file}</span>
+              <span class="block truncate font-semibold text-ink">{title.primary ?? i18n.m.dashboard.unnamed_file}</span>
               {#if title.episode || title.secondary}
                 <span class="block truncate text-xs text-ink-3">{#if title.episode}<span class="tabular-nums">{title.episode}</span>{' '}{/if}{title.secondary ?? ''}</span>
               {/if}
             </span>
-          </span>
-          <span role="cell" class="col-library truncate text-sm text-ink-2">{result.libraryName ?? '—'}</span>
-          <span role="cell" class="flex min-w-0 flex-col gap-1.5">
-            <span class="truncate text-xs tabular-nums text-ink-2">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
+          </div>
+        </td>
+        <td class="hidden truncate @min-[64rem]:table-cell">{result.libraryName ?? '—'}</td>
+        <td>
+          <div class="flex min-w-0 flex-col gap-1.5">
+            <span class="truncate text-xs tabular-nums">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
             <!-- The bar is measured against whichever of the two files is the larger one, so a
                  file that grew shows the part that overflows the source instead of a full bar
                  that reads as a saving. -->
@@ -71,56 +72,27 @@
                 <span class="block h-full rounded-full {status === 'saved' ? 'bg-ok' : 'bg-ink-4'}" style="width: {shares.output}%"></span>
               {/if}
             </span>
-          </span>
-          <span role="cell" class="text-sm font-semibold tabular-nums">
-            <SizeChange sourceSizeBytes={result.sourceSizeBytes} outputSizeBytes={result.outputSizeBytes} />
-          </span>
-          <span role="cell" class="col-vmaf text-sm tabular-nums text-ink-2">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</span>
-          <span role="cell" class="col-encoder truncate font-mono text-xs text-ink-2">{result.videoEncoder ?? '—'}</span>
-          <span role="cell" class="col-where truncate text-sm text-ink-3">{result.workerName ?? i18n.m.dashboard.this_server}</span>
-          <span role="cell" class="col-finished truncate text-sm text-ink-3" title={new Date(result.finishedAt).toLocaleString(i18n.locale)}>{formatRelative(result.finishedAt, now, i18n.locale)}</span>
-        </div>
-      {/each}
-    </div>
-  {/if}
+          </div>
+        </td>
+        <td class="whitespace-nowrap font-semibold tabular-nums">
+          <SizeChange sourceSizeBytes={result.sourceSizeBytes} outputSizeBytes={result.outputSizeBytes} />
+        </td>
+        <td class="hidden whitespace-nowrap tabular-nums @min-[64rem]:table-cell">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</td>
+        <td class="hidden truncate font-mono text-xs @min-[88rem]:table-cell">{result.videoEncoder ?? '—'}</td>
+        <td class="hidden truncate text-ink-3 @min-[88rem]:table-cell">{result.workerName ?? i18n.m.dashboard.this_server}</td>
+        <td class="hidden truncate text-ink-3 @min-[44rem]:table-cell" title={new Date(result.finishedAt).toLocaleString(i18n.locale)}>{formatRelative(result.finishedAt, now, i18n.locale)}</td>
+      </tr>
+    {/each}
+    {#snippet loadingState()}<div class="h-40 w-full animate-pulse rounded-lg bg-[var(--lit)]" aria-hidden="true"></div><span class="sr-only">{i18n.m.common.loading_short}</span>{/snippet}
+    {#snippet empty()}{i18n.m.dashboard.recent_results_empty}{/snippet}
+  </DataTable>
 </section>
 
 <style>
-  /* Columns appear as the panel widens, not as the window does: the same panel is narrow in a
-     laptop's two-column grid and wide across a 2560 px screen. */
-  .results { container-type: inline-size; }
-  .results-row {
-    display: grid;
-    grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 4rem;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.55rem 1rem;
-    border-top: 1px solid var(--divide-soft);
-  }
-  .results-head {
-    border-top: 0;
-    padding-block: 0.6rem;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--ink-3);
-  }
-  .col-library, .col-vmaf, .col-encoder, .col-where, .col-finished, .results-hint { display: none; }
-  /* The poster is a recognition aid; on a narrow card it gives way to the title. */
-  .results-row :global([data-thumbnail]) { width: 2rem; height: 3rem; }
+  /* The poster is a recognition aid; on a narrow card it gives way to the title. Columns
+     appear as the panel widens, not as the window does: the same panel is narrow in a laptop's
+     two-column grid and wide across a 2560 px screen. */
   @container (min-width: 44rem) {
-    .results-row :global([data-thumbnail]) { width: 2.75rem; height: 4rem; }
-  }
-  @container (min-width: 44rem) {
-    .results-row { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 4rem minmax(0, 0.8fr); }
-    .col-finished { display: block; }
-  }
-  @container (min-width: 64rem) {
-    .results-row { grid-template-columns: minmax(0, 2.2fr) minmax(0, 0.8fr) minmax(0, 1.4fr) 4rem 3.5rem minmax(0, 0.8fr); }
-    .col-library, .col-vmaf { display: block; }
-    .col-encoder { display: none; }
-  }
-  @container (min-width: 88rem) {
-    .results-row { grid-template-columns: minmax(0, 2.4fr) minmax(0, 0.8fr) minmax(0, 1.5fr) 4rem 3.5rem minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.8fr); }
-    .col-encoder, .col-where, .results-hint { display: block; }
+    .results :global([data-thumbnail]) { width: 2.75rem; height: 4rem; }
   }
 </style>

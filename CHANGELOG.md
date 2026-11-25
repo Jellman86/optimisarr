@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Unify operational tables across Inventory, Queue, Quarantine, Candidate lists, and Recent results onto a shared `DataTable` layout: every list now shares the same panel header, hairline row dividers, body-sized text, hover and selection highlight, and consistent loading/empty/error states (a failed Quarantine load no longer shows the empty-list message below the error banner). Recent results now renders as a semantic table with non-wrapping figures, and column headers are ready for sorting. No migration.
+
 - Unify view switchers, filter pills, and metadata chips across the web UI and Linux sidecar: Queue, Inventory, Libraries, Quarantine, and Candidate tables now share the same segmented controls and calm lit-fill filter pills, keeping the solid primary accent fill reserved for primary actions like Save and Replace. Encoder, worker, language, and media-fact chips now use borderless filled capsules with tabular numbers for quantities and monospace reserved for machine identifiers. Also removes unused sidebar placeholder code and adds accessible group labels for screen readers. No migration.
 
 - Standardise text sizes, corner radii, labels, form fields, and button sizes across the web UI and Linux sidecar: typography now uses six `rem`-scaled roles that scale together on large displays, form fields and section labels share one consistent look across pages, and buttons use three clear sizes (compact, default, large) that automatically expand to 44px touch targets on touch screens and narrow phones. No migration.
