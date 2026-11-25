@@ -12,19 +12,54 @@
 
   let listing = $state<BrowseResponse | null>(null)
   let error = $state<string | null>(null)
+  let notice = $state<string | null>(null)
   let loading = $state(true)
 
   $effect(() => {
-    void navigate(initialPath || undefined)
+    void openInitial(initialPath)
   })
+
+  async function openInitial(path: string) {
+    const trimmed = path.trim()
+    if (!trimmed) {
+      await navigate(undefined)
+      return
+    }
+    loading = true
+    error = null
+    notice = null
+    try {
+      listing = await api.browse(trimmed)
+    } catch (err) {
+      // A saved library or target folder may point to a path that was moved, unmounted or
+      // removed. Fall back to the default root so the operator can pick a replacement instead
+      // of being trapped on an error screen with every navigation control disabled.
+      const reason = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      try {
+        listing = await api.browse(undefined)
+        notice = reason
+      } catch (fallbackErr) {
+        listing = null
+        error = fallbackErr instanceof Error ? fallbackErr.message : reason
+      }
+    } finally {
+      loading = false
+    }
+  }
 
   async function navigate(path?: string) {
     loading = true
     error = null
+    notice = null
     try {
       listing = await api.browse(path)
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      const reason = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      if (listing) {
+        notice = reason
+      } else {
+        error = reason
+      }
     } finally {
       loading = false
     }
@@ -57,6 +92,9 @@
   </div>
 
   <div class="min-h-0 overflow-y-auto p-2">
+    {#if notice}
+      <p role="alert" class="mb-2 rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{notice}</p>
+    {/if}
     {#if loading}
       <p class="p-4 text-center text-sm text-ink-3">{i18n.m.common.loading_short}</p>
     {:else if error}

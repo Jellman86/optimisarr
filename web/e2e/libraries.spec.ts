@@ -1847,3 +1847,42 @@ test('opening every page of a customised library and saving sends back every set
   const { id: _id, name: _name, fileCount: _fileCount, lastAutoEnqueueAt: _last, ...expected } = customised
   for (const [key, value] of Object.entries(expected)) expect(body[key], key).toEqual(value)
 })
+
+test('Browse falls back to the default root when an existing library path no longer exists', async ({ page }) => {
+  await mockLibraries(page, { ...library, path: '/missing/old-films' })
+  await page.route('**/api/fs/browse**', async (route: Route) => {
+    const folder = new URL(route.request().url()).searchParams.get('path')
+    if (folder === '/missing/old-films') {
+      return route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'filesystem.notDirectory',
+          error: 'Not a directory: /missing/old-films',
+          args: { path: '/missing/old-films' },
+        }),
+      })
+    }
+    if (!folder || folder === '/') {
+      return json(route, { path: '/', parent: null, directories: [{ name: 'media', path: '/media' }] })
+    }
+    if (folder === '/media') {
+      return json(route, { path: '/media', parent: '/', directories: [{ name: 'films', path: '/media/films' }] })
+    }
+    return json(route, { path: folder, parent: '/media', directories: [] })
+  })
+
+  await page.goto('/#/libraries/1/configure/files')
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+
+  const picker = page.getByRole('dialog', { name: 'Choose a folder' })
+  await expect(picker.getByRole('alert')).toContainText('Not a directory: /missing/old-films')
+  await picker.getByRole('button', { name: 'media', exact: true }).click()
+  await picker.getByRole('button', { name: 'films', exact: true }).click()
+  await picker.getByRole('button', { name: 'Select folder', exact: true }).click()
+
+  await expect(page.locator('#lib-path')).toHaveValue('/media/films')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ path: '/media/films' })
+})

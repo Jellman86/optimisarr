@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prevent the folder picker from getting stuck when a saved library or target folder path no longer exists or cannot be accessed. When **Browse** fails to open the saved path, it now falls back to the default root and shows the server's error inline so a replacement folder can still be chosen.
+
 - Include `libegl1` (`libEGL.so.1`) in the server container image so NVIDIA's injected Vulkan ICD (`libGLX_nvidia.so.0`) can expose `vkCreateInstance` for AI super-resolution (#548). Without `libegl1`, Docker containers on NVIDIA hosts with `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics` still failed to initialise the NVIDIA Vulkan driver and fell back to CPU `llvmpipe`. No migration. Reported by [Blorti](https://github.com/Blorti).
 
 - Show Vulkan driver diagnostics under **Technical details** after the AI super-resolution sample test (#548). Device detection now reads past loader messages and checks every reported device. If the container still falls back to the CPU with NVIDIA `graphics` enabled, enable Vulkan loader tracing to see which driver manifests were found and any errors loading them.
