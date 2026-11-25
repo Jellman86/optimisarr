@@ -92,7 +92,7 @@
   <!-- A calm identity above the operational navigation; activity animates the chosen mark. Beside
        the name rather than above it, so the navigation starts high on a laptop screen. -->
   <button
-    class="flex w-full items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'justify-center px-2 pt-5 pb-3' : 'gap-3 px-4 pt-5 pb-0.5'}"
+    class="flex w-full items-center transition-colors focus-ring-inset {railCollapsed ? 'justify-center px-2 pt-5 pb-3' : 'gap-3 px-4 pt-5 pb-0.5'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')

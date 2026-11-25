@@ -33,7 +33,7 @@
     <h3><button class="working-title focus-ring" onclick={onopen} aria-haspopup="dialog">{title}</button></h3>
     {#if job.enqueueReason}<p class="working-reason">{job.enqueueReason}</p>{/if}
     <JobProgress {job} {queue} {telemetry} {compact} />
-    {#if !compact}<JobStages {job} />{/if}
+    {#if !compact}<JobStages {job} {queue} />{/if}
   </div>
   <div class="working-footer"><button id={`working-job-${job.id}`} class="btn btn-ghost" aria-haspopup="dialog" aria-controls={selected ? 'queue-job-dialog' : undefined} onclick={onopen}>{i18n.m.queue.view_job}<Icon name="arrow-right" /></button></div>
 </article>

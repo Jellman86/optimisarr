@@ -18,6 +18,7 @@
   import { activity } from '../stores/activity.svelte'
   import { counts as shellStatus } from '../stores/counts.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import SizeChange from '../components/SizeChange.svelte'
   import Banner from '../components/Banner.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
@@ -878,8 +879,10 @@
           {/if}
           {#if isWorkingJob(selectedJob)}
             <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
-            <JobStages job={selectedJob} />
+            <JobStages job={selectedJob} queue={queueStatus} />
             {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
+          {:else if selectedJob.status === 'ReadyToReplace'}
+            <JobStages job={selectedJob} queue={queueStatus} />
           {/if}
           {#if selectedJob.status === 'Cancelled' && selectedJob.errorMessage}
             <p class="callout mt-4 p-4 text-sm" role="status" data-testid="job-cancelled-reason">{selectedJob.errorMessage}</p>
@@ -1180,7 +1183,7 @@
               <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
-              <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
+              <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification group inline-flex cursor-pointer items-center gap-1 focus-ring" class:text-ink-2={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{#if job.verificationPassed}<OkMark class="h-3 w-3" />{/if}<span class="underline decoration-ink-4/75 underline-offset-[3px] group-hover:decoration-current">{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</span></button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
           {/each}</tbody>

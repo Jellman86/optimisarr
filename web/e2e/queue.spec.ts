@@ -1172,9 +1172,14 @@ test('the size change is signed by the file itself, and a file that grew is neve
   const details = page.locator('#queue-job-dialog')
   const sizes = details.locator('.queue-detail-sizes')
 
-  // A smaller file carries a negative figure, in the tone that means a saving.
+  // A smaller file carries a negative figure in ink beside the filled ok mark: a saving, told by
+  // its glyph rather than by blue text that would read as a link.
   await page.locator('#queue-job-61').click()
-  await expect(sizes.getByText('−40%')).toHaveClass(/text-ok/)
+  const saved = sizes.getByText('−40%')
+  await expect(saved).toHaveAttribute('data-size-change', 'saved')
+  await expect(saved).toHaveClass(/text-ink/)
+  await expect(saved).not.toHaveClass(/text-ok/)
+  await expect(saved.locator('[data-ok-mark]')).toBeVisible()
   await details.getByRole('button', { name: 'Close details' }).click()
 
   // A file of the same size carries no sign at all, in neutral ink.
@@ -1190,7 +1195,7 @@ test('the size change is signed by the file itself, and a file that grew is neve
 
   // A change under one percent keeps a decimal, and says which way it went.
   await page.locator('#queue-job-64').click()
-  await expect(sizes.getByText('−0.1%')).toHaveClass(/text-ok/)
+  await expect(sizes.getByText('−0.1%')).toHaveAttribute('data-size-change', 'saved')
   await expect(sizes.getByText('0.1% smaller than source')).toBeVisible()
   await details.getByRole('button', { name: 'Close details' }).click()
 

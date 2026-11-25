@@ -5,6 +5,7 @@
   import { api, type EncoderCapability, type HardwareCapability, type ToolCheck } from '../api'
   import Banner from './Banner.svelte'
   import ConfigSection from './ConfigSection.svelte'
+  import OkMark from './OkMark.svelte'
   import { i18n } from '../i18n/i18n.svelte'
 
   let tools = $state<ToolCheck[]>([])
@@ -143,8 +144,8 @@
                   <div class="break-all font-mono text-ink-2">{encoder.name}</div>
                   <div class="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <span class="uppercase text-ink-4">{encoder.codec}</span>
-                    <span class={encoder.available ? 'text-ok' : 'text-ink-4'}>
-                      {encoder.available ? i18n.m.shared.available : i18n.m.shared.missing}
+                    <span class="inline-flex items-center gap-1 {encoder.available ? 'text-ink-2' : 'text-ink-4'}">
+                      {#if encoder.available}<OkMark class="h-3 w-3" />{/if}{encoder.available ? i18n.m.shared.available : i18n.m.shared.missing}
                     </span>
                   </div>
                 </div>

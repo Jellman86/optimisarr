@@ -4,6 +4,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Icon from './Icon.svelte'
+  import OkMark from './OkMark.svelte'
   import { jobFailureShortLabel } from '../i18n/jobErrors'
 
   let { stats, failures = [] }: { stats: Stats | null; failures?: FailureGroup[] } = $props()
@@ -35,8 +36,8 @@
     <ul class="m-0 list-none p-0">
       {#if ready > 0}
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-          <span class="flex w-16 flex-none items-center gap-2 text-ok">
-            <Icon name="check" class="h-4 w-4" />
+          <span class="flex w-16 flex-none items-center gap-2 text-ink">
+            <OkMark class="h-4 w-4" />
             <span class="text-xl font-semibold tabular-nums">{ready.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">

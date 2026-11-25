@@ -914,8 +914,13 @@ test('a file that grew says so, and never claims a saving', async ({ page }) => 
   // The growth is drawn in the warning tone, and a figure with nothing to say in neutral ink.
   await expect(results.getByText('+20%')).toHaveClass(/text-warn/)
   await expect(results.getByText('0%', { exact: true })).toHaveClass(/text-ink-2/)
-  // A saving finer than a percent still reads as a saving, at a tenth of a percent.
-  await expect(results.getByText('−0.1%')).toHaveClass(/text-ok/)
+  // A saving finer than a percent still reads as a saving, at a tenth of a percent: ink beside
+  // the filled ok mark.
+  const saving = results.getByText('−0.1%')
+  await expect(saving).toHaveAttribute('data-size-change', 'saved')
+  await expect(saving).toHaveClass(/text-ink/)
+  await expect(saving).not.toHaveClass(/text-ok/)
+  await expect(saving.locator('[data-ok-mark]')).toBeVisible()
 })
 
 test('an idle in-flight panel shows the last finished title instead of an empty box', async ({ page }) => {

@@ -9,6 +9,7 @@
   import AutoAcceptConfirm from './AutoAcceptConfirm.svelte'
   import FolderPicker from './FolderPicker.svelte'
   import Icon from './Icon.svelte'
+  import OkMark from './OkMark.svelte'
 
   let {
     autoReplace = $bindable(false),
@@ -192,8 +193,8 @@
                 {:else if checkFailed}
                   <p class="text-ink-3">{i18n.m.filesChoice.folder_unchecked}</p>
                 {:else if check && folderMessage}
-                  <p class="flex items-start gap-1.5 {check.allowed ? 'text-ok' : 'text-bad'}">
-                    <Icon name={check.allowed ? 'check' : 'warning'} class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <p class="flex items-start gap-1.5 {check.allowed ? 'text-ink-2' : 'text-bad'}">
+                    {#if check.allowed}<OkMark class="mt-0.5" />{:else}<Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />{/if}
                     <span>{folderMessage}</span>
                   </p>
                   {#if check.allowed && exampleRelativePath && targetFolder}

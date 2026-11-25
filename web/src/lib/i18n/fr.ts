@@ -773,6 +773,7 @@ queue: {
     step_encode: "Encoder",
     step_verify: "Vérifier",
     step_replace: "Remplacer",
+    step_done: "terminé",
     host_usage: "Utilisation de l’hôte",
     remote_job: "Traitement sur {worker}",
     no_matches: "Aucune tâche ne correspond à ce filtre.",

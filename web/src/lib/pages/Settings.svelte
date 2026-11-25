@@ -33,6 +33,7 @@
   import Toggle from '../components/Toggle.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import Banner from '../components/Banner.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
@@ -1398,7 +1399,7 @@ let settings = $state<Settings>({
           <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_dry_run}</p>
         {/if}
         {#if cleanupError}<p class="mt-2 text-xs text-bad">{cleanupError}</p>{/if}
-        {#if cleanupMessage}<p class="mt-2 text-xs text-ok">{cleanupMessage}</p>{/if}
+        {#if cleanupMessage}<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-2"><OkMark class="h-3 w-3" />{cleanupMessage}</p>{/if}
       </div>
     </div>
   </ConfigSection>
@@ -1524,8 +1525,9 @@ let settings = $state<Settings>({
           <Toggle bind:checked={watcherDraft.showViewerNames} label={i18n.m.settings.show_viewer_names} hint={i18n.m.settings.show_viewer_names_hint} />
         </div>
         {#if testResult}
-          <p class="mt-3 text-sm {testResult.ok ? 'text-ok' : 'text-bad'}">
+          <p class="mt-3 text-sm {testResult.ok ? 'flex items-center gap-1.5 text-ink-2' : 'text-bad'}">
             {#if testResult.ok}
+              <OkMark />
               {tr(i18n.m.settings.test_ok, { name: testResult.serverName ?? '' })}{testResult.version ? tr(i18n.m.settings.test_ok_version, { version: testResult.version }) : ''}
             {:else}
               {tr(i18n.m.settings.test_fail, { error: testResult.error ?? '' })}
@@ -1848,7 +1850,7 @@ let settings = $state<Settings>({
           {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
         </span>
       {/if}
-      {#if message}<span class="text-sm text-ok" role="status">{message}</span>{/if}
+      {#if message}<span class="inline-flex items-center gap-1.5 text-sm text-ink-2" role="status"><OkMark />{message}</span>{/if}
       <span class="flex-1"></span>
       {#if changedCount > 0}
         <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>

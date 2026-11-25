@@ -45,7 +45,13 @@
   --lit: rgba(60, 60, 67, 0.06);
   --glass: rgba(246, 247, 250, 0.94);
   --field: #ffffff;
-  --field-edge: rgba(60, 60, 67, 0.2);
+  /* A field's edge is the only thing that says "you can type here", so the painted edge over
+     --field clears WCAG 3:1 against both the panel and the ground; hover strengthens it. */
+  --field-edge: rgba(60, 60, 67, 0.64);
+  --field-edge-hover: rgba(60, 60, 67, 0.82);
+  /* An "off" switch track is the control itself, not decoration, so it also clears 3:1.
+     It is its own step rather than --ink-5, which stays a ghost for empty-state glyphs. */
+  --switch-off: #808085;
   /* The selected segment of a segmented control: the one raised part of a recessed track. */
   --control-on: #ffffff;
 
@@ -56,7 +62,9 @@
   --lift-1: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
   --lift-2: 0 0 0 0.5px rgba(0, 0, 0, 0.045), 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 22px -10px rgba(30, 40, 60, 0.2);
   --lift-3: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.05), 0 20px 50px -18px rgba(30, 40, 60, 0.32);
-  --inset-1: inset 0 0 0 1px var(--field-edge);
+  /* A well's hairline. Deliberately the soft divider, not the field edge: a stroke strong
+     enough to mark a field would turn a container into a box. */
+  --inset-1: inset 0 0 0 1px var(--divide);
 
   /* Ink. Five steps: headline, body, caption, hint, ghost. */
   --ink: #1d1d1f;
@@ -73,6 +81,8 @@
   --ok-strong: #004593;
   --ok-soft: rgba(0, 98, 204, 0.1);
   --ok-line: rgba(0, 98, 204, 0.3);
+  /* The check knocked out of a filled ok mark. */
+  --ok-on: #ffffff;
 
   --warn: #946b00;
   --warn-strong: #5c4200;
@@ -99,10 +109,11 @@
   --info-soft: rgba(118, 118, 128, 0.13);
   --info-line: rgba(118, 118, 128, 0.32);
 
-  /* The one focus ring, and the tooltip surface. The tip surface is also the dark slab a
-     busy toolbar sits on, so it carries its own inks: one that reads on it, and one red
-     that still reads as a warning on it. */
-  --focus: rgba(0, 102, 214, 0.6);
+  /* The one focus ring, and the tooltip surface. The ring is opaque so it clears WCAG 3:1
+     on the ground and on a panel alike. The tip surface is also the dark slab a busy toolbar
+     sits on, so it carries its own inks: one that reads on it, and one red that still reads
+     as a warning on it. */
+  --focus: #0066d6;
   --tip: #2c2c2e;
   --tip-ink: #f5f5f7;
   --tip-bad: #ff8fae;
@@ -128,7 +139,9 @@ html.dark,
   --lit: rgba(255, 255, 255, 0.06);
   --glass: rgba(40, 40, 44, 0.94);
   --field: rgba(255, 255, 255, 0.055);
-  --field-edge: rgba(255, 255, 255, 0.12);
+  --field-edge: rgba(255, 255, 255, 0.36);
+  --field-edge-hover: rgba(255, 255, 255, 0.5);
+  --switch-off: #78787f;
   --control-on: #5b5b61;
 
   --divide: rgba(255, 255, 255, 0.1);
@@ -138,7 +151,9 @@ html.dark,
   --lift-1: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
   --lift-2: 0 0 0 0.5px rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.28), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
   --lift-3: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 60px -20px rgba(0, 0, 0, 0.85);
-  --inset-1: inset 0 0 0 1px var(--field-edge);
+  /* A well's hairline. Deliberately the soft divider, not the field edge: a stroke strong
+     enough to mark a field would turn a container into a box. */
+  --inset-1: inset 0 0 0 1px var(--divide);
 
   --ink: #f5f5f7;
   --ink-2: #d4d4d9;
@@ -150,6 +165,7 @@ html.dark,
   --ok-strong: #bcdaff;
   --ok-soft: rgba(78, 161, 255, 0.15);
   --ok-line: rgba(78, 161, 255, 0.35);
+  --ok-on: #161618;
 
   --warn: #f5cc4f;
   --warn-strong: #fde7a2;
@@ -174,7 +190,7 @@ html.dark,
   --info-soft: rgba(142, 142, 150, 0.18);
   --info-line: rgba(142, 142, 150, 0.36);
 
-  --focus: rgba(78, 161, 255, 0.75);
+  --focus: #4ea1ff;
   --tip: #3a3a3e;
   --tip-ink: #f5f5f7;
   --tip-bad: #ff8fae;
@@ -312,6 +328,14 @@ p {
   &:focus-visible {
     outline: 3px solid var(--focus);
     outline-offset: 2px;
+  }
+}
+/* The same ring drawn just inside the edge, for a control that fills a clipping container
+   (a menu row, a sidebar header in a scroll area) where an outer ring would be cut off. */
+@utility focus-ring-inset {
+  &:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: -3px;
   }
 }
 
@@ -578,19 +602,21 @@ p {
   .input {
     @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
     background: var(--field);
-    box-shadow: var(--inset-1);
+    box-shadow: inset 0 0 0 1px var(--field-edge);
   }
   .input:hover {
-    box-shadow: inset 0 0 0 1px var(--divide);
+    box-shadow: inset 0 0 0 1px var(--field-edge-hover);
   }
+  /* Focus straddles the edge with a solid line in the focus colour, so it reads at 3:1 and is
+     never fainter than the resting edge; the soft halo only rounds it off. */
   .input:focus {
-    box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 0 3.5px var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft);
   }
   .input[aria-invalid='true'] {
-    box-shadow: inset 0 0 0 1px var(--bad-line);
+    box-shadow: inset 0 0 0 1px var(--bad);
   }
   .input[aria-invalid='true']:focus {
-    box-shadow: inset 0 0 0 1px var(--bad-line), 0 0 0 3.5px var(--bad-soft);
+    box-shadow: inset 0 0 0 1px var(--bad), 0 0 0 1px var(--bad), 0 0 0 4px var(--bad-soft);
   }
 
   /* Native selects: strip the OS widget and draw our own chevron. */
@@ -611,7 +637,7 @@ p {
      white knob. Both are driven by the real checkbox that sits over them. */
   .switch-track {
     @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-200;
-    background: var(--ink-5);
+    background: var(--switch-off);
   }
   .switch-knob {
     @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200;
@@ -626,6 +652,57 @@ p {
   .peer:focus-visible ~ .switch-track {
     outline: 3px solid var(--focus);
     outline-offset: 2px;
+  }
+
+  /* Passed, verified, healthy, saved: ink text beside this filled mark. Blue text alone means
+     "you can press this", so a verdict is never told by the colour of its words. */
+  .ok-mark {
+    @apply inline-block h-3.5 w-3.5 flex-none;
+    color: var(--ok);
+  }
+  .ok-mark path {
+    stroke: var(--ok-on);
+  }
+
+  /* The stages of one job: done is a filled ok mark and calm ink, the stage running now is a
+     live accent dot and the headline ink, and what is still to come is quiet. Shared by the
+     app's job views and the worker sidecar so a stage reads the same on both. */
+  .job-stages {
+    @apply grid grid-cols-4 gap-2 max-[420px]:grid-cols-2 max-[420px]:gap-3;
+  }
+  .job-stages > li {
+    @apply flex min-w-0 items-center gap-1.5 pt-2.5 text-[0.6875rem] text-ink-4;
+    border-top: 2px solid var(--divide);
+    overflow-wrap: anywhere;
+  }
+  .job-stages > li.stage-done {
+    @apply text-ink-2;
+    border-color: var(--ok);
+  }
+  .job-stages > li.stage-current {
+    @apply font-semibold text-ink;
+    border-color: var(--accent);
+  }
+  .job-stages > li > .ok-mark,
+  .stage-live,
+  .stage-pending {
+    @apply h-3 w-3 flex-none;
+  }
+  /* The current stage is a solid accent dot whose halo breathes while work is actively running;
+     waiting or paused stages keep the solid dot still (.stage-live-still), and reduced motion
+     freezes the halo so the dot never loses contrast. */
+  .stage-live {
+    @apply rounded-full;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+    animation: stage-halo-pulse 1.8s ease-in-out infinite;
+  }
+  .stage-live-still {
+    animation: none;
+  }
+  .stage-pending {
+    @apply rounded-full;
+    box-shadow: inset 0 0 0 1.5px var(--divide);
   }
 
   /* A field or section label. Sentence case and a little bolder, the way macOS labels
@@ -693,8 +770,19 @@ p {
     transform: none;
   }
   .animate-pulse,
+  .stage-live,
   .progress-indeterminate {
     animation: none;
+  }
+}
+
+@keyframes stage-halo-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--accent-soft);
   }
 }
 
