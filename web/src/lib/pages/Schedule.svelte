@@ -6,6 +6,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
 
   let queueStatus = $state<QueueStatus | null>(null)
@@ -70,18 +71,19 @@
   let dispatchExplanation = $derived(queueStatus?.blockedReason ?? queueStatus?.waitingReason ?? i18n.m.schedule.explain_ready)
 </script>
 
-<header class="mb-6">
-  <h1 class="page-title">{i18n.m.nav.schedule}</h1>
-  <p class="text-sm text-ink-3">
-    {i18n.m.schedule.intro_before}<button
-      class="text-accent hover:underline"
-      onclick={() => router.go('/settings')}
-    >{i18n.m.nav.settings}</button>{i18n.m.schedule.intro_between}<button
-      class="text-accent hover:underline"
-      onclick={() => router.go('/libraries')}
-    >{i18n.m.nav.libraries}</button>{i18n.m.schedule.intro_after}
-  </p>
-</header>
+<PageHeader title={i18n.m.nav.schedule}>
+  {#snippet description()}
+    <p class="page-subtitle">
+      {i18n.m.schedule.intro_before}<button
+        class="text-accent hover:underline"
+        onclick={() => router.go('/settings')}
+      >{i18n.m.nav.settings}</button>{i18n.m.schedule.intro_between}<button
+        class="text-accent hover:underline"
+        onclick={() => router.go('/libraries')}
+      >{i18n.m.nav.libraries}</button>{i18n.m.schedule.intro_after}
+    </p>
+  {/snippet}
+</PageHeader>
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>

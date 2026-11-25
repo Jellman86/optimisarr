@@ -400,6 +400,27 @@ p {
   .page-subtitle {
     @apply mt-1 text-sm text-ink-3;
   }
+  /* PageHeader: a trail, the title and its sentence, then the page's actions at the far edge.
+     24px to the content below, whatever the page. The text keeps a readable measure on a wide
+     screen; the actions wrap under it on a phone instead of pushing the page sideways. */
+  .page-header {
+    @apply mb-6 min-w-0;
+  }
+  .page-header-eyebrow {
+    @apply mb-4 min-w-0;
+  }
+  .page-header-row {
+    @apply flex flex-wrap items-start justify-between gap-x-6 gap-y-3;
+  }
+  .page-header-row-end {
+    @apply items-end;
+  }
+  .page-header-text {
+    @apply min-w-0 max-w-3xl flex-[1_1_16rem];
+  }
+  .page-header-actions {
+    @apply flex min-w-0 max-w-full flex-wrap items-center gap-2 max-sm:basis-full;
+  }
 
   /* A sidebar row. 40px tall so a thumb finds it as well as a pointer. */
   .nav-button {

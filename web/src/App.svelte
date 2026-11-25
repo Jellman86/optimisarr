@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { i18n } from './lib/i18n/i18n.svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
@@ -23,6 +23,7 @@
   import Setup from './lib/pages/Setup.svelte'
   import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
+  import { APP_TITLE, pageTitle } from './lib/route-meta'
 
   // Map the active route to its page component.
   let page = $derived.by(() => {
@@ -56,6 +57,51 @@
     return path
   })
 
+  // The shell's scroll container; null while sign-in or setup has the screen instead.
+  let mainEl = $state<HTMLElement | null>(null)
+
+  // The tab names the page, so history, tab switchers and screen readers say where you are.
+  // Sign-in and setup are not pages of the app yet, so they carry only its name.
+  let documentTitle = $derived(mainEl ? pageTitle(router.path, i18n.m) : APP_TITLE)
+
+  // Arriving on a different page starts at its top, with focus on its heading, so a keyboard or
+  // screen-reader user hears where they landed instead of staying on the link they left. The
+  // first page shown is left alone: the browser already starts there, and grabbing focus on
+  // load would draw a ring nobody asked for. A page that moved focus itself (to its own heading
+  // or a field) keeps it.
+  let shownPageKey: string | null = null
+  let focusedBeforeNav: Element | null = null
+  $effect.pre(() => {
+    const key = pageKey
+    if (shownPageKey !== null && key !== shownPageKey) {
+      focusedBeforeNav = document.activeElement
+    }
+  })
+  $effect(() => {
+    const key = pageKey
+    const main = mainEl
+    if (!main) {
+      shownPageKey = null
+      focusedBeforeNav = null
+      return
+    }
+    if (shownPageKey === null || key === shownPageKey) {
+      shownPageKey = key
+      return
+    }
+    shownPageKey = key
+    const focusedBefore = focusedBeforeNav
+    focusedBeforeNav = null
+    main.scrollTo({ top: 0 })
+    void tick().then(() => {
+      if (!main.isConnected || key !== pageKey) return
+      const focused = document.activeElement
+      if (focused && focused !== focusedBefore && focused !== document.body && main.contains(focused)) return
+      const heading = main.querySelector<HTMLElement>('[data-page-heading]') ?? main.querySelector<HTMLElement>('h1[tabindex]')
+      heading?.focus({ preventScroll: true })
+    })
+  })
+
   let tokenInput = $state('')
 
   // One app-wide connection drives the sidebar activity indicator and the Queue usage graph.
@@ -80,7 +126,7 @@
 </script>
 
 <svelte:head>
-  <title>Optimisarr</title>
+  <title>{documentTitle}</title>
 </svelte:head>
 
 {#if !auth.checked}
@@ -191,6 +237,7 @@
          was static, screen-reader text such as the queue table's sr-only header label kept its
          own box outside this scroll container and stretched the document past the viewport. -->
     <main
+      bind:this={mainEl}
       class="relative min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >

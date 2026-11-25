@@ -22,6 +22,7 @@
   import OkMark from '../components/OkMark.svelte'
   import SizeChange from '../components/SizeChange.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import JobResult from '../components/JobResult.svelte'
@@ -756,9 +757,7 @@
 </script>
 
 <div class="queue-layout">
-  <header class="queue-heading">
-    <div><h1 class="page-title">{i18n.m.nav.queue}</h1><p class="page-subtitle">{i18n.m.queue.subtitle}</p></div>
-  </header>
+  <PageHeader title={i18n.m.nav.queue} subtitle={i18n.m.queue.subtitle} />
   <Segmented class="mb-6" label={i18n.m.queue.view_label} value={activeTab} onselect={selectTab} items={[
     { value: 'queue', label: i18n.m.nav.queue, count: activeCount > 0 ? activeCount : undefined },
     { value: 'failures', label: i18n.m.queue.tab_failures, count: failedCount > 0 ? failedCount : undefined },
@@ -1286,7 +1285,6 @@
   .queue-review-alert span { min-width: 0; flex: 1; display: grid; gap: .25rem; }
   .queue-review-alert strong { color: var(--ink); font-size: .8125rem; }
   .queue-review-alert small { color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
-.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
   .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-heading-actions .btn { font-size: .75rem; }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
   .queue-lanes { margin-bottom: 1.5rem; }.queue-lanes-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }.queue-lanes-heading h2 { font-size: .8125rem; font-weight: 600; color: var(--ink-2); }.queue-lanes-heading p { font-size: .6875rem; color: var(--ink-3); }.queue-lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .625rem; }.queue-lane { min-width: 0; padding: .875rem 1rem; transition: transform .18s ease, box-shadow .18s ease; }.queue-lane:hover { transform: translateY(-2px); box-shadow: var(--lift-2); }.queue-lane-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; color: var(--ink-2); font-size: .75rem; }.queue-lane-head strong { flex: none; font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }.queue-lane p { color: var(--ink-3); font-size: .6875rem; margin-top: .4rem; }.queue-lane small { display: block; color: var(--ink-3); font-size: .6875rem; line-height: 1.45; margin-top: .625rem; overflow-wrap: anywhere; }.queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
   .queue-execution-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }.queue-execution-path h3 { grid-column: 1/-1; margin: 0; font-size: .75rem; color: var(--ink-3); font-weight: 600; }.queue-execution-path div { min-width: 0; display: grid; gap: .25rem; font-size: .6875rem; color: var(--ink-3); }.queue-execution-path strong { color: var(--ink); font-size: .75rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -1329,7 +1327,7 @@
   .queue-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-toolbar-actions .btn { font-size: .75rem; }
   /* Clearing failed and cancelled jobs is quiet until it is pointed at, then it says what it does. */
   .queue-clear-errors { color: var(--ink-3); }.queue-clear-errors:hover { color: var(--bad); background: var(--bad-soft); }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; } }
+  @media(max-width: 639px) { .queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
   @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer, .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: none; } }
 </style>

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Standardise page headers, browser tab titles, navigation focus, and live status display across the web UI: every page now uses a shared `PageHeader` layout with consistent spacing and narrow-screen wrapping, browser tabs name the current page and section in the active language, keyboard focus moves to the new page heading when navigating (while preserving unsaved drafts across Settings rooms, Quarantine reviews, and Library editor tabs), the top status strip wraps long status reasons visibly instead of truncating them with an ellipsis, and the sidebar omits the duplicate "Now encoding" card on Dashboard and Queue where active work is already on screen. No migration.
+
 - Unify banners, panel headers, detail dialogs, and Settings rows across the web UI: inline banners now render as flat callouts (with graphite styling for neutral info banners instead of clickable blue), dashboard and modal headers use quiet hairlines instead of dark strokes, Inventory and Queue inspection dialogs share a single responsive dialog shell, and Encoding and AI super-resolution settings now use the same `SettingRow` layout as Libraries with larger body-sized explanations and highlighted changed rows. No migration.
 
 - Unify operational tables across Inventory, Queue, Quarantine, Candidate lists, and Recent results onto a shared `DataTable` layout: every list now shares the same panel header, hairline row dividers, body-sized text, hover and selection highlight, and consistent loading/empty/error states (a failed Quarantine load no longer shows the empty-list message below the error banner). Recent results now renders as a semantic table with non-wrapping figures, and column headers are ready for sorting. No migration.

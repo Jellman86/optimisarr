@@ -46,8 +46,10 @@
     : holds.length > 0 ? t(i18n.m.queue.playback_status, { count: holds.length, summary: playbackSummary(holds, phrases) ?? '' })
     : state.detail,
   )
-  // Keep the strip to one line; its link opens the queue details on touch and keyboard too.
-  let detailTitle = $derived(holds.length > 0 ? holds.map((hold) => `${hold.watcher} · ${playbackLine(hold, phrases)}`).join('\n') : detail)
+  // The reason wraps rather than clips, so it is complete on screen. Only several playbacks have
+  // more to say than fits in a sentence: the tooltip lists each one, and the link opens the
+  // queue with the same detail for touch and keyboard.
+  let detailTitle = $derived(holds.length > 0 ? holds.map((hold) => `${hold.watcher} · ${playbackLine(hold, phrases)}`).join('\n') : undefined)
 </script>
 
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
@@ -69,9 +71,9 @@
       <span class="status-strip-label text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
       {#if detail}
         {#if holds.length > 0}
-          <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
+          <a class="status-strip-reason status-strip-playback text-label focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
         {:else}
-          <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+          <span class="status-strip-reason text-label">{detail}</span>
         {/if}
       {/if}
     </div>
@@ -142,10 +144,7 @@
   }
   .status-strip-reason {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
     color: var(--ink-2);
   }
   .status-strip-label { min-width:0; overflow-wrap:anywhere; }
@@ -159,8 +158,10 @@
     text-decoration: underline;
     color: var(--ink);
   }
-  @media (pointer: coarse) {
-    .status-strip-playback { min-height: 44px; line-height: 44px; }
+  /* A thumb-sized target that still reads as wrapped text: the height grows the box, not the
+     gap between its lines. */
+  @media (pointer: coarse), (max-width: 639px) {
+    .status-strip-playback { display: inline-flex; align-items: center; min-height: var(--control-lg); }
   }
   .status-strip-fact {
     display: flex;
@@ -181,7 +182,7 @@
     margin-left: auto;
   }
   .status-strip-action button { min-width:0; max-width:100%; overflow-wrap:anywhere; }
-  @media (max-width: 40rem) {
+  @media (max-width: 639px) {
     .status-strip-optional { display: none; }
   }
 </style>

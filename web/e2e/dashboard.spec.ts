@@ -121,7 +121,7 @@ test('the status bar names the state, and the job list says what is being worked
 
   await page.goto('/#/')
 
-  // Scoped to the page: the sidebar's encoding card names the same file, encoder and figure.
+  // Scoped to main so the test checks the Dashboard's own in-flight list directly.
   const main = page.locator('main')
   await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
   await expect(main.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
@@ -131,7 +131,7 @@ test('the status bar names the state, and the job list says what is being worked
   await expect(main.getByText('Adaptive VMAF')).toBeVisible()
 })
 
-test('the sidebar shows what is encoding, whichever page is open', async ({ page }) => {
+test('the sidebar shows what is encoding on pages without a live job list', async ({ page }) => {
   // The mark already turns while work runs; the card beneath the navigation says what the work
   // is, so a reader on Settings or Libraries does not have to go to the Queue to find out.
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
@@ -723,7 +723,8 @@ test('theme changes update reduced-motion stills and the favicon', async ({ page
 test('a working sidebar keeps its footer reachable in a short window', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
   await page.setViewportSize({ width: 1280, height: 600 })
-  await page.goto('/#/')
+  // Settings, because the rail's encoding card only shows on pages that do not show the work themselves.
+  await page.goto('/#/settings')
   const rail = page.locator('aside')
   await expect(rail.getByRole('button', { name: 'Language: English' })).toBeInViewport()
   await expect(rail.getByRole('button', { name: 'Toggle theme' })).toBeInViewport()
@@ -738,7 +739,7 @@ test('the sidebar recovers artwork when the next job follows one without a poste
   const notify = await mockJobsHub(page)
   await page.route('**/api/media/7/thumbnail', route => route.fulfill({ status: 404 }))
   await page.route('**/api/media/8/thumbnail', route => route.fulfill({ contentType: 'image/png', path: 'public/favicon-192.png' }))
-  await page.goto('/#/')
+  await page.goto('/#/settings')
   await expect(page.locator('aside [data-thumbnail]')).toBeVisible()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCount(0)
   fixture.jobs = [liveJob({ id: 8, mediaFileId: 8, relativePath: 'New film.mkv' })]
@@ -1004,4 +1005,153 @@ test('an overlapping later poll does not starve a completed status response', as
   await expect(page.locator('.status-strip-reason')).toHaveText('First completed poll')
   await json(pending[1], { ...QUEUE_CLEAR, canStart: false, blockedReason: 'Second completed poll' })
   await expect(page.locator('.status-strip-reason')).toHaveText('Second completed poll')
+})
+
+test('the rail leaves the encoding card to the pages that already show the work', async ({ page }) => {
+  // Dashboard and Queue show the running job on the page; the rail repeating it beside them was
+  // the same job three times on one screen. Every other page still gets the card.
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+
+  await page.goto('/#/settings')
+  await expect(card).toBeVisible()
+
+  await page.goto('/#/')
+  await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
+  await expect(card).toHaveCount(0)
+
+  await page.goto('/#/queue')
+  await expect(page.getByRole('heading', { level: 1, name: 'Queue' })).toBeVisible()
+  await expect(card).toHaveCount(0)
+
+  // Query parameters on Queue and unknown routes that fall back to Dashboard stay consistent.
+  await page.goto('/#/queue?filter=active')
+  await expect(card).toHaveCount(0)
+  await page.goto('/#/nowhere')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await expect(card).toHaveCount(0)
+
+  // The rail's own activity figure stays everywhere, so the queue entry still says work is running.
+  await expect(page.locator('aside').getByRole('button', { name: /Queue/ })).toContainText('1 / 14')
+})
+
+test('the browser tab names the page that is open', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  await expect(page).toHaveTitle('Dashboard · Optimisarr')
+
+  const rail = page.locator('aside')
+  // The queue entry carries its count, so its name is "Queue 14".
+  await rail.getByRole('button', { name: /^Queue/ }).click()
+  await expect(page).toHaveTitle('Queue · Optimisarr')
+  await rail.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page).toHaveTitle('Settings · Optimisarr')
+
+  // A page inside a section names itself first, then the section.
+  await page.evaluate(() => { window.location.hash = '/settings/encoding' })
+  await expect(page).toHaveTitle('Encoding · Settings · Optimisarr')
+  await page.evaluate(() => { window.location.hash = '/inventory/duplicates' })
+  await expect(page).toHaveTitle('Find duplicates · Inventory · Optimisarr')
+
+  // The title follows the language too.
+  await rail.getByRole('button', { name: 'Language: English' }).click()
+  await page.getByRole('option', { name: 'Deutsch' }).click()
+  await expect(page).not.toHaveTitle(/Find duplicates/)
+  await expect(page).toHaveTitle(/ · Bestand · Optimisarr$/)
+})
+
+test('moving to another page puts keyboard focus on its heading, and the first page leaves focus alone', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await expect(page.locator('body')).toBeFocused()
+
+  const rail = page.locator('aside')
+  await rail.getByRole('button', { name: 'Schedule', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  const schedule = page.getByRole('heading', { level: 1, name: 'Schedule' })
+  await expect(schedule).toBeFocused()
+  // Focus that the heading takes for a screen reader is not a tab stop.
+  await expect(schedule).toHaveAttribute('tabindex', '-1')
+
+  await rail.getByRole('button', { name: 'Inventory', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Inventory' })).toBeFocused()
+
+  // Back and forward are navigation too.
+  await page.goBack()
+  await expect(schedule).toBeFocused()
+
+  // Navigating between Settings rooms and overview keeps focus moving on Back and Forward too.
+  await rail.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeFocused()
+  await page.locator('#settings-room-encoding').click()
+  await expect(page.locator('#room-heading')).toBeFocused()
+  await page.goBack()
+  await expect(page.locator('#settings-room-encoding')).toBeFocused()
+  await page.goForward()
+  await expect(page.locator('#room-heading')).toBeFocused()
+})
+
+test('a new page starts at its top', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const main = page.locator('main')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await main.evaluate((element) => { element.style.paddingBottom = '3000px'; element.scrollTop = 1500 })
+  await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.locator('aside').getByRole('button', { name: 'Schedule', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Schedule' })).toBeFocused()
+  expect(await main.evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test('a long status reason wraps onto further lines instead of being cut off', async ({ page }) => {
+  // The reason used to be clipped to one line with an ellipsis, and the rest lived only in a
+  // tooltip that touch and keyboard users could not open.
+  const waiting = '1418 job(s) waiting for the TV optimise window (00:00–05:00), and 12 more waiting for the Films optimise window (01:00–06:00) on this server'
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockDashboard(page, { queue: { waitingReason: waiting } })
+  await page.goto('/#/')
+
+  const reason = page.locator('.status-strip-reason')
+  await expect(reason).toHaveText(waiting)
+  await expect(reason).not.toHaveCSS('text-overflow', 'ellipsis')
+  await expect(reason).not.toHaveCSS('white-space', 'nowrap')
+  // All of it is on screen: more than one line tall, and nothing hidden past its right edge.
+  const metrics = await reason.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    overflow: element.scrollWidth - element.clientWidth,
+  }))
+  expect(metrics.height).toBeGreaterThan(metrics.lineHeight * 1.5)
+  expect(metrics.overflow).toBeLessThanOrEqual(0)
+  // The full sentence is on screen, so it needs no tooltip repeating it.
+  await expect(reason).not.toHaveAttribute('title')
+  const strip = await page.locator('.status-strip').boundingBox()
+  expect(strip!.x + strip!.width).toBeLessThanOrEqual(390)
+})
+
+test('a wrapped playback link keeps its lines together on a touch screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const hold = { watcher: 'Riker Plex', year: null, artist: null, paused: false, kind: 'Episode', season: 2, episode: 5, device: 'Living Room TV' }
+  await mockDashboard(page, {
+    queue: {
+      canStart: false, blockedReason: 'Paused while Riker Plex is active (2 streams).',
+      playbackHolds: [
+        { ...hold, title: 'A Very Long Episode Title That Will Need More Than One Line', series: 'An Example Show With A Long Name', user: 'alex' },
+        { ...hold, title: 'Second', series: 'Other', user: 'sam' },
+      ],
+    },
+  })
+  await page.goto('/#/')
+  const reason = page.locator('.status-strip-playback')
+  await expect(reason).toContainText('An Example Show With A Long Name')
+  const metrics = await reason.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+  }))
+  // A 44px target, but lines spaced as text rather than 44px apart.
+  expect(metrics.height).toBeGreaterThanOrEqual(44)
+  expect(metrics.lineHeight).toBeLessThan(metrics.fontSize * 2)
 })
