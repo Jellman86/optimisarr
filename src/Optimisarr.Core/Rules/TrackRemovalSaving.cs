@@ -46,6 +46,13 @@ public sealed record TrackRemovalSaving(long? Bytes, double? Percent, TrackSavin
             total += bytes;
         }
 
+        // Removing tracks always leaves something behind, so sizes adding up to the whole file or
+        // more are not this file's.
+        if (fileSizeBytes > 0 && total >= fileSizeBytes)
+        {
+            return new TrackRemovalSaving(null, null, TrackSavingKnowledge.Unknown);
+        }
+
         double? percent = fileSizeBytes > 0 ? total * 100.0 / fileSizeBytes : null;
         return new TrackRemovalSaving(total, percent, TrackSavingKnowledge.Known);
     }
@@ -55,11 +62,12 @@ public sealed record TrackRemovalSaving(long? Bytes, double? Percent, TrackSavin
     private static IEnumerable<long?> RemovedSizes(IReadOnlyList<long?>? sizes, IReadOnlyList<int> removals) =>
         removals.Select(index => sizes is not null && index >= 0 && index < sizes.Count ? sizes[index] : null);
 
-    /// <summary>"about 120 MB (0.2%)".</summary>
-    public string Describe() =>
+    /// <summary>"about 120 MB (0.2%)". <paramref name="roundDown"/> for a saving that falls short of a
+    /// minimum, so rounding never prints it as reaching the minimum it fails.</summary>
+    public string Describe(bool roundDown = false) =>
         Percent is { } percent
-            ? $"about {TrackSavingMinimum.FormatSize(Bytes ?? 0)} ({TrackSavingMinimum.FormatPercent(percent)})"
-            : $"about {TrackSavingMinimum.FormatSize(Bytes ?? 0)}";
+            ? $"about {TrackSavingMinimum.FormatSize(Bytes ?? 0, roundDown)} ({TrackSavingMinimum.FormatPercent(percent, roundDown)})"
+            : $"about {TrackSavingMinimum.FormatSize(Bytes ?? 0, roundDown)}";
 }
 
 /// <summary>
@@ -114,7 +122,7 @@ public sealed record TrackSavingMinimum(double? Percent, long? Bytes)
                 "The size of the tracks to remove is not recorded in this file and cannot be estimated, so this library's minimum saving cannot be checked",
             _ => IsMetBy(saving) == true
                 ? null
-                : $"Removing these tracks would save {saving.Describe()}, below this library's minimum of {Describe()}"
+                : $"Removing these tracks would save {saving.Describe(roundDown: true)}, below this library's minimum of {Describe()}"
         };
     }
 
@@ -126,16 +134,27 @@ public sealed record TrackSavingMinimum(double? Percent, long? Bytes)
             Bytes is { } bytes ? FormatSize(bytes) : null
         }.Where(part => part is not null));
 
-    internal static string FormatPercent(double percent) =>
-        $"{percent.ToString(percent >= 1 ? "0.##" : "0.0#", CultureInfo.InvariantCulture)}%";
+    internal static string FormatPercent(double percent, bool roundDown = false)
+    {
+        var shown = roundDown ? RoundDown(percent, 2) : percent;
+        return $"{shown.ToString(shown >= 1 ? "0.##" : "0.0#", CultureInfo.InvariantCulture)}%";
+    }
 
-    internal static string FormatSize(long bytes)
+    internal static string FormatSize(long bytes, bool roundDown = false)
     {
         const long megabyte = 1024L * 1024L;
         const long gigabyte = megabyte * 1024L;
 
-        return bytes >= gigabyte
-            ? $"{(bytes / (double)gigabyte).ToString("0.#", CultureInfo.InvariantCulture)} GB"
-            : $"{(bytes / (double)megabyte).ToString("0.#", CultureInfo.InvariantCulture)} MB";
+        var (value, unit) = bytes >= gigabyte ? (bytes / (double)gigabyte, "GB") : (bytes / (double)megabyte, "MB");
+        var shown = roundDown ? RoundDown(value, 1) : value;
+        return $"{shown.ToString("0.#", CultureInfo.InvariantCulture)} {unit}";
+    }
+
+    // Through decimal, so a binary fraction just under a round number (0.29 held as 0.28999…) is
+    // not shown a step lower than it is.
+    private static double RoundDown(double value, int decimals)
+    {
+        var scale = (decimal)Math.Pow(10, decimals);
+        return (double)(Math.Floor((decimal)value * scale) / scale);
     }
 }

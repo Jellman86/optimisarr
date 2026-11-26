@@ -28,7 +28,8 @@ public sealed class TrackRemovalSavingTests
             { "codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle", "tags": { "language": "deu", "NUMBER_OF_BYTES": "31000000" } },
             { "codec_type": "subtitle", "codec_name": "subrip", "tags": { "language": "eng", "NUMBER_OF_BYTES": "0" } }
           ],
-          "format": { "format_name": "matroska,webm", "duration": "7200.0" }
+          "format": { "format_name": "matroska,webm", "duration": "7200.0", "size": "45200000000",
+            "tags": { "encoder": "libebml v1.4.2 + libmatroska v1.6.4" } }
         }
         """;
 
@@ -36,6 +37,76 @@ public sealed class TrackRemovalSavingTests
 
         Assert.Equal(new long?[] { 4_500_000_000, 650_000_000 }, result.AudioTrackBytes);
         Assert.Equal(new long?[] { 31_000_000, 0 }, result.SubtitleTrackBytes);
+    }
+
+    // An Optimisarr-converted file: FFmpeg re-encoded the TrueHD track to AAC but copied the source's
+    // mkvmerge statistics, so its tags still claim 4 GB for a track of about 100 MB.
+    private const string FfmpegConvertedWithCopiedStatistics = """
+    {
+      "streams": [
+        { "codec_type": "video", "codec_name": "hevc",
+          "tags": { "BPS": "40000000", "NUMBER_OF_BYTES": "36000000000", "_STATISTICS_WRITING_APP": "mkvmerge v64.0.0 ('Willows') 64-bit" } },
+        { "codec_type": "audio", "codec_name": "aac", "bit_rate": "112000",
+          "tags": { "language": "eng", "NUMBER_OF_BYTES-eng": "4000000000", "_STATISTICS_WRITING_APP-eng": "mkvmerge v64.0.0 ('Willows') 64-bit" } },
+        { "codec_type": "audio", "codec_name": "ac3",
+          "tags": { "language": "fra", "NUMBER_OF_BYTES": "650000000", "_STATISTICS_WRITING_APP": "mkvmerge v64.0.0 ('Willows') 64-bit" } }
+      ],
+      "format": { "format_name": "matroska,webm", "duration": "7200.0", "size": "SIZE", "tags": { "encoder": "Lavf61.7.100" } }
+    }
+    """;
+
+    [Fact]
+    public void Parse_ignores_statistics_ffmpeg_copied_from_the_file_it_was_made_from()
+    {
+        // The copied tags add up to less than this file, so only who wrote them gives them away.
+        var result = MediaProbeService.Parse(FfmpegConvertedWithCopiedStatistics.Replace("SIZE", "41000000000"), ".mkv");
+
+        Assert.Equal(new long?[] { 100_800_000, null }, result.AudioTrackBytes);
+    }
+
+    [Fact]
+    public void Parse_ignores_statistics_that_add_up_to_more_than_the_file()
+    {
+        var json = FfmpegConvertedWithCopiedStatistics
+            .Replace("SIZE", "30000000000")
+            .Replace("Lavf61.7.100", "libebml v1.4.2 + libmatroska v1.6.4");
+
+        Assert.Equal(new long?[] { 100_800_000, null }, MediaProbeService.Parse(json, ".mkv").AudioTrackBytes);
+    }
+
+    [Fact]
+    public void Parse_trusts_statistics_mkvpropedit_recounted_after_ffmpeg_wrote_the_file()
+    {
+        var json = FfmpegConvertedWithCopiedStatistics
+            .Replace("SIZE", "41000000000")
+            .Replace("mkvmerge v64.0.0 ('Willows') 64-bit", "mkvpropedit v88.0 ('All I Know') 64-bit");
+
+        Assert.Equal(new long?[] { 4_000_000_000, 650_000_000 }, MediaProbeService.Parse(json, ".mkv").AudioTrackBytes);
+    }
+
+    [Fact]
+    public void Parse_does_not_trust_ffmpeg_copied_statistics_because_one_track_was_recounted()
+    {
+        // mkvpropedit recounted only the video track; the audio statistics are still the source's.
+        var json = FfmpegConvertedWithCopiedStatistics
+            .Replace("SIZE", "41000000000")
+            .Replace("\"40000000\", \"NUMBER_OF_BYTES\": \"36000000000\", \"_STATISTICS_WRITING_APP\": \"mkvmerge v64.0.0 ('Willows') 64-bit\"",
+                "\"40000000\", \"NUMBER_OF_BYTES\": \"36000000000\", \"_STATISTICS_WRITING_APP\": \"mkvpropedit v88.0 ('All I Know') 64-bit\"");
+
+        Assert.Equal(new long?[] { 100_800_000, null }, MediaProbeService.Parse(json, ".mkv").AudioTrackBytes);
+    }
+
+    [Fact]
+    public void Parse_estimates_from_the_file_duration_when_the_track_reports_a_zero_duration()
+    {
+        const string json = """
+        {
+          "streams": [ { "codec_type": "audio", "codec_name": "aac", "bit_rate": "640000", "duration": "0.000000" } ],
+          "format": { "format_name": "mpegts", "duration": "10.0" }
+        }
+        """;
+
+        Assert.Equal(new long?[] { 800_000 }, MediaProbeService.Parse(json, ".ts").AudioTrackBytes);
     }
 
     [Fact]
@@ -185,6 +256,18 @@ public sealed class TrackRemovalSavingTests
         Assert.Equal(1 * Gigabyte, saving.Bytes);
     }
 
+    [Theory]
+    [InlineData(10L * 1024 * 1024 * 1024)]
+    [InlineData(12L * 1024 * 1024 * 1024)]
+    public void A_saving_of_the_whole_file_or_more_is_unknown(long removedBytes)
+    {
+        var saving = TrackRemovalSaving.Measure(10 * Gigabyte, [removedBytes], [0], null, []);
+
+        Assert.Equal(TrackSavingKnowledge.Unknown, saving.Knowledge);
+        Assert.Null(saving.Bytes);
+        Assert.Null(saving.Percent);
+    }
+
     [Fact]
     public void Sizes_recorded_before_this_was_measured_say_so()
     {
@@ -219,7 +302,32 @@ public sealed class TrackRemovalSavingTests
 
         var refusal = new TrackSavingMinimum(5, null).Refusal(saving);
 
-        Assert.Equal("Removing these tracks would save about 120 MB (0.2%), below this library's minimum of 5%", refusal);
+        Assert.Equal("Removing these tracks would save about 120 MB (0.19%), below this library's minimum of 5%", refusal);
+    }
+
+    [Fact]
+    public void A_saving_just_below_the_percentage_never_reads_as_reaching_it()
+    {
+        // 4.999% would round to "5%", the very minimum it fails.
+        var saving = TrackRemovalSaving.Measure(100_000_000_000, [4_999_000_000], [0], null, []);
+
+        Assert.Equal(
+            "Removing these tracks would save about 4.6 GB (4.99%), below this library's minimum of 5%",
+            new TrackSavingMinimum(5, null).Refusal(saving));
+    }
+
+    [Fact]
+    public void A_saving_just_below_the_size_never_reads_as_reaching_it()
+    {
+        // 1023.97 MB would round to "1024 MB", and 1.97 GB to "2 GB".
+        Assert.Equal(
+            "Removing these tracks would save about 1023.9 MB (10%), below this library's minimum of 1 GB",
+            new TrackSavingMinimum(null, 1 * Gigabyte).Refusal(
+                TrackRemovalSaving.Measure(10 * (1 * Gigabyte - 30 * 1024), [1 * Gigabyte - 30 * 1024], [0], null, [])));
+        Assert.StartsWith(
+            "Removing these tracks would save about 1.9 GB",
+            new TrackSavingMinimum(null, 2 * Gigabyte).Refusal(
+                TrackRemovalSaving.Measure(100 * Gigabyte, [(long)(1.97 * Gigabyte)], [0], null, [])));
     }
 
     [Fact]
@@ -236,7 +344,7 @@ public sealed class TrackRemovalSavingTests
         var saving = TrackRemovalSaving.Measure(2 * Gigabyte, [300 * Megabyte], [0], null, []);
 
         Assert.Equal(
-            "Removing these tracks would save about 300 MB (14.65%), below this library's minimum of 1 GB",
+            "Removing these tracks would save about 300 MB (14.64%), below this library's minimum of 1 GB",
             new TrackSavingMinimum(null, 1 * Gigabyte).Refusal(saving));
     }
 
@@ -247,7 +355,7 @@ public sealed class TrackRemovalSavingTests
 
         // 10% of a 2 GB file meets the percentage but not the size.
         Assert.Equal(
-            "Removing these tracks would save about 204.8 MB (10%), below this library's minimum of 5% and 1 GB",
+            "Removing these tracks would save about 204.7 MB (9.99%), below this library's minimum of 5% and 1 GB",
             minimum.Refusal(TrackRemovalSaving.Measure(2 * Gigabyte, [2 * Gigabyte / 10], [0], null, [])));
         // 2 GB of a 100 GB file meets the size but not the percentage.
         Assert.NotNull(minimum.Refusal(TrackRemovalSaving.Measure(100 * Gigabyte, [2 * Gigabyte], [0], null, [])));
@@ -310,7 +418,7 @@ public sealed class TrackRemovalSavingTests
         var decision = CandidateEvaluator.Evaluate(Film(60 * Gigabyte, [4 * Gigabyte, 120 * Megabyte]), rules);
 
         Assert.False(decision.IsEligible);
-        Assert.Equal("Removing these tracks would save about 120 MB (0.2%), below this library's minimum of 5%", decision.Reason);
+        Assert.Equal("Removing these tracks would save about 120 MB (0.19%), below this library's minimum of 5%", decision.Reason);
     }
 
     [Fact]
@@ -447,6 +555,20 @@ public sealed class TrackRemovalSavingTests
         Assert.Equal(5, plan.TrackSaving.MinimumPercent);
         Assert.Null(plan.TrackSaving.MinimumBytes);
         Assert.False(plan.TrackSaving.MeetsMinimum);
+    }
+
+    [Fact]
+    public void The_plan_says_when_a_re_probe_would_let_the_minimum_be_checked()
+    {
+        var rules = Cleanup with { MinimumTrackRemovalSavingPercent = 5 };
+
+        var neverRecorded = OptimisationPlanner.Plan(Film(60 * Gigabyte, null), rules, crf: null).TrackSaving!;
+        var unknowable = OptimisationPlanner.Plan(Film(60 * Gigabyte, [null, null]), rules, crf: null).TrackSaving!;
+
+        Assert.True(neverRecorded.NeedsReprobe);
+        Assert.Null(neverRecorded.MeetsMinimum);
+        Assert.False(unknowable.NeedsReprobe);
+        Assert.False(OptimisationPlanner.Plan(Film(60 * Gigabyte, [4 * Gigabyte, 120 * Megabyte]), rules, crf: null).TrackSaving!.NeedsReprobe);
     }
 
     [Fact]

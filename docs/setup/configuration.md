@@ -811,7 +811,8 @@ or both. A file is rewritten only when the tracks it would lose add up to at lea
 that much; with both set, it must meet both, so neither a small share of a huge
 file nor a large share of a tiny one is rewritten. Below the minimum, the file is
 skipped with the reason, for example *Removing these tracks would save about 120 MB
-(0.2%), below this library's minimum of 5%*. Both fields are blank by default, which
+(0.19%), below this library's minimum of 5%*. A saving below the minimum is rounded
+down, so it never reads as reaching the minimum it fails. Both fields are blank by default, which
 cleans up every file as before.
 
 - **Where it applies.** Every track cleanup job, and a remux clean-up of a file that
@@ -820,11 +821,16 @@ cleans up every file as before.
   the minimum.
 - **Where the sizes come from.** Matroska files written by mkvmerge record each
   track's size (the `NUMBER_OF_BYTES` statistics tag). Otherwise the size is
-  estimated from the track's bitrate and length. Each file's track sizes are
+  estimated from the track's bitrate and length. FFmpeg copies those tags into
+  the files it writes without recounting them, so a file FFmpeg last wrote
+  (Optimisarr's own output included) is estimated instead unless mkvpropedit
+  recounted its statistics afterwards, and tags that add up to more than the whole
+  file are ignored whoever wrote them. Each file's track sizes are
   recorded when it is probed; files probed before this version need **Re-probe**
   before the minimum can be checked.
 - **When the size is unknown.** If a track to be removed reports neither a size nor
-  a bitrate, the saving cannot be worked out. While a minimum is set, that file is
+  a bitrate, or the tracks to remove would add up to the whole file or more, the
+  saving cannot be worked out. While a minimum is set, that file is
   skipped with that reason rather than rewritten on a guess.
 - **When the job starts.** The fresh probe every track-removal job takes before
   FFmpeg runs is checked against the minimum again, so a file that changed since it

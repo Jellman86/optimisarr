@@ -2291,6 +2291,7 @@ export const zh: Messages = {
     size_meets_minimum: "已达到此媒体库的最低值 {minimum}。",
     size_below_minimum: "低于此媒体库的最低值 {minimum}，因此跳过此文件。",
     size_saving_unknown: "要删除的轨道大小未知，无法检查此媒体库的最低值 {minimum}，因此跳过此文件。",
+    size_saving_reprobe: "此文件在记录轨道大小之前已探测，因此尚无法检查此媒体库的最低节省 {minimum}，该文件将被跳过。请重新探测以进行检查。",
     tag_track_saving_skip: "已跳过",
     original_title: "原始文件会怎样",
     dry_run: "替换目前已锁定（dry-run 模式）。您可以将此文件加入队列并检查。可以在结果中“替换”按钮旁解锁。",

@@ -91,6 +91,7 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
         Assert.Equal(100, saving.GetProperty("bytes").GetInt64());
         Assert.Equal(20, saving.GetProperty("minimumPercent").GetDouble());
         Assert.False(saving.GetProperty("meetsMinimum").GetBoolean());
+        Assert.False(saving.GetProperty("needsReprobe").GetBoolean());
     }
 
     [Fact]

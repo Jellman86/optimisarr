@@ -1,4 +1,6 @@
-export function formatSize(bytes: number): string {
+// `roundDown` is for a figure that falls short of a limit, so rounding never prints it as reaching
+// the limit it fails.
+export function formatSize(bytes: number, roundDown = false): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = bytes
   let unit = 0
@@ -6,7 +8,15 @@ export function formatSize(bytes: number): string {
     value /= 1024
     unit++
   }
-  return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`
+  const decimals = value < 10 && unit > 0 ? 1 : 0
+  return `${(roundDown ? floorTo(value, decimals) : value).toFixed(decimals)} ${units[unit]}`
+}
+
+/** `value` cut to `decimals` places, never up. A binary fraction just under a round number (0.29
+ * held as 0.28999…) is first settled to 15 digits so it is not shown a step lower than it is. */
+export function floorTo(value: number, decimals: number): number {
+  const scale = 10 ** decimals
+  return Math.floor(Number((value * scale).toPrecision(15))) / scale
 }
 
 export function formatDuration(seconds: number | null): string {

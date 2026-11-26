@@ -116,7 +116,7 @@ public sealed class QueueDispatcherSafetyTests
             """, ".mkv");
 
         Assert.Equal(
-            "Removing these tracks would save about 120 MB (0.2%), below this library's minimum of 5%",
+            "Removing these tracks would save about 120 MB (0.19%), below this library's minimum of 5%",
             QueueDispatcher.TrackRemovalMinimumRefusal(media, rules, [1], [], fresh));
         Assert.Null(QueueDispatcher.TrackRemovalMinimumRefusal(media, rules, [1], [], freshProbe: null));
         Assert.Null(QueueDispatcher.TrackRemovalMinimumRefusal(

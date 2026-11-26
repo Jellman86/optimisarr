@@ -43,8 +43,11 @@ public sealed record PlannedTrack(int Index, string? Language, bool Kept);
 /// <see cref="Percent"/> are null when a removed track's size is not known.
 /// <see cref="MeetsMinimum"/> is null when the library sets no minimum or the saving is not known;
 /// either way a set minimum then skips the file, which the candidate reason explains.
+/// <see cref="NeedsReprobe"/> tells those two unknowns apart: true when the file was probed before
+/// track sizes were recorded, so a re-probe can still find them.
 /// </summary>
-public sealed record PlannedTrackSaving(long? Bytes, double? Percent, double? MinimumPercent, long? MinimumBytes, bool? MeetsMinimum);
+public sealed record PlannedTrackSaving(
+    long? Bytes, double? Percent, double? MinimumPercent, long? MinimumBytes, bool? MeetsMinimum, bool NeedsReprobe);
 
 /// <summary>
 /// The file that would be written. Audio that MP4 cannot carry is already known from the
@@ -190,7 +193,9 @@ public static class OptimisationPlanner
 
         var saving = CandidateEvaluator.RemovalSavingOf(media, audioRemovals, subtitleRemovals);
         var minimum = TrackSavingMinimum.Of(rules);
-        return new PlannedTrackSaving(saving.Bytes, saving.Percent, minimum.Percent, minimum.Bytes, minimum.IsMetBy(saving));
+        return new PlannedTrackSaving(
+            saving.Bytes, saving.Percent, minimum.Percent, minimum.Bytes, minimum.IsMetBy(saving),
+            NeedsReprobe: saving.Knowledge == TrackSavingKnowledge.NotRecorded);
     }
 
     // Null when the languages were never captured: the kept-languages rule then removes nothing,

@@ -4263,6 +4263,9 @@
               "string"
             ]
           },
+          "needsReprobe": {
+            "type": "boolean"
+          },
           "percent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
@@ -4278,7 +4281,8 @@
           "percent",
           "minimumPercent",
           "minimumBytes",
-          "meetsMinimum"
+          "meetsMinimum",
+          "needsReprobe"
         ],
         "type": "object"
       },

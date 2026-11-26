@@ -286,6 +286,8 @@ public sealed class MediaProbeService : IMediaProbeService
         SampleAspectRatio? pixelAspect = null;
         double? videoFrameRate = null;
 
+        var statisticsDescribeThisFile = MatroskaStatisticsDescribeThisFile(root);
+
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
             foreach (var stream in streams.EnumerateArray())
@@ -376,7 +378,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         {
                             audioBitrateKbps = Math.Max(audioBitrateKbps ?? 0, streamBitrate);
                         }
-                        audioTrackBytes.Add(ReadTrackBytes(stream, duration));
+                        audioTrackBytes.Add(ReadTrackBytes(stream, duration, statisticsDescribeThisFile));
                         audioTracks.Add(new AudioTrackInfo(
                             ReadLanguageTag(stream),
                             audioChannels,
@@ -391,7 +393,7 @@ public sealed class MediaProbeService : IMediaProbeService
                             && subtitleIndex.ValueKind == JsonValueKind.Number
                             && subtitleIndex.TryGetInt32(out var index) && index >= 0 ? index : null);
                         subtitleLanguages.Add(ReadLanguageTag(stream));
-                        subtitleTrackBytes.Add(ReadTrackBytes(stream, duration));
+                        subtitleTrackBytes.Add(ReadTrackBytes(stream, duration, statisticsDescribeThisFile));
                         if (SubtitleClassifier.IsImageBased(codecName))
                         {
                             hasImageSubtitles = true;
@@ -719,10 +721,32 @@ public sealed class MediaProbeService : IMediaProbeService
     }
 
     // mkvmerge records each track's exact size as the statistics tag NUMBER_OF_BYTES, often with a
-    // language suffix like the frame count. Without it, the size is estimated from the track's
-    // bitrate over its own duration, or the file's. A value that is not a whole number of bytes is
-    // ignored rather than read as a size, and null means no size can be given at all.
-    private static long? ReadTrackBytes(JsonElement stream, double? fileDurationSeconds)
+    // language suffix like the frame count. Without it, or when the file's statistics are stale, the
+    // size is estimated from the track's bitrate over its own duration, or the file's. A value that is
+    // not a whole number of bytes is ignored rather than read as a size, and null means no size can
+    // be given at all.
+    private static long? ReadTrackBytes(JsonElement stream, double? fileDurationSeconds, bool statisticsDescribeThisFile)
+    {
+        if (statisticsDescribeThisFile && ReadStatisticsBytes(stream) is { } bytes)
+        {
+            return bytes;
+        }
+
+        // A stream reporting no length, or a zero one, leaves the file's length to estimate from.
+        var streamSeconds = ReadDurationSeconds(stream) is > 0 and var seconds ? seconds : (double?)null;
+        if (stream.TryGetProperty("bit_rate", out var bitRate)
+            && bitRate.ValueKind == JsonValueKind.String
+            && long.TryParse(bitRate.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var bitsPerSecond)
+            && bitsPerSecond > 0
+            && (streamSeconds ?? fileDurationSeconds) is > 0 and var lengthSeconds)
+        {
+            return (long)Math.Round(bitsPerSecond * lengthSeconds / 8);
+        }
+
+        return null;
+    }
+
+    private static long? ReadStatisticsBytes(JsonElement stream)
     {
         if (stream.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
         {
@@ -737,14 +761,84 @@ public sealed class MediaProbeService : IMediaProbeService
             }
         }
 
-        if (stream.TryGetProperty("bit_rate", out var bitRate)
-            && bitRate.ValueKind == JsonValueKind.String
-            && long.TryParse(bitRate.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var bitsPerSecond)
-            && bitsPerSecond > 0
-            && (ReadDurationSeconds(stream) ?? fileDurationSeconds) is { } seconds
-            && seconds > 0)
+        return null;
+    }
+
+    // FFmpeg copies stream tags through a remux or a re-encode without recounting them, so a file it
+    // wrote can carry the statistics of the file it was made from: a TrueHD-era 4 GB on what is now a
+    // 100 MB AAC track. FFmpeg never writes NUMBER_OF_BYTES itself, so in a file FFmpeg muxed
+    // (encoder "Lavf…") the statistics are trusted only when mkvpropedit recounted every one of them
+    // afterwards. Any other muxer that leaves them (mkvmerge, MakeMKV) wrote them over the tracks it
+    // wrote. Either way the tracks can never add up to more than the whole file; when they do, the
+    // tags are stale whoever wrote them.
+    private static bool MatroskaStatisticsDescribeThisFile(JsonElement root)
+    {
+        if (!root.TryGetProperty("streams", out var streams) || streams.ValueKind != JsonValueKind.Array)
         {
-            return (long)Math.Round(bitsPerSecond * seconds / 8);
+            return true;
+        }
+
+        var format = root.TryGetProperty("format", out var formatElement) ? formatElement : default;
+        var muxedByFfmpeg = format.ValueKind == JsonValueKind.Object
+            && FormatTag(format, "encoder")?.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase) == true;
+        long? fileBytes = format.ValueKind == JsonValueKind.Object
+            && format.TryGetProperty("size", out var size)
+            && size.ValueKind == JsonValueKind.String
+            && long.TryParse(size.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedSize)
+                ? parsedSize
+                : null;
+
+        long total = 0;
+        foreach (var stream in streams.EnumerateArray())
+        {
+            if (ReadStatisticsBytes(stream) is not { } bytes)
+            {
+                continue;
+            }
+
+            if (muxedByFfmpeg && StatisticsWritingApp(stream)?.StartsWith("mkvpropedit", StringComparison.OrdinalIgnoreCase) != true)
+            {
+                return false;
+            }
+
+            total += bytes;
+            if (total < 0 || total > fileBytes)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string? StatisticsWritingApp(JsonElement stream)
+    {
+        if (stream.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var tag in tags.EnumerateObject())
+            {
+                if (tag.Name.StartsWith("_STATISTICS_WRITING_APP", StringComparison.OrdinalIgnoreCase)
+                    && tag.Value.ValueKind == JsonValueKind.String)
+                {
+                    return tag.Value.GetString();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FormatTag(JsonElement format, string name)
+    {
+        if (format.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var tag in tags.EnumerateObject())
+            {
+                if (string.Equals(tag.Name, name, StringComparison.OrdinalIgnoreCase) && tag.Value.ValueKind == JsonValueKind.String)
+                {
+                    return tag.Value.GetString();
+                }
+            }
         }
 
         return null;
