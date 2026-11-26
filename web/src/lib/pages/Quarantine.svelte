@@ -437,7 +437,7 @@
   </DataTable>
 {/if}
 
-{#snippet replacementCount()}<span>{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</span>{/snippet}
+{#snippet replacementCount()}<span>{plural(replacements.length, i18n.m.quarantine.replacements_count_one, i18n.m.quarantine.replacements_count_other, replacements.length.toLocaleString())}</span>{/snippet}
 
 
 {/if}

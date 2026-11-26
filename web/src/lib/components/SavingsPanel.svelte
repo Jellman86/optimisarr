@@ -54,7 +54,7 @@
       </div>
       <p class="mt-2 text-sm text-ink-2">
         {optimised && stats
-          ? t(i18n.m.dashboard.saved_detail, { count: stats.filesOptimised.toLocaleString(), percent: Math.round(stats.averageSavingPercent) })
+          ? t(stats.filesOptimised === 1 ? i18n.m.dashboard.saved_detail_one : i18n.m.dashboard.saved_detail_other, { count: stats.filesOptimised.toLocaleString(), percent: Math.round(stats.averageSavingPercent) })
           : i18n.m.dashboard.empty_short}
       </p>
     </div>

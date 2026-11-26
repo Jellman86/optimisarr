@@ -311,7 +311,7 @@ test('the inventory re-probes the picked rows in the background and reports what
   await page.getByRole('checkbox', { name: 'Select b.mkv' }).check()
   await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Re-probe' }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('Inspect 2 files again?')
+  await expect(dialog).toContainText('Re-probe 2 files?')
   await dialog.getByRole('button', { name: 'Re-probe' }).click()
 
   await expect.poll(() => requests.length).toBe(1)
