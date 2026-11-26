@@ -131,7 +131,8 @@
         class="nav-button relative"
         class:nav-button-active={isActive(item.path)}
         class:nav-button-inactive={!isActive(item.path)}
-        title={railCollapsed ? item.label : ''}
+        aria-label={railCollapsed ? (showActivity ? `${item.label} · ${activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}` : item.label) : undefined}
+        title={railCollapsed ? item.label : undefined}
         onclick={() => {
           router.go(item.path)
           layout.closeMobile()
@@ -153,6 +154,7 @@
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
+              <span class="sr-only">{activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}:</span>
               <span class="text-micro font-semibold tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}

@@ -45,7 +45,6 @@
         class="btn btn-sm"
         disabled={loading || !listing?.parent}
         onclick={() => listing?.parent && navigate(listing.parent)}
-        title={i18n.m.shared.up_one_level}
       >
         <Icon name="arrow-left" class="h-4 w-4 rotate-90" />
         {i18n.m.shared.up_one_level}

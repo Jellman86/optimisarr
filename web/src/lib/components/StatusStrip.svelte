@@ -6,6 +6,7 @@
   import { playbackLine, playbackPhrases, playbackSummary } from '../playback'
   import { counts } from '../stores/counts.svelte'
   import Icon from './Icon.svelte'
+  import InfoTip from './InfoTip.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
   // The queue's state on every page, so the answer to "is it working?" is never a click away.
@@ -125,13 +126,16 @@
   {#if queue}
     <div class="status-strip-action">
       {#if counts.pauseError}<span class="status-strip-error text-xs text-bad" role="alert">{counts.pauseError}</span>{/if}
+      <!-- What pausing stops and what it lets finish decides whether to press it, so it is a tap
+           away on every screen rather than a hover. Before the button, which keeps the strip's edge. -->
+      <span class="status-strip-action-help"><InfoTip id="status-strip-pause-effect" text={queue.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title} /></span>
       <button
         class="btn btn-sm"
         class:btn-primary={queue.manuallyPaused}
         onclick={() => void counts.togglePause()}
         disabled={counts.pauseBusy}
         aria-busy={counts.pauseBusy}
-        title={queue.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title}
+        aria-describedby="status-strip-pause-effect"
       >
         <Icon name={queue.manuallyPaused ? 'play' : 'pause'} class="h-3.5 w-3.5" />
         <span class="status-strip-action-label">{counts.pauseBusy ? i18n.m.common.loading_short : queue.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}</span>

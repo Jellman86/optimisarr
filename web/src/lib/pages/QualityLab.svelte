@@ -894,7 +894,7 @@
           <div class="sample-deck mt-4">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
-              <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
+              <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : resultVariant?.recommended ? `${variant.name} · ${i18n.m.calibration.recommended_sample}` : variant.name} aria-pressed={activeName === variant.name}>
                 <span class="text-xl font-bold text-ink">{variantLabel(variant.name)}</span>
                 {#if variant.isOriginal}<span class="mt-1 block text-micro font-semibold text-accent">{i18n.m.calibration.reference_label}</span>
                 {:else if ratings[variant.name]}<span class="mt-1 flex items-center gap-1 truncate text-micro font-semibold text-accent"><Icon name="check" class="h-3 w-3 shrink-0" />{ratingLabel(ratings[variant.name]!)}</span>

@@ -44,7 +44,10 @@
   function locationLabel(job: Job): string {
     const location = jobLocation(job)
     return location === 'worker' ? job.workerName ?? i18n.m.queue.lane_workers
-      : location === 'transfer' ? i18n.m.queue.location_transfer : i18n.m.dashboard.this_server
+      : location === 'transfer' ? i18n.m.queue.location_transfer
+      // Back from a worker and waiting here: say whose output it is, or it reads as local work.
+      : job.workerName && !job.remoteStage ? t(i18n.m.queue.now_returned, { worker: job.workerName })
+      : i18n.m.dashboard.this_server
   }
 
   function fileName(path: string | null): string {
@@ -149,7 +152,7 @@
             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-3">
               {#if job.videoEncoder}<Chip mono>{job.videoEncoder}</Chip>{/if}
               {#if job.effectiveVideoQuality != null}<Chip class="tabular-nums">{qualityChipLabel(job.videoQualityMode, job.effectiveVideoQuality)}</Chip>{/if}
-              <span class="truncate" title={job.workerName && !job.remoteStage ? t(i18n.m.queue.now_returned, { worker: job.workerName }) : undefined}>{locationLabel(job)}</span>
+              <span class="min-w-0 [overflow-wrap:anywhere]">{locationLabel(job)}</span>
             </div>
           </div>
 

@@ -81,10 +81,7 @@
               {tool.available ? i18n.m.shared.available : i18n.m.shared.missing}
             </span>
           </div>
-          <p
-            class="mt-3 break-words text-xs leading-relaxed text-ink-3 [overflow-wrap:anywhere]"
-            title={tool.version ?? tool.error ?? ''}
-          >
+          <p class="mt-3 break-words text-xs leading-relaxed text-ink-3 [overflow-wrap:anywhere]">
             {tool.version ?? tool.error ?? ''}
           </p>
         </article>

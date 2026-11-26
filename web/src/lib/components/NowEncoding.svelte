@@ -62,6 +62,7 @@
     <a
       href="#/queue"
       class="mx-auto mb-2 flex w-10 flex-col gap-1.5 rounded-lg focus-ring"
+      aria-label={`${heading}: ${title}, ${where}${percent === null ? '' : `, ${percent}%`}`}
       title={`${heading} · ${title} · ${where}${percent === null ? '' : ` · ${percent}%`}`}
       onclick={() => layout.closeMobile()}
     >

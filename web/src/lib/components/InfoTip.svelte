@@ -8,10 +8,18 @@
   let {
     text,
     label,
+    id,
     class: cls = '',
-  }: { text: string; label?: string; class?: string } = $props()
+  }: {
+    text: string
+    label?: string
+    /** Lets the control this explains point `aria-describedby` at the same words. */
+    id?: string
+    class?: string
+  } = $props()
 
-  const tooltipId = $props.id()
+  const generatedId = $props.id()
+  const tooltipId = $derived(id ?? generatedId)
   const accessibleLabel = $derived(label ?? i18n.m.common.more_information)
 </script>
 

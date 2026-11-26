@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InfoTip from '../components/InfoTip.svelte'
   import { tick } from 'svelte'
   import {
     api,
@@ -975,6 +976,11 @@ let settings = $state<Settings>({
   }
 </script>
 
+<!-- A connection's badge with what it means a tap away, rather than in a hover-only title. -->
+{#snippet explainedBadge(tone: string, label: string, explanation: string)}
+  <span class="inline-flex items-center gap-4"><span class="badge {tone}">{label}</span><InfoTip label={tr(i18n.m.common.about_information, { label })} text={explanation} /></span>
+{/snippet}
+
 {#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
   {#if isChanged(field)}
     <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
@@ -1444,9 +1450,9 @@ let settings = $state<Settings>({
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !w.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
-                {#if w.refreshOnReplace}<span class="badge tone-ok" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
-                {#if !w.showViewerNames}<span class="badge tone-neutral" title={i18n.m.settings.badge_viewers_hidden_title}>{i18n.m.settings.badge_viewers_hidden}</span>{/if}
-                {#if !w.hasToken}<span class="badge tone-warn" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
+                {#if w.refreshOnReplace}{@render explainedBadge('tone-ok', i18n.m.settings.badge_refresh, i18n.m.settings.badge_refresh_title)}{/if}
+                {#if !w.showViewerNames}{@render explainedBadge('tone-neutral', i18n.m.settings.badge_viewers_hidden, i18n.m.settings.badge_viewers_hidden_title)}{/if}
+                {#if !w.hasToken}{@render explainedBadge('tone-warn', i18n.m.settings.badge_no_token, i18n.m.settings.badge_no_token_title)}{/if}
                 <button class="btn btn-sm btn-ghost" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
@@ -1483,10 +1489,11 @@ let settings = $state<Settings>({
             <label class="label" for="watcher-token">
               {watcherDraft.type === 'Plex' ? i18n.m.settings.plex_token : i18n.m.settings.api_key}
             </label>
-            <div class="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+            <!-- The sign-in button wraps under the field when a longer label would crush it. -->
+            <div class="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <input
                 id="watcher-token"
-                class="input"
+                class="input min-w-0 sm:flex-[1_1_12rem]"
                 type="password"
                 placeholder={editingId === null ? '' : i18n.m.settings.keep_current}
                 bind:value={watcherDraft.apiToken}
@@ -1552,7 +1559,6 @@ let settings = $state<Settings>({
             class="btn"
             onclick={testConnection}
             disabled={testing || (!watcherDraft.baseUrl.trim())}
-            title={i18n.m.settings.test_connection_title}
           >
             {testing ? i18n.m.settings.testing : i18n.m.settings.test_connection}
           </button>
@@ -1592,8 +1598,8 @@ let settings = $state<Settings>({
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
-                {#if c.enabled && c.rescanAfterChanges}<span class="badge tone-neutral" title={i18n.m.settings.arr_rescan_hint}>{i18n.m.settings.badge_rescans}</span>{/if}
-                {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
+                {#if c.enabled && c.rescanAfterChanges}{@render explainedBadge('tone-neutral', i18n.m.settings.badge_rescans, i18n.m.settings.arr_rescan_hint)}{/if}
+                {#if !c.hasApiKey}{@render explainedBadge('tone-warn', i18n.m.settings.badge_no_key, i18n.m.settings.badge_no_key_title)}{/if}
                 <button class="btn btn-sm btn-ghost" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>

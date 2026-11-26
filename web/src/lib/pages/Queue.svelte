@@ -880,7 +880,7 @@
           </button>
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
-          <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id} title={i18n.m.queue.exclude_title}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
+          <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
           {#if canRetryHigher(selectedJob)}
             <button class="btn btn-primary" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
               {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry_higher_quality}
@@ -894,7 +894,7 @@
             </button>
           {/if}
           {#if selectedJob.belowTarget?.eligible}
-            <button class="btn" onclick={() => selectedJob && acceptBelowTarget(selectedJob)} disabled={dryRun || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.accept_anyway_title} aria-describedby={dryRun ? 'accept-below-target-locked' : undefined} data-accept-below-target>
+            <button class="btn" onclick={() => selectedJob && acceptBelowTarget(selectedJob)} disabled={dryRun || replacingId !== null} aria-describedby={dryRun ? 'accept-below-target-locked' : undefined} data-accept-below-target>
               {i18n.m.queue.action_accept_anyway}
             </button>
           {/if}
@@ -1171,8 +1171,8 @@
         <!-- The housekeeping the queue used to hide behind a toggle: it is always on show, and it
              only appears when it would do something. -->
         <div class="queue-heading-actions">
-          {#if pendingCount > 0}<button class="btn btn-sm btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
-          {#if counts.completed > 0}<button class="btn btn-sm btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
+          {#if pendingCount > 0}<button class="btn btn-sm btn-ghost" onclick={clearPending} disabled={clearingPending}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
+          {#if counts.completed > 0}<span class="inline-flex items-center gap-4"><button class="btn btn-sm btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} aria-describedby="clear-completed-effect">{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button><InfoTip id="clear-completed-effect" label={t(i18n.m.common.about_information, { label: finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected }) })} text={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected} /></span>{/if}
         </div>
       </div>
       {#if jobs.length > 0}
@@ -1186,8 +1186,8 @@
               ['ready', i18n.m.queue.filter_ready], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed],
             ] as const).filter(([key]) => key !== 'review' || counts.review > 0 || filter === 'review').map(([value, label]) => ({ value, label, count: counts[value] }))} />
             <div class="queue-toolbar-actions">
-              {#if readyToReplaceCount > 0}{#if dryRun}<span id="replace-all-locked" class="text-xs text-ink-3" data-replace-all-locked>{i18n.m.jobResult.locked_reason}</span>{/if}<button class="btn btn-primary" onclick={replaceAll} disabled={dryRun || replacingAll || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.replace_all_title} aria-describedby={dryRun ? 'replace-all-locked' : undefined}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
-              {#if erroredClearable > 0}<button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button>{/if}
+              {#if readyToReplaceCount > 0}{#if dryRun}<span id="replace-all-locked" class="text-xs text-ink-3" data-replace-all-locked>{i18n.m.jobResult.locked_reason}</span>{/if}<button class="btn btn-primary" onclick={replaceAll} disabled={dryRun || replacingAll || replacingId !== null} aria-describedby={dryRun ? 'replace-all-locked' : undefined}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
+              {#if erroredClearable > 0}<span class="inline-flex items-center gap-4"><button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} aria-describedby="clear-errored-effect">{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button><InfoTip id="clear-errored-effect" label={t(i18n.m.common.about_information, { label: t(i18n.m.queue.clear_errored, { count: erroredClearable }) })} text={i18n.m.queue.clear_errored_title} /></span>{/if}
             </div>
           </div>
           <div class="queue-toolbar-layer" class:queue-toolbar-hidden={selection.count === 0} inert={selection.count === 0} data-queue-batch>
@@ -1203,16 +1203,16 @@
                   class="btn btn-ghost"
                   onclick={() => askBatch('retry')}
                   disabled={batchBusy || retryableJobIds.length === 0}
-                  title={retryableJobIds.length === 0 ? i18n.m.queue.batch_retry_unavailable : i18n.m.queue.batch_retry_title}
+                  aria-describedby={retryableJobIds.length === 0 ? 'batch-retry-unavailable' : undefined}
                 >
                   <Icon name="retry" class="h-4 w-4" />
                   {i18n.m.queue.batch_retry}
                 </button>
+                {#if retryableJobIds.length === 0}<span id="batch-retry-unavailable" class="text-xs text-ink-3" data-batch-retry-unavailable>{i18n.m.queue.batch_retry_unavailable}</span>{/if}
                 <button
                   class="btn btn-danger"
                   onclick={() => askBatch('remove')}
                   disabled={batchBusy}
-                  title={i18n.m.queue.batch_remove_title}
                 >
                   <Icon name="trash" class="h-4 w-4" />
                   {i18n.m.queue.batch_remove}
