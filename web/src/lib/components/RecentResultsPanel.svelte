@@ -57,7 +57,8 @@
           </div>
         </td>
         <td class="hidden truncate @min-[64rem]:table-cell">{result.libraryName ?? '—'}</td>
-        <td>
+        <!-- On a phone the bar fills the second line, and the change reads level with the sizes. -->
+        <td class="max-sm:flex-1 max-sm:self-baseline">
           <div class="flex min-w-0 flex-col gap-1.5">
             <span class="truncate text-xs tabular-nums">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
             <!-- The bar is measured against whichever of the two files is the larger one, so a
@@ -75,7 +76,7 @@
             </span>
           </div>
         </td>
-        <td class="whitespace-nowrap font-semibold tabular-nums">
+        <td class="whitespace-nowrap font-semibold tabular-nums max-sm:self-baseline">
           <SizeChange sourceSizeBytes={result.sourceSizeBytes} outputSizeBytes={result.outputSizeBytes} />
         </td>
         <td class="hidden whitespace-nowrap tabular-nums @min-[64rem]:table-cell">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</td>

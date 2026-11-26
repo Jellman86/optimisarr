@@ -197,7 +197,9 @@
       {#if !scoped}
         <td class="hidden text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
       {/if}
-      <td class="text-xs text-ink-3">{candidate.reason}</td>
+      <!-- On a phone the reason wraps inside its share of the second line, beside the status and
+           Preview, instead of pushing Preview onto a third. -->
+      <td class="text-xs text-ink-3 max-sm:flex-1 max-sm:basis-0">{candidate.reason}</td>
       <td class="text-right">
         {#if candidate.eligible}
           <button class="btn btn-sm" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>

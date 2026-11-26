@@ -53,14 +53,16 @@
 
   // On a phone the strip keeps to one line, so a changing reason never pushes the page down: the
   // reason is cut short and the figures step aside until the strip is opened. A failed pause opens
-  // it, because an alert is never cut short.
+  // it, because an alert is never cut short; the operator can still close it again once read.
   let open = $state(false)
-  let expanded = $derived(open || Boolean(counts.pauseError))
+  $effect(() => {
+    if (counts.pauseError) open = true
+  })
 </script>
 
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
      that announces each poll would talk over whatever the reader is doing on the page. -->
-<section id="status-strip" class="status-strip status-strip-collapsible card" class:status-strip-open={expanded} aria-label={i18n.m.dashboard.state}>
+<section class="status-strip status-strip-collapsible card" class:status-strip-open={open} aria-label={i18n.m.dashboard.state}>
   <!-- One block: the artwork (or the state's dot), then the state over its reason. -->
   <div class="status-strip-state">
     {#if holds[0]?.artworkUrl}
@@ -90,8 +92,7 @@
     type="button"
     class="status-strip-toggle btn btn-sm btn-ghost btn-icon"
     aria-label={i18n.m.dashboard.state_details}
-    aria-expanded={expanded}
-    aria-controls="status-strip"
+    aria-expanded={open}
     onclick={() => (open = !open)}
   >
     <Icon name="chevron" class="h-4 w-4" />
@@ -123,7 +124,7 @@
 
   {#if queue}
     <div class="status-strip-action">
-      {#if counts.pauseError}<span class="text-xs text-bad" role="alert">{counts.pauseError}</span>{/if}
+      {#if counts.pauseError}<span class="status-strip-error text-xs text-bad" role="alert">{counts.pauseError}</span>{/if}
       <button
         class="btn btn-sm"
         class:btn-primary={queue.manuallyPaused}

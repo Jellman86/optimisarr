@@ -396,8 +396,10 @@
     {/snippet}
     {#each replacements as r (r.id)}
       <tr>
-        <td>
-          {#if duplicates.length > 0}<span class="badge mb-1 tone-neutral">{i18n.m.quarantine.kind_optimisation}</span>{/if}
+        <!-- Every row here is an optimisation; the word only tells it apart from the spare duplicates
+             above, so a phone leaves it out rather than spend its one line of status on it. -->
+        <td class="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-1">
+          {#if duplicates.length > 0}<span class="badge tone-neutral max-sm:hidden sm:mb-1">{i18n.m.quarantine.kind_optimisation}</span>{/if}
           {#if r.status === 'Replaced'}
             <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
           {:else if r.status === 'Purged'}
@@ -406,14 +408,15 @@
             <span class="badge tone-muted">{i18n.m.quarantine.status_rolled_back}</span>
           {/if}
           {#if r.crossFilesystem}
-            <span class="badge ml-1 tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
+            <span class="badge tone-warn sm:ml-1" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
           {/if}
         </td>
-        <td class="data-table-primary">
+        <!-- On a phone the whole of the artwork, name and path opens the review, as a row does in Queue. -->
+        <td class="data-table-primary max-sm:relative">
           <div class="flex items-center gap-3">
           <Thumbnail mediaFileId={r.mediaFileId} alt="" />
           <div class="min-w-0">
-          <a id={`replacement-${r.id}`} data-row-primary class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
+          <a id={`replacement-${r.id}`} data-row-primary class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent max-sm:text-label max-sm:after:absolute max-sm:after:inset-0" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
           {#if r.status === 'Purged'}
             <div class="text-caption text-ink-3">{i18n.m.quarantine.original_purged}</div>
           {:else if r.status === 'Replaced'}

@@ -29,7 +29,7 @@
 
 {#key source}
 <div
-  data-thumbnail data-shape={shape}
+  data-thumbnail data-shape={shape} data-size={size}
   class="relative shrink-0 overflow-hidden bg-raised shadow-[0_1px_3px_rgba(0,0,0,0.18)] ring-1 ring-line {corner} {box}"
 >
   {#if source && !failed}
