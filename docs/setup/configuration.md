@@ -466,6 +466,11 @@ deinterlacing and it plays combed, and verification cannot see that. Track clean
 because it copies the video. A source reporting an unknown field order is treated as progressive,
 because modern codecs commonly report that.
 
+To see which files are interlaced, press **Interlaced** beside the filters on the Inventory page. It
+lists only interlaced files and works with the library, search and verdict filters. A file's details
+show an **Interlaced** tag, and its information button gives the field order (top or bottom field
+first). A file probed before Optimisarr recorded field order shows neither until you **Re-probe** it.
+
 **Video → Picture → Interlaced video → Deinterlace, then encode** lets a library process these files. Frames flagged interlaced have
 their fields combined with `bwdif` at the same frame rate before any crop or scale, progressive
 sections stay as they are, and the result is written as progressive.
