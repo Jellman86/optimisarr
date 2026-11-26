@@ -61,7 +61,9 @@
     {#if fieldShownFirst}
       <span class="inline-flex items-center gap-1.5">
         <Chip><span data-interlaced-tag>{i18n.m.inventory.tag_interlaced}</span></Chip>
-        <InfoTip label={i18n.m.inventory.field_order_label} text={t(i18n.m.inventory.interlaced_tip, { order: fieldShownFirst === 'top' ? i18n.m.inventory.field_order_top : i18n.m.inventory.field_order_bottom, code: file.fieldOrder ?? '' })} />
+        <InfoTip label={i18n.m.inventory.field_order_label} text={fieldShownFirst === 'unstated'
+          ? t(i18n.m.inventory.interlaced_tip_code_only, { code: file.fieldOrder ?? '' })
+          : t(i18n.m.inventory.interlaced_tip, { order: fieldShownFirst === 'top' ? i18n.m.inventory.field_order_top : i18n.m.inventory.field_order_bottom, code: file.fieldOrder ?? '' })} />
       </span>
     {/if}
   {/snippet}

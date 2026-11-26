@@ -715,6 +715,7 @@ export const zh: Messages = {
     field_order_top: "顶场优先",
     field_order_bottom: "底场优先",
     interlaced_tip: "此视频为隔行扫描，{order}（ffprobe 场序“{code}”）。重新编码视频的媒体库会跳过它，除非该媒体库设置为“先去隔行，再编码”。",
+    interlaced_tip_code_only: "此视频为隔行扫描（ffprobe 场序“{code}”）。重新编码视频的媒体库会跳过它，除非该媒体库设置为“先去隔行，再编码”。",
     range: "{total} 的 {start}–{end}",
     prev_page: "上一页",
     next_page: "下一页",

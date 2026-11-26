@@ -188,8 +188,8 @@ test('untagged track languages read as unknown', () => {
 
 test('only an interlaced field order is reported, by the field shown first', () => {
   assert.equal(interlacedFieldOrder('tt'), 'top')
-  assert.equal(interlacedFieldOrder('bt'), 'top')
+  assert.equal(interlacedFieldOrder('bt'), 'unstated')
   assert.equal(interlacedFieldOrder('bb'), 'bottom')
-  assert.equal(interlacedFieldOrder('tb'), 'bottom')
+  assert.equal(interlacedFieldOrder('tb'), 'unstated')
   for (const order of ['progressive', 'unknown', '', null, undefined]) assert.equal(interlacedFieldOrder(order), null)
 })

@@ -60,7 +60,7 @@
     const rightwards = centreX - glyphRadius * 2
     const leftwards = centreX + glyphRadius * 2 - width
     const fitsRightwards = rightwards + width <= viewportWidth - viewportMargin
-    const left = Math.max(viewportMargin, fitsRightwards ? rightwards : leftwards)
+    const left = Math.max(viewportMargin, Math.min(fitsRightwards ? rightwards : leftwards, viewportWidth - viewportMargin - width))
     const top = fitsBelow ? below : above - Math.min(height, room)
 
     style.right = 'auto'
@@ -74,7 +74,10 @@
     style.top = `${top - (drawn.top - top)}px`
   }
 
-  function placeWhileOpen() {
+  function placeWhileOpen(event: Event) {
+    // Scrolling a long tip's own text must not re-measure it: that drops its height cap and resets
+    // the scroll to the top, so the rest of the text could never be read.
+    if (event.target instanceof Node && tip.contains(event.target)) return
     if (wrapper.matches(':hover, :focus-within')) place()
   }
 
