@@ -703,7 +703,10 @@ async function queueHub(page: Page) {
 }
 
 test('the queue keeps its rows when live updates fail and refreshes while reconnecting', async ({ page }) => {
-  await page.clock.install()
+  // A paused clock keeps Queue's own 10 s poll from standing in for the store's 15 s reconnect.
+  const start = new Date('2026-01-01T00:00:00Z')
+  await page.clock.install({ time: start })
+  await page.clock.pauseAt(new Date(start.getTime() + 1_000))
   const fixture = { jobs: [job(1, 'Queued', null)] }
   await mockWorkingQueue(page, fixture)
   await queueHub(page)
@@ -724,7 +727,8 @@ test('the queue keeps its rows when live updates fail and refreshes while reconn
 
   hubAvailable = true
   fixture.jobs = [job(3, 'Queued', null)]
-  await page.clock.fastForward(15_001)
+  // Past the store's 15 s retry, before Queue's next poll at 20 s.
+  await page.clock.fastForward(5_000)
   await expect(notice).toBeHidden()
   await expect(page.getByRole('button', { name: /Film 3\.mkv/ })).toBeVisible()
 })

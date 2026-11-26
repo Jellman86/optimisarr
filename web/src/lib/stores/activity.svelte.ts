@@ -102,8 +102,10 @@ function createActivity() {
       try {
         await connection.start()
         connectionStatus = 'live'
-        // The page has its own initial read. Catch up after a failed start or exhausted retries.
+        // Events before the hub went live were missed. Pages do their own first read, so they are
+        // only asked to re-read after a failed start or exhausted retries.
         if (recovering) reconcile()
+        else refreshActivity()
       } catch {
         connectionStatus = 'polling'
       }
