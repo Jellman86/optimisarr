@@ -367,9 +367,9 @@
       <tr>
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
         <th scope="col" class="data-table-primary" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
-        <th scope="col" aria-sort={sortState('size')} class="w-[13%]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
+        <th scope="col" aria-sort={sortState('size')} class="w-[13%] sm:w-[max(13%,7.25rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
         <th scope="col" class="hidden w-[21%] sm:@min-[36rem]:table-cell">{i18n.m.inventory.col_format}</th>
-        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[max(19%,7.5rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
+        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[max(19%,8.25rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
       </tr>
     {/snippet}
     {#each rows as row (row.file.id)}{@const file = row.file}

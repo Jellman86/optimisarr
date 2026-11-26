@@ -575,9 +575,9 @@
     </div>
   </header>
 
-  <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] max-w-5xl card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
-    <aside class="border-b border-line bg-sunken px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7">
-      <p class="mb-4 text-xs font-semibold text-accent">
+  <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] max-w-5xl card overflow-hidden md:grid-cols-[15rem_minmax(0,1fr)]">
+    <aside class="hairline-b bg-sunken px-4 py-5 md:px-5 md:py-7 md:shadow-[inset_-1px_0_0_var(--divide-soft)]">
+      <p class="mb-4 text-xs font-semibold text-ink-3">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
       </p>
       <ol class="grid grid-cols-5 gap-1 md:block" aria-label={i18n.m.setup.progress_label}>
@@ -585,10 +585,10 @@
           {@const number = index + 1}
           <li class="relative md:pb-6" aria-current={number === viewStep ? 'step' : undefined} aria-label={`${name}: ${stepStatus(number)}`}>
             {#if number < stepNames.length}
-              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-line md:block"></span>
+              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-line-soft md:block"></span>
             {/if}
             <div class="relative flex flex-col items-center text-center md:flex-row md:items-start md:gap-3 md:text-left" >
-              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'tone-ok' : number === viewStep ? 'tone-accent' : 'bg-sunken text-ink-3'}">
+              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'tone-ok' : number === viewStep ? 'tone-accent' : 'bg-panel text-ink-3 shadow-[var(--lift-1)]'}">
                 {#if number <= (setup.state?.completedStep ?? 0)}<Icon name="check" class="h-4 w-4" />{:else}{number}{/if}
               </span>
               <span class="hidden min-w-0 pt-0.5 md:block">
@@ -616,7 +616,7 @@
           <h1 tabindex="-1" class="page-title">{w.machine_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{w.machine_body}</p>
 
-          <div class="mt-7 max-w-3xl divide-y divide-line border-y border-line" data-setup-checks>
+          <div class="mt-7 max-w-3xl divide-y divide-line-soft border-y border-line-soft" data-setup-checks>
             {#each checks as check (check.key)}
               <div>
               {@render checkRow(check.key, check.title, check.text, check.state)}
@@ -658,7 +658,7 @@
 
           <!-- The proof behind each line. Closed when all is well, open when something needs fixing. -->
           <details class="mt-4 max-w-3xl text-xs text-ink-3" open={hasProblem} data-setup-details>
-            <summary class="focus-ring hit-target cursor-pointer items-center rounded px-1 font-medium">{w.details}</summary>
+            <summary class="focus-ring cursor-pointer rounded px-1 py-3 font-medium">{w.details}</summary>
             <ul class="mt-2 space-y-1.5 font-mono leading-5">
               {#each tools as tool (tool.name)}
                 <li class="break-words">{tool.name} · {tool.version ?? tool.error ?? tool.command} · {tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</li>
@@ -670,7 +670,7 @@
             </ul>
           </details>
 
-          <p class="callout mt-4 max-w-3xl text-sm leading-6 text-ink-2">{w.private_note}</p>
+          <p class="callout tone-info mt-4 max-w-3xl text-sm leading-6 text-ink-2">{w.private_note}</p>
           <div class="mt-5 flex flex-wrap items-center gap-3" aria-live="polite">
             <button class="btn" type="button" onclick={() => void loadContext(true)} disabled={busy || retesting}>
               <Icon name="retry" class="h-4 w-4 motion-reduce:animate-none {retesting ? 'animate-spin' : ''}" />
@@ -685,7 +685,7 @@
           {#if libraries.length > 0}
             <section class="mt-7 max-w-3xl" aria-labelledby="setup-libraries-heading">
               <h2 id="setup-libraries-heading" class="font-semibold text-ink">{w.saved_heading}</h2>
-              <div class="mt-3 divide-y divide-line border-y border-line">
+              <div class="mt-3 divide-y divide-line-soft border-y border-line-soft">
                 {#each libraries as library (library.id)}
                   {@const access = libraryAccess[library.id]}
                   {@const scan = scans[library.id]}
@@ -829,8 +829,8 @@
                 <p class="mt-2 text-xs leading-5 text-ink-3">{w.keep_warning}</p>
               </fieldset>
 
-              <label class="flex cursor-pointer items-start gap-3 border-y border-line py-4" data-setup-lock>
-                <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={settings.dryRunMode} />
+              <label class="flex cursor-pointer items-start gap-3 border-y border-line-soft py-4" data-setup-lock>
+                <input class="checkbox mt-1 shrink-0" type="checkbox" bind:checked={settings.dryRunMode} />
                 <span><span class="block font-semibold text-ink">{w.lock_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{w.lock_body}</span></span>
               </label>
             </div>
@@ -842,7 +842,7 @@
           </p>
 
           {#if suggestions.length > 0}
-            <div class="mt-6 max-w-3xl divide-y divide-line border-y border-line" data-setup-suggestions>
+            <div class="mt-6 max-w-3xl divide-y divide-line-soft border-y border-line-soft" data-setup-suggestions>
               {#each suggestions as suggestion (suggestion.file.id)}
                 {@const file = suggestion.file}
                 <article class="flex flex-wrap items-center gap-3 py-4" aria-label={suggestion.label}>
@@ -862,7 +862,7 @@
             </div>
             <p class="mt-3 max-w-3xl text-xs leading-5 text-ink-3">{w.choose_note}</p>
           {:else if eligiblePage && eligiblePage.counts.unprobed === 0 && !Object.values(scans).some((scan) => scan.state === 'scanning')}
-            <p class="callout mt-6 max-w-3xl text-sm leading-6" data-setup-try-none>{w.try_none}</p>
+            <p class="callout tone-info mt-6 max-w-3xl text-sm leading-6" data-setup-try-none>{w.try_none}</p>
           {:else}
             <p class="mt-6 max-w-3xl text-sm text-ink-3" role="status" data-setup-try-waiting>{w.try_waiting}</p>
           {/if}
@@ -872,7 +872,7 @@
 
           <section class="mt-8 max-w-3xl" aria-labelledby="setup-summary-title" data-setup-summary>
             <h2 id="setup-summary-title" class="font-semibold text-ink">{w.setup_heading}</h2>
-            <ul class="mt-3 divide-y divide-line border-y border-line text-sm text-ink-2">
+            <ul class="mt-3 divide-y divide-line-soft border-y border-line-soft text-sm text-ink-2">
               <li class="flex flex-wrap items-center justify-between gap-3 py-3"><span class="min-w-0 flex-1">{t(w.sum_encoder, { name: chosenEncoderName })}</span><button class="btn" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></li>
               <li class="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span class="min-w-0 flex-1">{#each libraries as library (library.id)}<span class="block break-words">{library.name} · {isVideoLibrary(library.mediaType) ? presetName(library.ruleProfile, i18n.m) : mediaTypeLabel(library.mediaType, i18n.m)} · <span class="font-mono text-xs">{library.path}</span></span>{/each}</span>
@@ -889,7 +889,7 @@
         {/if}
       </fieldset>
 
-      <div class="mt-8 border-t border-line pt-5">
+      <div class="hairline-t mt-8 pt-5">
         {#if blockedReason}<p id="setup-blocked" class="mb-3 text-sm text-warn" role="status" data-setup-blocked>{blockedReason}</p>{/if}
         <div class="flex flex-wrap items-center justify-between gap-3">
           <button class="btn btn-lg" type="button" onclick={() => changeStep(Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy || loadingContext}>{i18n.m.setup.back}</button>

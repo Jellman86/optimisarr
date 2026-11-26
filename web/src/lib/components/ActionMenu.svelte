@@ -94,7 +94,7 @@
       role="menu"
       tabindex="-1"
       aria-label={label}
-      class="absolute right-0 z-20 mt-1 min-w-44 max-w-72 rounded-lg border border-line bg-panel p-1 shadow-lg"
+      class="absolute right-0 z-20 mt-1 min-w-44 max-w-72 rounded-panel bg-panel p-1 shadow-[var(--lift-3)]"
       onkeydown={onMenuKeydown}
     >
       {#each items as item, index (item.label)}

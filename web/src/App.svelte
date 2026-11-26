@@ -369,16 +369,16 @@
     <header
       class="flex items-center gap-3 bg-glass px-4 py-3 shadow-[var(--lift-1)] md:hidden"
     >
-      <button class="btn btn-ghost px-2" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
+      <button class="btn btn-ghost btn-icon" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      <button class="flex items-center gap-2" onclick={() => router.go('/')}>
+      <button class="focus-ring flex items-center gap-2 rounded-md px-1" onclick={() => router.go('/')}>
         <BrandMark class="h-7 w-7" />
         <span class="font-bold tracking-tight text-ink">Optimisarr</span>
       </button>
-      <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} aria-describedby="mobile-theme-mode" onclick={() => theme.toggle()}>
+      <button class="btn btn-ghost btn-icon ml-auto" aria-label={i18n.m.nav.toggle_theme} aria-describedby="mobile-theme-mode" onclick={() => theme.toggle()}>
         <Icon name={theme.icon} class="h-5 w-5" />
         <span id="mobile-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
       </button>

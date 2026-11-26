@@ -20,7 +20,7 @@
 
 <dialog class="app-modal auto-accept-dialog" use:modal={oncancel} aria-labelledby={`${id}-title`} aria-describedby={`${id}-risk ${id}-quarantine`}>
   <div class="hairline-b flex min-w-0 items-start gap-4 px-5 py-5 sm:px-6">
-    <span class="warning-signal mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-bad-line bg-bad-soft text-bad" data-auto-accept-warning>
+    <span class="warning-signal mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-bad-soft text-bad" data-auto-accept-warning>
       <Icon name="warning" class="h-6 w-6" />
     </span>
     <div class="min-w-0">
@@ -30,9 +30,9 @@
   </div>
   <div class="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
     <p class="text-sm leading-relaxed text-ink-2">{i18n.m.autoAccept.confirmIntro}</p>
-    <p id={`${id}-risk`} class="mt-4 rounded-xl border border-bad-line bg-bad-soft p-4 text-sm leading-relaxed text-ink-2">{i18n.m.autoAccept.warning}</p>
+    <p id={`${id}-risk`} class="callout tone-bad mt-4 p-4 text-sm leading-relaxed text-ink-2">{i18n.m.autoAccept.warning}</p>
     <p id={`${id}-quarantine`} class="mt-4 text-sm leading-relaxed text-ink-3">{i18n.m.autoAccept.quarantine}</p>
-    <label class="hit-target mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm leading-relaxed text-ink">
+    <label class="surface-sunken hit-target mt-4 flex cursor-pointer items-start gap-3 p-3 text-sm leading-relaxed text-ink">
       <input type="checkbox" class="checkbox mt-1 shrink-0" bind:checked={acknowledged} />
       <span>{i18n.m.autoAccept.acknowledge}</span>
     </label>
@@ -52,7 +52,7 @@
   .warning-signal { animation: caution-pulse 2.8s ease-in-out 3; }
   @keyframes caution-pulse {
     0%, 100% { box-shadow: 0 0 0 0 transparent; }
-    50% { box-shadow: 0 0 0 0.4rem var(--bad-soft); border-color: var(--bad); }
+    50% { box-shadow: 0 0 0 0.4rem var(--bad-soft); }
   }
   @media (prefers-reduced-motion: reduce) {
     .warning-signal { animation: none; }

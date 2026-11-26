@@ -63,12 +63,10 @@
     {:else if listing && listing.directories.length > 0}
       {#each listing.directories as dir}
         <button
-          class="hit-target flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink-2 hover:bg-raised"
+          class="hit-target focus-ring-inset flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink-2 hover:bg-raised"
           onclick={() => navigate(dir.path)}
         >
-          <svg class="h-4 w-4 flex-shrink-0 text-warn" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-          </svg>
+          <Icon name="folder" class="h-4 w-4 flex-shrink-0 text-ink-3" />
           <span class="truncate">{dir.name}</span>
         </button>
       {/each}

@@ -983,9 +983,9 @@ let settings = $state<Settings>({
 
 {#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
   {#if isChanged(field)}
-    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
+    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-ink-3">
       {tr(i18n.m.settings.was_value, { value: previous })}
-      <button type="button" class="focus-ring rounded underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
+      <button type="button" class="focus-ring rounded text-accent underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
         {i18n.m.settings.put_back}
       </button>
     </span>
@@ -994,9 +994,9 @@ let settings = $state<Settings>({
 
 {#snippet wasSrChanged(field: keyof Settings['superResolution'], previous: string)}
   {#if isSrChanged(field)}
-    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-accent">
+    <span class="mt-1 block font-mono text-micro font-normal normal-case tracking-normal text-ink-3">
       {tr(i18n.m.settings.was_value, { value: previous })}
-      <button type="button" class="focus-ring rounded underline underline-offset-2 hover:no-underline" onclick={() => revertSr(field)}>
+      <button type="button" class="focus-ring rounded text-accent underline underline-offset-2 hover:no-underline" onclick={() => revertSr(field)}>
         {i18n.m.settings.put_back}
       </button>
     </span>
@@ -1512,7 +1512,7 @@ let settings = $state<Settings>({
               <p class="mt-2 text-xs text-ink-3">{connectMessage}</p>
             {/if}
             {#if jellyfinCode}
-              <p class="mt-1 font-mono text-lg tracking-widest text-accent">{jellyfinCode}</p>
+              <p class="mt-1 font-mono text-lg font-semibold tracking-widest text-ink">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
               <ul class="mt-2 divide-y divide-line-soft overflow-hidden rounded-xl bg-panel">
@@ -1526,7 +1526,7 @@ let settings = $state<Settings>({
                         <span class="font-medium text-ink-2">{server.name}</span>
                         <span class="block truncate font-mono text-caption text-ink-4">{server.uri}</span>
                       </span>
-                      <span class="badge flex-shrink-0 {server.local ? 'tone-ok' : 'bg-raised text-ink-3'}">
+                      <span class="badge flex-shrink-0 {server.local ? 'tone-ok' : 'tone-muted'}">
                         {server.local ? i18n.m.settings.badge_local : i18n.m.settings.badge_remote}
                       </span>
                     </button>

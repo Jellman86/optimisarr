@@ -1847,7 +1847,7 @@
               {/each}
             </div>
             <p class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-3">
-              <span class="badge tone-accent" data-preset-state>{presetState}</span>
+              <span class="badge tone-neutral" data-preset-state>{presetState}</span>
               <span>{presetSummaries[form.ruleProfile] ?? ''}</span>
             </p>
             <!-- A preset is only mysterious until its values are on the page. These are the server's own. -->
@@ -1860,7 +1860,7 @@
                   <thead>
                     <tr class="text-ink-3">
                       <td></td>
-                      {#each presetColumns as column (column.profile)}<th scope="col" class="px-2 py-2 font-semibold {column.profile === form.ruleProfile ? 'text-accent' : ''}">{presetName(column.profile, i18n.m)}</th>{/each}
+                      {#each presetColumns as column (column.profile)}<th scope="col" class="px-2 py-2 font-semibold {column.profile === form.ruleProfile ? 'rounded-t bg-accent-soft text-ink' : ''}">{presetName(column.profile, i18n.m)}</th>{/each}
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-line-soft text-ink-2">
@@ -2753,9 +2753,11 @@
       {@const summary = summaries[library.id]}
       {@const a = access[library.id]}
       {@const busy = busyId === library.id}
-      <div class="card flex flex-col gap-3.5 p-5 {library.enabled ? '' : 'opacity-60'}" data-library-card={library.id}>
+      <!-- Dim the card's own content rather than the card container so overlays (ActionMenu, InfoTip)
+           stay at full opacity and contrast when opened on a disabled library. -->
+      <div class="card flex flex-col gap-3.5 p-5" data-library-card={library.id}>
         <div class="flex items-center justify-between gap-3">
-          <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <div class="flex min-w-0 flex-wrap items-center gap-2 {library.enabled ? '' : 'opacity-60'}">
             <span class="truncate text-base font-semibold text-ink">{library.name}</span>
             <span class="badge tone-info">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
             {#if library.priority !== 0}
@@ -2779,17 +2781,17 @@
           />
         </div>
         {#if refusedSaveFolders[library.id]}
-          <p class="text-xs leading-relaxed text-warn" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
+          <p class="text-xs leading-relaxed text-warn {library.enabled ? '' : 'opacity-60'}" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
         {/if}
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>
-          <span class="text-sm text-ink-3">{i18n.m.libraries.files_label}</span>
+          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink {library.enabled ? '' : 'opacity-60'}">{library.fileCount.toLocaleString()}</span>
+          <span class="text-sm text-ink-3 {library.enabled ? '' : 'opacity-60'}">{i18n.m.libraries.files_label}</span>
           {#if summary}
             <!-- A fact, not a link, so it stays in ink: work waiting reads heavier than none. -->
             {#if summary.eligible > 0}
               <span class="ml-auto inline-flex items-center gap-1.5">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink" data-library-ready>
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink {library.enabled ? '' : 'opacity-60'}" data-library-ready>
                   <Icon name="plus" class="h-3.5 w-3.5 text-ink-3" />
                   {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
                 </span>
@@ -2797,7 +2799,7 @@
               </span>
             {:else}
               <span class="ml-auto inline-flex items-center gap-1.5">
-                <span class="inline-flex items-center gap-1.5 text-xs text-ink-2" data-library-optimal>
+                <span class="inline-flex items-center gap-1.5 text-xs text-ink-2 {library.enabled ? '' : 'opacity-60'}" data-library-optimal>
                   <OkMark class="h-3 w-3" />
                   {i18n.m.libraries.all_optimal}
                 </span>
@@ -2807,7 +2809,7 @@
           {/if}
         </div>
 
-        <div class="flex flex-col gap-1.5 text-xs text-ink-3">
+        <div class="flex flex-col gap-1.5 text-xs text-ink-3 {library.enabled ? '' : 'opacity-60'}">
           <div class="flex items-center gap-2"><Icon name="folder" class="h-3.5 w-3.5 flex-shrink-0" /><span class="truncate font-mono">{library.path}</span></div>
           <!-- The rule profile is a video preset; it is meaningless for Music/Photo libraries. -->
           {#if isVideoType(library.mediaType)}
@@ -2818,14 +2820,14 @@
 
         <!-- Access is only worth a line when it is a problem; a healthy path says nothing. -->
         {#if a && !a.ok}
-          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'}">
+          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'} {library.enabled ? '' : 'opacity-60'}">
             <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <span>{accessMessage(a)}</span>
           </div>
         {/if}
 
         <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
-        <div class="hairline-t mt-auto flex flex-wrap items-center gap-2 pt-3">
+        <div class="hairline-t mt-auto flex flex-wrap items-center gap-2 pt-3 {library.enabled ? '' : 'opacity-60'}">
           <button class="btn" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
@@ -2868,12 +2870,5 @@
   }
   .preset-table > summary::-webkit-details-marker {
     display: none;
-  }
-  [data-library-workflow] :global([data-config-section]) {
-    transition: box-shadow var(--motion-base) var(--motion-ease-standard);
-  }
-  [data-library-workflow] :global([data-config-section]:hover),
-  [data-library-workflow] :global([data-config-section]:focus-within) {
-    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
 </style>

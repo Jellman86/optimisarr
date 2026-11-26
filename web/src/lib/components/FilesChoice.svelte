@@ -149,7 +149,7 @@
         </label>
 
         {#if selected}
-          <dl class="mt-3 grid gap-2 border-t border-line pt-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]" aria-label={i18n.m.filesChoice.where_title}>
+          <dl class="hairline-t mt-3 grid gap-2 pt-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]" aria-label={i18n.m.filesChoice.where_title}>
             <dt class="font-medium text-ink-2">{i18n.m.filesChoice.original}</dt>
             <dd class="leading-relaxed text-ink-2">
               {#if option.value === 'elsewhere'}

@@ -1114,8 +1114,6 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const panelRgb = surface.panel.slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16)).join(', ')
       expect(surface.fill).toBe(`rgb(${panelRgb})`)
       expect(surface.shadow).not.toBe('none')
-      await card.hover()
-      await expect.poll(() => card.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe(surface.shadow)
       for (const input of await workflow.locator('.input').all()) {
         if (await input.isVisible()) expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44)
       }

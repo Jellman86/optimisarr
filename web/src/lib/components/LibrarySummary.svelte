@@ -34,7 +34,7 @@
   <ul class="divide-y divide-line-soft px-4 sm:px-6">
     {#each lines as line (line.topic)}
       <li class="flex flex-wrap items-start gap-3 py-4 sm:gap-4" data-summary-line={line.topic}>
-        <span class="mt-0.5 hidden h-9 w-9 flex-none items-center justify-center rounded-xl bg-raised text-accent sm:flex">
+        <span class="mt-0.5 hidden h-9 w-9 flex-none items-center justify-center rounded-xl bg-raised text-ink-2 sm:flex">
           <Icon name={icons[line.topic]} class="h-4 w-4" />
         </span>
         <div class="min-w-0 max-w-[72ch] flex-[1_1_14rem] text-sm">

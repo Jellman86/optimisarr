@@ -168,7 +168,7 @@
       </div>
 
       {#if activeCapture}
-        <div class="rounded-lg border border-accent/25 bg-accent/5 p-4">
+        <div class="callout tone-accent p-4">
           <p class="text-sm text-ink-2">
             {i18n.m.settings.diagnostics_started} {date(activeCapture.startedAt)} ·
             {activeCapture.expiresAt ? `${i18n.m.settings.diagnostics_expires}: ${absoluteDate(activeCapture.expiresAt)}` : i18n.m.settings.diagnostics_until_stopped}
@@ -196,11 +196,11 @@
           </div>
         </div>
         <label class="flex cursor-pointer items-start gap-3 text-sm text-ink-2">
-          <input type="checkbox" class="mt-1" bind:checked={includePaths} />
+          <input type="checkbox" class="checkbox mt-0.5 shrink-0" bind:checked={includePaths} />
           <span>{i18n.m.settings.diagnostics_paths}</span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 text-sm text-ink-2">
-          <input type="checkbox" class="mt-1" bind:checked={persistAcrossRestart} />
+          <input type="checkbox" class="checkbox mt-0.5 shrink-0" bind:checked={persistAcrossRestart} />
           <span>{i18n.m.settings.diagnostics_restart}</span>
         </label>
         <div class="grid min-w-0 gap-3 sm:grid-cols-3">
@@ -222,7 +222,7 @@
         {#if capture.eventLimitReached}<p class="text-sm text-warn" role="status">{i18n.m.settings.diagnostics_cap_reached}</p>{/if}
         <div class="flex flex-wrap gap-2">
           <button class="btn" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>
-          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
+          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn btn-danger" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
         </div>
         {#if capture.pinned}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_pinned_delete_hint}</p>{/if}
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -230,7 +230,7 @@
           <label class="label">{i18n.m.settings.diagnostics_to}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob ?? '').trim()} bind:value={toUtc} /></label>
         </div>
         {#if String(exportJob ?? '').trim()}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_job_range}</p>{/if}
-        <div class="flex min-w-0 flex-wrap items-end gap-3 border-t pt-4" style="border-color: var(--edge)">
+        <div class="hairline-t flex min-w-0 flex-wrap items-end gap-3 pt-4">
           <div class="min-w-40 flex-1">
             <label class="label" for="diagnostic-export-job">{i18n.m.settings.diagnostics_export_job} ({i18n.m.settings.diagnostics_optional})</label>
             <input id="diagnostic-export-job" class="input w-full" disabled={busy} type="number" min="1" step="1" bind:value={exportJob} />
@@ -242,7 +242,7 @@
     </div>
 
     <aside class="evidence-note min-w-0 rounded-lg p-4 text-sm leading-relaxed text-ink-3">
-      <span class="mb-2 block text-xs font-semibold text-accent">{i18n.m.settings.diagnostics_evidence}</span>
+      <span class="mb-2 block text-xs font-semibold text-ink-2">{i18n.m.settings.diagnostics_evidence}</span>
       <p>{i18n.m.settings.diagnostics_disclosure}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_limit}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_retention}</p>
@@ -251,8 +251,6 @@
 </ConfigSection>
 
 <style>
-  :global(#diagnostic-capture) { transition: box-shadow var(--motion-base) var(--motion-ease-standard); }
-  :global(#diagnostic-capture:hover), :global(#diagnostic-capture:focus-within) { box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
   .capture-light { width: .55rem; height: .55rem; flex: none; border-radius: 50%; background: var(--ink-4); }
   .capture-light.recording { background: var(--accent); box-shadow: 0 0 0 .25rem color-mix(in srgb, var(--accent) 14%, transparent), 0 0 1rem var(--accent); }
   .evidence-note { background: var(--raised); box-shadow: inset 0 1px 0 var(--edge); }

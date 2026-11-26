@@ -437,12 +437,7 @@
   </DataTable>
 {/if}
 
-{#snippet replacementCount()}<span>{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</span>{/snippet}
+{#snippet replacementCount()}<span>{plural(replacements.length, i18n.m.quarantine.replacements_count_one, i18n.m.quarantine.replacements_count_other, replacements.length.toLocaleString())}</span>{/snippet}
 
 
 {/if}
-
-<style>
-  [data-quarantine-review] :global(.card) { transition: box-shadow var(--motion-base) var(--motion-ease-standard); }
-  [data-quarantine-review] :global(.card:hover), [data-quarantine-review] :global(.card:focus-within) { box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
-</style>
