@@ -75,6 +75,8 @@ export function newLibraryDefaults(): SaveLibrary {
     trimSilenceWithoutConverting: false,
     keepAudioLanguages: null,
     keepSubtitleLanguages: null,
+    minimumTrackRemovalSavingPercent: null,
+    minimumTrackRemovalSavingBytes: null,
     reencodeLossyAudio: false,
     targetImageFormat: null,
     imageQuality: null,

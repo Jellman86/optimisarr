@@ -2206,3 +2206,60 @@ test('Browse shows a server failure as it is instead of opening the default fold
   await expect(picker.getByRole('button', { name: 'Select folder', exact: true })).toBeDisabled()
   expect(defaultRequested).toBe(false)
 })
+
+const cleanupLibrary = { ...library, mediaType: 'Film', ruleProfile: 'TrackCleanup', keepAudioLanguages: 'eng' }
+const trackSavingPercent = (page: Page) => page.getByRole('spinbutton', { name: 'Minimum share of the file, in percent', exact: true })
+const trackSavingSize = (page: Page) => page.getByRole('spinbutton', { name: 'Minimum size, in GB', exact: true })
+
+test('a track cleanup library has no minimum saving until one is set, then saves both parts', async ({ page }) => {
+  await mockLibraries(page, cleanupLibrary)
+  await page.goto('/#/libraries/1/configure/files')
+  const row = page.locator('[data-setting-row="Minimum saving"]')
+  await expect(row).toContainText('Leave both blank to clean up every file.')
+  await expect(trackSavingPercent(page)).toHaveValue('')
+  await expect(trackSavingSize(page)).toHaveValue('')
+
+  await trackSavingPercent(page).fill('5')
+  await trackSavingSize(page).fill('1')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ minimumTrackRemovalSavingPercent: 5, minimumTrackRemovalSavingBytes: 1_073_741_824 })
+  await page.reload()
+  await expect(trackSavingPercent(page)).toHaveValue('5')
+  await expect(trackSavingSize(page)).toHaveValue('1')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+})
+
+test('clearing a minimum saving saves none', async ({ page }) => {
+  await mockLibraries(page, { ...cleanupLibrary, minimumTrackRemovalSavingPercent: 5, minimumTrackRemovalSavingBytes: 1_073_741_824 })
+  await page.goto('/#/libraries/1/configure/files')
+  await trackSavingPercent(page).fill('')
+  await trackSavingSize(page).fill('')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ minimumTrackRemovalSavingPercent: null, minimumTrackRemovalSavingBytes: null })
+})
+
+test('a remux clean-up offers the minimum for files already in its container', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Film', ruleProfile: 'RemuxCleanup' })
+  await page.goto('/#/libraries/1/configure/files')
+  await expect(page.locator('[data-setting-row="Minimum saving"]')).toContainText('For a file already in the target container')
+})
+
+test('a library that re-encodes does not offer the minimum saving', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Film' })
+  await page.goto('/#/libraries/1/configure/files')
+  await expect(page.locator('[data-setting-row="Skip hardlinked files"]')).toBeVisible()
+  await expect(page.locator('[data-setting-row="Minimum saving"]')).toHaveCount(0)
+})
+
+test('the minimum saving fits a phone without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await mockLibraries(page, { ...cleanupLibrary, minimumTrackRemovalSavingPercent: 5 })
+  await page.goto('/#/libraries/1/configure/files')
+  await expect(trackSavingPercent(page)).toBeVisible()
+  await expect(trackSavingSize(page)).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  const accessibility = await new AxeBuilder({ page }).include('[data-setting-row="Minimum saving"]').analyze()
+  expect(accessibility.violations).toEqual([])
+})

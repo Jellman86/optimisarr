@@ -371,3 +371,69 @@ test('the plan stacks on a phone, labels each side and has no accessibility viol
   const results = await new AxeBuilder({ page }).analyze()
   expect(results.violations).toEqual([])
 })
+
+const cleanupPlan = {
+  ...plan, action: 'TrackCleanup', picture: null, sound: { codec: null, bitrateKbps: null, downmixToStereo: false },
+  file: { container: 'mkv', fileName: 'Orbit.2025.2160p.x264.mkv', renamed: false, mayBecomeMatroska: false },
+  source: { ...source, sizeBytes: 60 * 1024 ** 3 },
+}
+const cleanupLibrary = { ruleProfile: 'TrackCleanup', minimumTrackRemovalSavingPercent: 5 }
+
+test('a track cleanup plan below the minimum says how much it would save and that the file is skipped', async ({ page }) => {
+  await mockPlan(page, { library: cleanupLibrary, plan: {
+    ...cleanupPlan, eligible: false,
+    reason: "Removing these tracks would save about 120 MB (0.2%), below this library's minimum of 5%",
+    trackSaving: { bytes: 120 * 1024 ** 2, percent: 0.195, minimumPercent: 5, minimumBytes: null, meetsMinimum: false },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  const size = row(page, 'size')
+
+  await expect(size).toContainText("Removing the tracks saves about 120 MB (0.2%). That is below this library's minimum of 5%, so this file is skipped.")
+  await expect(size.locator('[data-plan-tag]')).toContainText('Skipped')
+  await expect(size).not.toContainText('Not known until')
+})
+
+test('a track cleanup plan that meets the minimum says so', async ({ page }) => {
+  await mockPlan(page, { library: { ...cleanupLibrary, minimumTrackRemovalSavingBytes: 1024 ** 3 }, plan: {
+    ...cleanupPlan,
+    trackSaving: { bytes: 6 * 1024 ** 3, percent: 10, minimumPercent: 5, minimumBytes: 1024 ** 3, meetsMinimum: true },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  const size = row(page, 'size')
+
+  await expect(size).toContainText("Removing the tracks saves about 6.0 GB (10%). That meets this library's minimum of 5% and 1.0 GB.")
+  await expect(size.locator('[data-plan-tag]')).toHaveCount(0)
+})
+
+test('a track cleanup plan whose saving cannot be known says the minimum cannot be checked', async ({ page }) => {
+  await mockPlan(page, { library: cleanupLibrary, plan: {
+    ...cleanupPlan, eligible: false,
+    trackSaving: { bytes: null, percent: null, minimumPercent: 5, minimumBytes: null, meetsMinimum: null },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+
+  await expect(row(page, 'size')).toContainText("The size of the tracks to remove isn't known, so this library's minimum of 5% can't be checked and this file is skipped.")
+})
+
+test('a track cleanup plan without a minimum gives the saving and judges nothing', async ({ page }) => {
+  await mockPlan(page, { library: { ruleProfile: 'TrackCleanup' }, plan: {
+    ...cleanupPlan,
+    trackSaving: { bytes: 6 * 1024 ** 3, percent: 10, minimumPercent: null, minimumBytes: null, meetsMinimum: null },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  const size = row(page, 'size')
+
+  await expect(size).toContainText('Removing the tracks saves about 6.0 GB (10%).')
+  await expect(size).not.toContainText('minimum')
+})
+
+test('the track saving fits a phone without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await mockPlan(page, { library: cleanupLibrary, plan: {
+    ...cleanupPlan, eligible: false,
+    trackSaving: { bytes: 120 * 1024 ** 2, percent: 0.195, minimumPercent: 5, minimumBytes: null, meetsMinimum: false },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  await expect(row(page, 'size')).toContainText('so this file is skipped')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+})

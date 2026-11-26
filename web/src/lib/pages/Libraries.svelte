@@ -30,7 +30,7 @@
   import { ruleProfileLabel } from '../rule-profile-label'
   import { filesChoice } from '../files-choice'
   import { withMediaType } from '../library-defaults'
-  import { codecName, presetChanges, presetName, summariseLibrary, vmafLevelName, vmafLevels, type SummaryTopic } from '../library-summary'
+  import { codecName, presetChanges, presetName, summariseLibrary, trackSavingApplies, vmafLevelName, vmafLevels, type SummaryTopic } from '../library-summary'
   import { encoderFamily, encoderIgnores, encoderName, type EncoderSetting } from '../encoder-support'
 
   let libraries = $state<Library[]>([])
@@ -624,13 +624,15 @@
   // The same-codec re-encode threshold is edited in GB (these are "massive" files) and stored as bytes.
   let sameCodecGb = $state<number | ''>('')
   const DEFAULT_SAME_CODEC_GB = 20
+  // The size part of the minimum track-removal saving, edited in GB and stored as bytes. Blank is none.
+  let trackSavingGb = $state<number | '' | null>('')
 
   // Dirty tracking: a JSON snapshot of the form as it was opened. The live form compared against
   // it tells us whether there are unsaved edits, so we can warn before discarding them and only
   // enable Save when something actually changed.
   let pristine = $state('')
   function formSnapshot(): string {
-    return JSON.stringify({ ...form, minSizeMb, sameCodecGb })
+    return JSON.stringify({ ...form, minSizeMb, sameCodecGb, trackSavingGb })
   }
   function markPristine() {
     pristine = formSnapshot()
@@ -1199,6 +1201,7 @@
     videoAudioEncodingSelection = null
     minSizeMb = ''
     sameCodecGb = ''
+    trackSavingGb = ''
     activeTab = 'rules'
     editorCandidates = []
     editingId = 0
@@ -1273,6 +1276,8 @@
       trimSilenceWithoutConverting: library.trimSilenceWithoutConverting ?? false,
       keepAudioLanguages: library.keepAudioLanguages,
       keepSubtitleLanguages: library.keepSubtitleLanguages,
+      minimumTrackRemovalSavingPercent: library.minimumTrackRemovalSavingPercent ?? null,
+      minimumTrackRemovalSavingBytes: library.minimumTrackRemovalSavingBytes ?? null,
       reencodeLossyAudio: library.reencodeLossyAudio,
       targetImageFormat: library.targetImageFormat,
       imageQuality: library.imageQuality,
@@ -1336,6 +1341,7 @@
     // Six decimals undo the rounding to whole bytes on save, so 0.3 reopens as 0.3 and saving again
     // cannot move a limit, while staying finer than anyone would type.
     sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Number((library.reencodeSameCodecAboveBytes / BYTES_PER_GB).toFixed(6)) : ''
+    trackSavingGb = library.minimumTrackRemovalSavingBytes != null ? Number((library.minimumTrackRemovalSavingBytes / BYTES_PER_GB).toFixed(6)) : ''
     vmafCustomSelected = false
     imageScoreCustomSelected = false
     audioDifferenceCustomSelected = false
@@ -1375,6 +1381,10 @@
       ...form,
       minFileSizeBytes: minSizeMb === '' ? null : Math.round(Number(minSizeMb) * BYTES_PER_MB),
       reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
+      // A number input that is cleared reads as null, and one never typed in as ''; both are none.
+      minimumTrackRemovalSavingPercent: form.minimumTrackRemovalSavingPercent == null || String(form.minimumTrackRemovalSavingPercent) === ''
+        ? null : Number(form.minimumTrackRemovalSavingPercent),
+      minimumTrackRemovalSavingBytes: trackSavingGb === '' || trackSavingGb == null ? null : Math.round(Number(trackSavingGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
       videoDownscaleHeight: form.videoDownscaleHeight == null ? null : Number(form.videoDownscaleHeight),
       maxFrameRate: form.maxFrameRate == null ? null : Number(form.maxFrameRate),
@@ -1750,6 +1760,30 @@
     {#if !isTrackCleanupProfile}
       <SettingRow label={i18n.m.libraries.min_file_size} sentence={i18n.m.libraries.min_file_size_tip} controlId="lib-minsize">
         <input id="lib-minsize" class="input" type="number" min="0" placeholder={i18n.m.libraryEditor.preset_minimum} bind:value={minSizeMb} />
+      </SettingRow>
+    {/if}
+    {#if showVideoOptions && trackSavingApplies(form)}
+      <!-- Removing tracks rewrites the whole file, so a library can ask for a saving worth that write.
+           Blank (the default) cleans up every file, as before. -->
+      <SettingRow label={i18n.m.libraries.track_saving_label}
+        sentence={isRemuxProfile ? i18n.m.libraries.track_saving_remux_sentence : i18n.m.libraries.track_saving_sentence}
+        more={i18n.m.libraries.track_saving_more}>
+        <div class="flex flex-wrap items-center justify-end gap-2 text-sm" role="group" aria-label={i18n.m.libraries.track_saving_label}>
+          <!-- Each part stays on one line, so a narrow screen wraps between them, not inside one. -->
+          <span class="inline-flex items-center gap-2 whitespace-nowrap">
+            <input id="lib-track-saving-percent" class="input w-20" type="number" min="0.1" max="99" step="0.1"
+              placeholder={i18n.m.libraries.track_saving_none} bind:value={form.minimumTrackRemovalSavingPercent}
+              aria-label={i18n.m.libraries.track_saving_percent_label} />
+            <span class="text-ink-3">{i18n.m.libraries.track_saving_percent_unit}</span>
+          </span>
+          <span class="inline-flex items-center gap-2 whitespace-nowrap">
+            <span class="text-ink-3">{i18n.m.libraries.track_saving_and}</span>
+            <input id="lib-track-saving-gb" class="input w-20" type="number" min="0.1" step="0.1"
+              placeholder={i18n.m.libraries.track_saving_none} bind:value={trackSavingGb}
+              aria-label={i18n.m.libraries.track_saving_size_label} />
+            <span class="text-ink-3">{i18n.m.libraries.gb}</span>
+          </span>
+        </div>
       </SettingRow>
     {/if}
     {#if showVideoOptions && !isNoEncodeProfile}

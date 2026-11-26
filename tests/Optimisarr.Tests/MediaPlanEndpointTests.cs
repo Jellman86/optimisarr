@@ -64,6 +64,36 @@ public sealed class MediaPlanEndpointTests(AdminTokenAuthEndpointTests.TokenedAp
     }
 
     [Fact]
+    public async Task Plan_for_track_cleanup_gives_the_estimated_saving_and_the_skip_below_the_minimum()
+    {
+        var (_, mediaId) = await SeedAsync(library =>
+        {
+            library.MediaType = MediaType.Film;
+            library.RuleProfile = RuleProfile.TrackCleanup;
+            library.KeepAudioLanguages = "eng";
+            library.MinimumTrackRemovalSavingPercent = 20;
+        });
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var file = await db.MediaFiles.SingleAsync(f => f.Id == mediaId);
+            file.AudioTrackBytes = "500, 100";
+            await db.SaveChangesAsync();
+        }
+        using var client = Admin();
+
+        var plan = await client.GetFromJsonAsync<JsonElement>($"/api/media/{mediaId}/plan");
+
+        Assert.Equal("TrackCleanup", plan.GetProperty("action").GetString());
+        Assert.False(plan.GetProperty("eligible").GetBoolean());
+        Assert.StartsWith("Removing these tracks would save about", plan.GetProperty("reason").GetString());
+        var saving = plan.GetProperty("trackSaving");
+        Assert.Equal(100, saving.GetProperty("bytes").GetInt64());
+        Assert.Equal(20, saving.GetProperty("minimumPercent").GetDouble());
+        Assert.False(saving.GetProperty("meetsMinimum").GetBoolean());
+    }
+
+    [Fact]
     public async Task Plan_gives_the_reason_a_file_is_skipped()
     {
         var (_, mediaId) = await SeedAsync(videoCodec: "hevc");

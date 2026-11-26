@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { RuleProfileSpec, SaveLibrary } from './api.ts'
 import { newLibraryDefaults } from './library-defaults.ts'
 import { en } from './i18n/en.ts'
-import { codecName, encodesVideo, optionalChecks, presetChanges, presetName, summariseLibrary, vmafLevelName, type SummaryContext } from './library-summary.ts'
+import { codecName, encodesVideo, optionalChecks, presetChanges, presetName, summariseLibrary, trackSavingApplies, trackSavingMinimum, vmafLevelName, type SummaryContext } from './library-summary.ts'
 
 const balanced: RuleProfileSpec = {
   profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'Exclude',
@@ -224,4 +224,28 @@ test('a mixed library that only cleans up video still says its audio files are m
   const mixed = { mediaType: 'Other', ruleProfile: 'RemuxCleanup', downmixToStereo: true }
 
   assert.match(line('audio', mixed, { preset: remuxPreset }).text, /Mixes surround down to stereo\./)
+})
+
+test('a minimum track-removal saving is named where it governs the work, and nowhere else', () => {
+  const minimum = { minimumTrackRemovalSavingPercent: 5, minimumTrackRemovalSavingBytes: 1024 ** 3 }
+
+  assert.match(line('video', { ruleProfile: 'TrackCleanup', keepAudioLanguages: 'eng', ...minimum }).text,
+    /A file is only rewritten when the tracks removed would save at least 5% and 1\.0 GB\.$/)
+  assert.match(line('video', { ruleProfile: 'TrackCleanup', keepAudioLanguages: 'eng', minimumTrackRemovalSavingPercent: 5 }).text,
+    /would save at least 5%\.$/)
+  assert.match(line('video', { ruleProfile: 'RemuxCleanup', ...minimum }).text,
+    /A file already in its target container is only rewritten to remove tracks when they would save at least 5% and 1\.0 GB\./)
+  assert.doesNotMatch(line('video', { ruleProfile: 'TrackCleanup', keepAudioLanguages: 'eng' }).text, /rewritten/)
+  assert.doesNotMatch(line('video', minimum).text, /rewritten/)
+  assert.doesNotMatch(line('video', { ruleProfile: 'RemuxCleanup', targetVideoCodec: 'hevc', ...minimum }).text, /rewritten/)
+  assert.doesNotMatch(line('video', { ruleProfile: 'RemuxCleanup', videoAudioCodec: 'aac', ...minimum }).text, /rewritten/)
+})
+
+test('the minimum applies to track cleanup and to a remux that copies everything', () => {
+  assert.equal(trackSavingApplies(library({ ruleProfile: 'TrackCleanup' })), true)
+  assert.equal(trackSavingApplies(library({ ruleProfile: 'RemuxCleanup' })), true)
+  assert.equal(trackSavingApplies(library({ ruleProfile: 'RemuxCleanup', videoAudioCodec: 'copy' })), true)
+  assert.equal(trackSavingApplies(library({ ruleProfile: 'RemuxCleanup', targetVideoCodec: 'av1' })), false)
+  assert.equal(trackSavingApplies(library({ ruleProfile: 'ConservativeHevc' })), false)
+  assert.equal(trackSavingMinimum(library(), 'en'), null)
 })

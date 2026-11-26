@@ -32,6 +32,37 @@ public sealed class LibraryRequestParserTests
         Assert.Equal(1.5, parsed.AudioSilenceMinimumSeconds);
     }
 
+    [Fact]
+    public void A_minimum_track_removal_saving_is_saved_and_defaults_to_none()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var plain, out _));
+        Assert.Null(plain.MinimumTrackRemovalSavingPercent);
+        Assert.Null(plain.MinimumTrackRemovalSavingBytes);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with
+        {
+            MinimumTrackRemovalSavingPercent = 5, MinimumTrackRemovalSavingBytes = 1_073_741_824,
+        }, out var parsed, out _));
+        Assert.Equal(5, parsed.MinimumTrackRemovalSavingPercent);
+        Assert.Equal(1_073_741_824, parsed.MinimumTrackRemovalSavingBytes);
+    }
+
+    [Theory]
+    [InlineData(0d, null)]
+    [InlineData(-1d, null)]
+    [InlineData(100d, null)]
+    [InlineData(double.NaN, null)]
+    [InlineData(null, 0L)]
+    [InlineData(null, -5L)]
+    public void A_minimum_track_removal_saving_out_of_range_is_refused(double? percent, long? bytes)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with
+        {
+            MinimumTrackRemovalSavingPercent = percent, MinimumTrackRemovalSavingBytes = bytes,
+        }, out _, out var error));
+        Assert.Contains("minimum track-removal saving", error);
+    }
+
     [Theory]
     [InlineData(-95, 2)]
     [InlineData(-20, 2)]

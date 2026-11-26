@@ -263,6 +263,19 @@ public sealed class Library
     public string? KeepSubtitleLanguages { get; set; }
 
     /// <summary>
+    /// The smallest saving, as a percentage of the file, for which a job that only removes tracks
+    /// rewrites the file. Null (the default) sets no minimum. See
+    /// <c>RuleSettings.MinimumTrackRemovalSavingPercent</c>.
+    /// </summary>
+    public double? MinimumTrackRemovalSavingPercent { get; set; }
+
+    /// <summary>
+    /// The smallest saving in bytes for which a job that only removes tracks rewrites the file.
+    /// When both minimums are set a file must meet both. Null (the default) sets no minimum.
+    /// </summary>
+    public long? MinimumTrackRemovalSavingBytes { get; set; }
+
+    /// <summary>
     /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but
     /// only when its source bitrate is known to exceed the target enough to save space. Defaults
     /// to false: the conservative behaviour re-encodes only lossless sources.

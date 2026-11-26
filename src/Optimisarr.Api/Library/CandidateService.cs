@@ -213,7 +213,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
             TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
             TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages),
             file.HardLinkCount,
-            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs, TrimOnlyTagRefusal = file.TrimOnlyTagRefusal };
+            file.FieldOrder) {
+                AudioCodecSummary = file.AudioCodecs,
+                TrimOnlyTagRefusal = file.TrimOnlyTagRefusal,
+                AudioTrackBytes = TrackSizes.Parse(file.AudioTrackBytes),
+                SubtitleTrackBytes = TrackSizes.Parse(file.SubtitleTrackBytes),
+            };
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }

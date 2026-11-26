@@ -139,6 +139,28 @@ public sealed class MigrationTests : IDisposable
         Assert.False(library.TrimSilenceWithoutConverting);
     }
 
+    [Fact]
+    public async Task Track_size_migration_leaves_existing_libraries_without_a_minimum()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261126211649_RecordTagsATrimCannotKeep");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt, KeepAudioLanguages)
+            VALUES ('Films', '/data/films', 'Film', 'TrackCleanup', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 'eng');
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        var library = await db.Libraries.SingleAsync();
+        Assert.Equal("eng", library.KeepAudioLanguages);
+        Assert.Null(library.MinimumTrackRemovalSavingPercent);
+        Assert.Null(library.MinimumTrackRemovalSavingBytes);
+    }
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
         "optimisarr-tests",

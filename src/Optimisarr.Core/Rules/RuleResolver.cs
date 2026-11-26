@@ -13,9 +13,10 @@ public static class RuleResolver
 
         // Track cleanup is a deliberately narrow, lossless contract. Do not let overrides left
         // behind by a previous encoding profile silently turn it into a transcode, remux, resize,
-        // HDR exclusion, or media-type conversion. Only the exclusions and the two language
-        // policies are relevant to this mode — stripping streams is still a replacement, so a
-        // shared inode or an untouchable source codec is at stake exactly as it is for a re-encode.
+        // HDR exclusion, or media-type conversion. Only the exclusions, the two language policies
+        // and the minimum saving are relevant to this mode — stripping streams is still a
+        // replacement, so a shared inode or an untouchable source codec is at stake exactly as it
+        // is for a re-encode.
         if (profile == Domain.RuleProfile.TrackCleanup)
         {
             return settings with
@@ -24,7 +25,9 @@ public static class RuleResolver
                 ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
                 SkipSourceCodecs = overrides.SkipSourceCodecs ?? settings.SkipSourceCodecs,
                 KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
-                KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages
+                KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
+                MinimumTrackRemovalSavingPercent = overrides.MinimumTrackRemovalSavingPercent ?? settings.MinimumTrackRemovalSavingPercent,
+                MinimumTrackRemovalSavingBytes = overrides.MinimumTrackRemovalSavingBytes ?? settings.MinimumTrackRemovalSavingBytes
             };
         }
 
@@ -58,6 +61,8 @@ public static class RuleResolver
             TrimSilenceWithoutConverting = overrides.TrimSilenceWithoutConverting ?? settings.TrimSilenceWithoutConverting,
             KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
             KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
+            MinimumTrackRemovalSavingPercent = overrides.MinimumTrackRemovalSavingPercent ?? settings.MinimumTrackRemovalSavingPercent,
+            MinimumTrackRemovalSavingBytes = overrides.MinimumTrackRemovalSavingBytes ?? settings.MinimumTrackRemovalSavingBytes,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
             TargetImageFormat = Normalise(overrides.TargetImageFormat) ?? settings.TargetImageFormat,
             ImageQuality = overrides.ImageQuality ?? settings.ImageQuality,

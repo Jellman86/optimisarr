@@ -593,7 +593,10 @@ internal sealed record SaveLibraryRequest(
     string? SuperResolutionModel = null,
     int? SuperResolutionScale = null,
     bool? DeinterlaceVideo = null,
-    string? NoiseReduction = null);
+    string? NoiseReduction = null,
+    // Null sets no minimum, so a client that leaves these out saves a library without one.
+    double? MinimumTrackRemovalSavingPercent = null,
+    long? MinimumTrackRemovalSavingBytes = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -702,7 +705,9 @@ internal sealed record LibraryDto(
     bool TrimAudioSilence,
     double AudioSilenceThresholdDb,
     double AudioSilenceMinimumSeconds,
-    bool TrimSilenceWithoutConverting)
+    bool TrimSilenceWithoutConverting,
+    double? MinimumTrackRemovalSavingPercent,
+    long? MinimumTrackRemovalSavingBytes)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -800,7 +805,9 @@ internal sealed record LibraryDto(
         library.TrimAudioSilence,
         library.AudioSilenceThresholdDb,
         library.AudioSilenceMinimumSeconds,
-        library.TrimSilenceWithoutConverting);
+        library.TrimSilenceWithoutConverting,
+        library.MinimumTrackRemovalSavingPercent,
+        library.MinimumTrackRemovalSavingBytes);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

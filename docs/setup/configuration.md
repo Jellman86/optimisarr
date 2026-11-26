@@ -804,6 +804,37 @@ passes the usual verify-and-replace gates (including container, retained-languag
 and retained-audio-codec checks)
 before the original is touched.
 
+Because removing even a small track rewrites the whole file, a library can set a
+**Minimum saving** under **Libraries → Configure → Which files** (track cleanup and
+remux clean-up libraries only). Enter a share of the file in percent, a size in GB,
+or both. A file is rewritten only when the tracks it would lose add up to at least
+that much; with both set, it must meet both, so neither a small share of a huge
+file nor a large share of a tiny one is rewritten. Below the minimum, the file is
+skipped with the reason, for example *Removing these tracks would save about 120 MB
+(0.2%), below this library's minimum of 5%*. Both fields are blank by default, which
+cleans up every file as before.
+
+- **Where it applies.** Every track cleanup job, and a remux clean-up of a file that
+  is already in the target container and copies its audio. A remux that changes the
+  container, and every re-encode, is worth its rewrite for other reasons and ignores
+  the minimum.
+- **Where the sizes come from.** Matroska files written by mkvmerge record each
+  track's size (the `NUMBER_OF_BYTES` statistics tag). Otherwise the size is
+  estimated from the track's bitrate and length. Each file's track sizes are
+  recorded when it is probed; files probed before this version need **Re-probe**
+  before the minimum can be checked.
+- **When the size is unknown.** If a track to be removed reports neither a size nor
+  a bitrate, the saving cannot be worked out. While a minimum is set, that file is
+  skipped with that reason rather than rewritten on a guess.
+- **When the job starts.** The fresh probe every track-removal job takes before
+  FFmpeg runs is checked against the minimum again, so a file that changed since it
+  was queued is cancelled rather than rewritten for too little.
+- **What it does not change.** The checks on the new file are the same: with
+  **Require output to be smaller than the original** on, it must still come out smaller before it replaces the
+  original. The minimum decides only whether the rewrite is worth starting.
+  **Optimise this file…** shows the estimated saving and whether it meets the
+  minimum.
+
 ## Per-library automation
 
 **Auto-optimise** uses a per-library local-time window. Inside that window the

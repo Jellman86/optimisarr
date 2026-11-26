@@ -39,6 +39,14 @@ public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixT
 public sealed record PlannedTrack(int Index, string? Language, bool Kept);
 
 /// <summary>
+/// What removing tracks would save, for a job that only removes tracks. <see cref="Bytes"/> and
+/// <see cref="Percent"/> are null when a removed track's size is not known.
+/// <see cref="MeetsMinimum"/> is null when the library sets no minimum or the saving is not known;
+/// either way a set minimum then skips the file, which the candidate reason explains.
+/// </summary>
+public sealed record PlannedTrackSaving(long? Bytes, double? Percent, double? MinimumPercent, long? MinimumBytes, bool? MeetsMinimum);
+
+/// <summary>
 /// The file that would be written. Audio that MP4 cannot carry is already known from the
 /// inventory and is reflected in the name. <see cref="MayBecomeMatroska"/> is true when an MP4
 /// result can still move to Matroska because of picture subtitles, which only the job reads.
@@ -57,7 +65,8 @@ public sealed record OptimisationPlan(
     IReadOnlyList<PlannedTrack>? AudioTracks,
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
     PlannedFile File,
-    PlannedImage? Image = null);
+    PlannedImage? Image = null,
+    PlannedTrackSaving? TrackSaving = null);
 
 public static class OptimisationPlanner
 {
@@ -165,7 +174,23 @@ public static class OptimisationPlanner
             new PlannedSound(spec.AudioEncoder is null ? null : rules.VideoAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo),
             Tracks(media.AudioLanguages, spec.RemoveAudioStreamIndexes),
             Tracks(media.SubtitleLanguages, spec.RemoveSubtitleStreamIndexes),
-            file);
+            file,
+            TrackSaving: TrackSavingOf(media, rules, spec.RemoveAudioStreamIndexes ?? [], spec.RemoveSubtitleStreamIndexes ?? []));
+    }
+
+    // Only a job that just removes tracks is judged by what they save; a re-encode or a container
+    // change is worth its rewrite for other reasons.
+    private static PlannedTrackSaving? TrackSavingOf(
+        MediaProperties media, RuleSettings rules, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
+    {
+        if (audioRemovals.Count + subtitleRemovals.Count == 0 || !CandidateEvaluator.OnlyRemovesTracks(media, rules))
+        {
+            return null;
+        }
+
+        var saving = CandidateEvaluator.RemovalSavingOf(media, audioRemovals, subtitleRemovals);
+        var minimum = TrackSavingMinimum.Of(rules);
+        return new PlannedTrackSaving(saving.Bytes, saving.Percent, minimum.Percent, minimum.Bytes, minimum.IsMetBy(saving));
     }
 
     // Null when the languages were never captured: the kept-languages rule then removes nothing,

@@ -57,6 +57,14 @@ public sealed record MediaProbeResult(
     public IReadOnlyList<string?> SubtitleCodecs { get; init; } = [];
     /// <summary>Absolute stream indexes in the same subtitle-relative order, when reported.</summary>
     public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
+    /// <summary>
+    /// Each audio track's size in bytes, in <see cref="AudioTracks"/> order: the muxer's own count
+    /// where mkvmerge recorded one, otherwise estimated from the track's bitrate and duration.
+    /// Null for a track that reports neither.
+    /// </summary>
+    public IReadOnlyList<long?> AudioTrackBytes { get; init; } = [];
+    /// <summary>Each subtitle track's size in bytes, in subtitle-relative order, as <see cref="AudioTrackBytes"/>.</summary>
+    public IReadOnlyList<long?> SubtitleTrackBytes { get; init; } = [];
     /// <summary>The shape of the primary video's pixels; null when ffprobe reports none, which plays square.</summary>
     public SampleAspectRatio? PixelAspect { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
@@ -257,6 +265,8 @@ public sealed class MediaProbeService : IMediaProbeService
         var subtitleLanguages = new List<string?>();
         var subtitleCodecs = new List<string?>();
         var subtitleStreamIndexes = new List<int?>();
+        var audioTrackBytes = new List<long?>();
+        var subtitleTrackBytes = new List<long?>();
         var hasImageSubtitles = false;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
@@ -366,6 +376,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         {
                             audioBitrateKbps = Math.Max(audioBitrateKbps ?? 0, streamBitrate);
                         }
+                        audioTrackBytes.Add(ReadTrackBytes(stream, duration));
                         audioTracks.Add(new AudioTrackInfo(
                             ReadLanguageTag(stream),
                             audioChannels,
@@ -380,6 +391,7 @@ public sealed class MediaProbeService : IMediaProbeService
                             && subtitleIndex.ValueKind == JsonValueKind.Number
                             && subtitleIndex.TryGetInt32(out var index) && index >= 0 ? index : null);
                         subtitleLanguages.Add(ReadLanguageTag(stream));
+                        subtitleTrackBytes.Add(ReadTrackBytes(stream, duration));
                         if (SubtitleClassifier.IsImageBased(codecName))
                         {
                             hasImageSubtitles = true;
@@ -434,7 +446,7 @@ public sealed class MediaProbeService : IMediaProbeService
             videoFrameRate,
             containerStart,
             colorRange,
-            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, PixelAspect = pixelAspect, RawJson = json };
+            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, AudioTrackBytes = audioTrackBytes, SubtitleTrackBytes = subtitleTrackBytes, PixelAspect = pixelAspect, RawJson = json };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
@@ -701,6 +713,38 @@ public sealed class MediaProbeService : IMediaProbeService
             {
                 return frames;
             }
+        }
+
+        return null;
+    }
+
+    // mkvmerge records each track's exact size as the statistics tag NUMBER_OF_BYTES, often with a
+    // language suffix like the frame count. Without it, the size is estimated from the track's
+    // bitrate over its own duration, or the file's. A value that is not a whole number of bytes is
+    // ignored rather than read as a size, and null means no size can be given at all.
+    private static long? ReadTrackBytes(JsonElement stream, double? fileDurationSeconds)
+    {
+        if (stream.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var tag in tags.EnumerateObject())
+            {
+                if (tag.Name.StartsWith("NUMBER_OF_BYTES", StringComparison.OrdinalIgnoreCase)
+                    && tag.Value.ValueKind == JsonValueKind.String
+                    && long.TryParse(tag.Value.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var bytes))
+                {
+                    return bytes;
+                }
+            }
+        }
+
+        if (stream.TryGetProperty("bit_rate", out var bitRate)
+            && bitRate.ValueKind == JsonValueKind.String
+            && long.TryParse(bitRate.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var bitsPerSecond)
+            && bitsPerSecond > 0
+            && (ReadDurationSeconds(stream) ?? fileDurationSeconds) is { } seconds
+            && seconds > 0)
+        {
+            return (long)Math.Round(bitsPerSecond * seconds / 8);
         }
 
         return null;
