@@ -1648,7 +1648,7 @@
     {#snippet actions()}
       <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
       {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
-        {#if isDirty}<span id="scan-unsaved" class="text-xs text-ink-3" data-scan-unsaved>{i18n.m.libraries.unsaved}</span>{/if}
+        {#if isDirty}<span id="scan-unsaved" class="text-xs text-ink-3" data-scan-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
         <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} aria-describedby={isDirty ? 'scan-unsaved' : undefined}>
           <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
           {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
@@ -2575,7 +2575,7 @@
     <section class="card flex flex-wrap items-center gap-4 p-5 sm:p-6">
       <div class="min-w-0 max-w-[72ch] flex-[1_1_16rem] text-sm"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {#if isDirty}<span id="duplicates-unsaved" class="text-xs text-ink-3" data-duplicates-unsaved>{i18n.m.libraries.unsaved}</span>{/if}
+        {#if isDirty}<span id="duplicates-unsaved" class="text-xs text-ink-3" data-duplicates-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
         <button type="button" class="btn" disabled={isDirty || saving} aria-describedby={isDirty ? 'duplicates-unsaved' : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
       </div>
     </section>

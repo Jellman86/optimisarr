@@ -487,9 +487,9 @@ test('unsaved edits disable Scan and the overview says so beside it, not in a ho
   const scan = page.getByRole('button', { name: 'Scan', exact: true })
   await expect(scan).toBeDisabled()
   await expect(scan).not.toHaveAttribute('title')
-  await expect(page.locator('[data-scan-unsaved]')).toHaveText('Unsaved changes')
-  await expect(scan).toHaveAccessibleDescription('Unsaved changes')
-  await expect(page.locator('[data-duplicates-unsaved]')).toHaveText('Unsaved changes')
+  await expect(page.locator('[data-scan-unsaved]')).toHaveText('Save changes first')
+  await expect(scan).toHaveAccessibleDescription('Save changes first')
+  await expect(page.locator('[data-duplicates-unsaved]')).toHaveText('Save changes first')
 })
 
 test('a film library has an overview and five pages, a music library has no Video page and a photo library has Images', async ({ page }) => {

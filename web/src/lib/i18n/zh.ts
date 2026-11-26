@@ -394,6 +394,7 @@ export const zh: Messages = {
     theme_light: '浅色主题',
     theme_dark: '深色主题',
     collapse_sidebar: "折叠侧边栏",
+    expand_sidebar: "展开侧边栏",
   },
   app: {
     tagline: "安全媒体库优化器",
@@ -1666,6 +1667,7 @@ export const zh: Messages = {
     save: "节省",
     cancel: "取消",
     unsaved: "未保存的更改",
+    save_changes_first: "请先保存更改",
     badge_priority: "优先级 {value}",
     badge_disabled: "已禁用",
     any_time: "任何时间",
