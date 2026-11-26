@@ -114,6 +114,11 @@ test('state colours stay distinguishable for colour-blind readers and legible on
       const ratio = contrast(tokens[state], tokens.panel)
       if (ratio < 4.5) problems.push(`${name}: --${state} on --panel is ${ratio.toFixed(2)}:1`)
     }
+    for (const fill of ['accent-fill', 'accent-fill-hi'] as const) {
+      assert.ok(tokens[fill] && tokens['accent-on'], `${name}: --${fill} and --accent-on must be six-digit hex`)
+      const ratio = contrast(tokens['accent-on'], tokens[fill])
+      if (ratio < 4.5) problems.push(`${name}: --accent-on on --${fill} is ${ratio.toFixed(2)}:1`)
+    }
     for (let i = 0; i < states.length; i++) {
       for (let j = i + 1; j < states.length; j++) {
         const [a, b] = [linear(hex(tokens[states[i]])), linear(hex(tokens[states[j]]))]
@@ -262,9 +267,9 @@ test('transitions take their durations from the motion tokens', () => {
 
 const budgets = {
   'arbitrary font sizes (text-[…px|rem])': { budget: 0, count: countArbitraryFontSizes },
-  'stroked edges (border-line)': { budget: 30, count: countStrokedEdges },
+  'stroked edges (border-line)': { budget: 0, count: countStrokedEdges },
   'per-control height overrides (min-h-11)': { budget: 0, count: countMinH11Overrides },
-  'lines of page-scoped CSS (<style>)': { budget: 587, count: countStyleLines },
+  'lines of page-scoped CSS (<style>)': { budget: 573, count: countStyleLines },
 }
 
 for (const [drift, { budget, count }] of Object.entries(budgets)) {

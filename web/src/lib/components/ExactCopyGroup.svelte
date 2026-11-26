@@ -69,7 +69,7 @@
     </div>
     <Icon name="chevron" class="h-4 w-4 shrink-0 text-ink-3" />
   </summary>
-  <div class="border-t border-line p-5 sm:p-6">
+  <div class="hairline-t p-5 sm:p-6">
     {#if group.reviewKey}
       <div class="mb-5">
         <label class="label" for={presetId}>{i18n.m.duplicates.keeperPreset}</label>
@@ -95,12 +95,12 @@
             </div>
           </div>
           {#if copy.aliases?.length}
-            <div class="mt-4 border-t border-line pt-3"><p class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.aliases}</p>
+            <div class="hairline-t mt-4 pt-3"><p class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.aliases}</p>
               {#each copy.aliases as alias (alias.id)}<p class="mt-2 break-all text-xs leading-relaxed text-ink-3">{alias.libraryName} · {alias.relativePath}</p>{/each}
             </div>
           {/if}
-          {#if group.reviewKey}<label class="keep-control mt-4 flex hit-target cursor-pointer items-center gap-3 border-t border-line pt-3 text-sm font-medium text-ink">
-            <input class="h-4 w-4 accent-accent" type="checkbox" checked={keepIds.includes(copy.id)} disabled={!canSave} onchange={event => toggle(copy.id,event.currentTarget.checked)} aria-label={`${i18n.m.duplicates.keepCopy}: ${copy.libraryName ?? ''} ${copy.relativePath}`} />
+          {#if group.reviewKey}<label class="keep-control hairline-t mt-4 flex hit-target cursor-pointer items-center gap-3 pt-3 text-sm font-medium text-ink">
+            <input class="checkbox shrink-0" type="checkbox" checked={keepIds.includes(copy.id)} disabled={!canSave} onchange={event => toggle(copy.id,event.currentTarget.checked)} aria-label={`${i18n.m.duplicates.keepCopy}: ${copy.libraryName ?? ''} ${copy.relativePath}`} />
             {i18n.m.duplicates.keepCopy}
           </label>{/if}
         </li>
@@ -108,10 +108,10 @@
     </ul>
     <p class="mt-4 text-sm leading-relaxed text-ink-3">{group.extraCopyBytes === null ? i18n.m.duplicates.spaceUnknown : t(i18n.m.duplicates.extra,{bytes:formatSize(group.extraCopyBytes)})}</p>
     {#if group.reviewKey}
-      <div class="mt-5 border-t border-line pt-4">
+      <div class="hairline-t mt-5 pt-4">
         <p class="text-sm leading-relaxed text-ink-2">{i18n.m.duplicates.reviewHint}</p>
         <div class="mt-4 flex flex-wrap items-center gap-3">
-          <button class="btn btn-primary" disabled={!canSave || keepIds.length === 0} onclick={() => save('Keep')}>{saving ? i18n.m.common.loading_short : i18n.m.duplicates.saveKeep}</button>
+          <button class="btn" disabled={!canSave || keepIds.length === 0} onclick={() => save('Keep')}>{saving ? i18n.m.common.loading_short : i18n.m.duplicates.saveKeep}</button>
           <button class="btn" disabled={!canSave} onclick={() => save('Ignore')}>{i18n.m.duplicates.ignoreGroup}</button>
           {#if group.decision}<button class="btn" disabled={!canSave} onclick={() => save('Review')}>{i18n.m.duplicates.reviewAgain}</button>{/if}
         </div>
@@ -127,9 +127,9 @@
 
 <style>
   .copy-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr)); gap:1rem; list-style:none; padding:0; }
-  .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border:1px solid var(--line); border-radius:var(--radius-md,12px); background:var(--raised); }
+  .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border-radius:var(--radius-md); background:var(--sunken); }
   .keep-control { margin-top:auto; padding-top:1rem; }
-  .copy-kept { border-color:var(--accent-line); background:var(--accent-soft); }
+  .copy-kept { background:var(--accent-soft); }
   .copy-card h3, summary h2 { overflow-wrap:anywhere; min-width:0; max-width:100%; }
   @container (max-width:14rem) { .copy-heading { flex-direction:column; } }
   .keep-control:has(input:disabled) { cursor:default; }

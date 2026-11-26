@@ -30,11 +30,11 @@
   let area = $derived(line ? `${line} L${W} ${H} L0 ${H} Z` : '')
 </script>
 
-<div class="rounded-lg border border-line p-3">
+<div class="surface-sunken p-3">
   <div class="flex items-baseline justify-between gap-2">
     <span class="text-xs font-semibold text-ink-3">{label}</span>
     {#if !unavailable}
-      <span class="text-sm font-semibold tabular-nums" style="color: {color}">
+      <span class="text-sm font-semibold tabular-nums text-ink">
         {current != null ? Math.round(current) : '–'}%{#if detail}<span class="ml-1 text-xs font-normal text-ink-4">{detail}</span>{/if}
       </span>
     {/if}

@@ -1262,7 +1262,7 @@
     {#snippet body()}
       <p>{batchAction === 'remove' ? i18n.m.queue.batch_confirm_remove_body : i18n.m.queue.batch_confirm_retry_body}</p>
       {#if batchAction === 'remove' && selectedActive > 0}
-        <p class="mt-3 rounded-lg border border-warn-line bg-warn-soft p-3 text-warn">
+        <p class="callout tone-warn mt-3">
           {plural(
             selectedActive,
             i18n.m.queue.batch_confirm_remove_running_one,
@@ -1272,7 +1272,7 @@
         </p>
       {/if}
       {#if batchAction === 'retry' && retryableJobIds.length < selection.count}
-        <p class="mt-3 rounded-lg border border-warn-line bg-warn-soft p-3 text-warn">
+        <p class="callout tone-warn mt-3">
           {t(i18n.m.queue.batch_confirm_retry_partial, {
             count: retryableJobIds.length.toLocaleString(),
             total: selection.count.toLocaleString(),

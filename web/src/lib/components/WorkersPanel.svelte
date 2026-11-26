@@ -178,8 +178,8 @@
   }
 
   const amber = 'tone-warn'
-  const grey = 'bg-raised text-ink-2'
-  const green = 'bg-ok-soft text-ok-strong'
+  const grey = 'tone-muted'
+  const green = 'tone-ok'
 
   function status(worker: Worker): { label: string; classes: string } {
     if (worker.revokedAt) return { label: i18n.m.workers.status_revoked, classes: grey }
@@ -234,17 +234,16 @@
   {/if}
 
   <ConfigSection
-    step={1}
     id="workers-pairing"
     title={i18n.m.workers.title}
     description={i18n.m.workers.subtitle}
   >
-    <div class="space-y-4 px-4 py-4 sm:px-6">
+    <div class="space-y-4">
       <!-- Stated plainly so nobody pairs a machine expecting a finished feature. -->
       <Banner kind="info">{i18n.m.workers.preview_note}</Banner>
 
       {#if pairing && secondsLeft > 0}
-        <div class="rounded-xl border border-accent bg-accent-soft p-4">
+        <div class="rounded-xl bg-accent-soft p-4">
           <h3 class="text-sm font-semibold text-ink">
             {i18n.m.workers.pairing_title}
           </h3>
@@ -323,7 +322,7 @@
             {#if worker.update?.state === 'updateAvailable' && worker.update.releaseUrl}
               <div class="callout tone-warn flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="worker-update">
                 <span>{t(i18n.m.workers.update_available, { current: worker.sidecarVersion, latest: worker.update.latestVersion ?? '' })}</span>
-                <a class="btn btn-ghost px-2 py-1 text-xs" href={worker.update.releaseUrl} target="_blank" rel="noopener noreferrer">{i18n.m.workers.update_open_release}</a>
+                <a class="btn btn-sm btn-ghost" href={worker.update.releaseUrl} target="_blank" rel="noopener noreferrer">{i18n.m.workers.update_open_release}</a>
               </div>
             {/if}
 
@@ -356,7 +355,7 @@
                     <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
                       <span class="block h-full rounded-full bg-accent" style="width: {Math.round(worker.cpuBusyFraction * 100)}%"></span>
                     </span>
-                    <span class="font-mono tabular-nums">{Math.round(worker.cpuBusyFraction * 100)}%</span>
+                    <span class="tabular-nums">{Math.round(worker.cpuBusyFraction * 100)}%</span>
                   </span>
                 {/if}
                 {#if worker.gpuBusyFraction != null}
@@ -369,7 +368,7 @@
                     <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
                       <span class="block h-full rounded-full bg-ink-3" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
                     </span>
-                    <span class="font-mono tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
+                    <span class="tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
                     <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.workers.gpu_label })} text={i18n.m.workers.gpu_hint} />
                   </span>
                 {/if}
@@ -414,7 +413,7 @@
                 {#if worker.lastProblem}
                   <span class="text-xs text-warn">{ago(worker.lastProblemAt)} · {worker.lastProblem}</span>
                 {:else}
-                  <span class="font-mono text-xs text-ink-3">{i18n.m.workers.no_problem}</span>
+                  <span class="text-xs text-ink-3">{i18n.m.workers.no_problem}</span>
                 {/if}
               </dd>
             </dl>
@@ -422,7 +421,7 @@
             {#if !worker.revokedAt}
               <div class="mt-auto flex flex-wrap gap-2 pt-1">
                 {#if worker.drainRequestedAt}
-                  <button class="btn btn-primary" disabled={busy} onclick={() => resume(worker)}>
+                  <button class="btn" disabled={busy} onclick={() => resume(worker)}>
                     {i18n.m.workers.resume}
                   </button>
                 {:else}

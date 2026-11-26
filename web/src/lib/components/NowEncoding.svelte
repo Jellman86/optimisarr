@@ -94,12 +94,12 @@
         <span class="flex min-w-0 flex-col gap-1">
           <span class="line-clamp-2 text-label font-semibold leading-snug text-ink">{title}</span>
           <span class="flex min-w-0 items-start gap-1.5 text-caption leading-snug text-ink-2" title={where}>
-            <Icon name={placeIcon} class="mt-px h-3.5 w-3.5 flex-none text-accent" />
+            <Icon name={placeIcon} class="mt-px h-3.5 w-3.5 flex-none text-ink-3" />
             <span class="line-clamp-2 min-w-0 break-words">{where}</span>
           </span>
           {#if job.videoEncoder}
             <span class="flex">
-              <Chip tone={activity.hardwareActive ? 'ok' : 'neutral'} mono>{job.videoEncoder}</Chip>
+              <Chip mono>{job.videoEncoder}</Chip>
             </span>
           {/if}
         </span>

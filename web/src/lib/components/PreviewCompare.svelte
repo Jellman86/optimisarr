@@ -146,7 +146,7 @@
 
 {#if minimized}
   <!-- Collapsed: a small floating widget, so the rest of the UI is usable while the preview runs. -->
-  <div class="fixed bottom-safe-4 right-4 z-50 w-72 rounded-lg border border-line bg-panel p-3 shadow-lg">
+  <div class="card fixed bottom-safe-4 right-4 z-50 w-72 p-3 shadow-[var(--lift-3)]">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
         <div class="truncate text-xs font-semibold text-ink-2" title={title}>{title}</div>
@@ -172,15 +172,15 @@
     <div class="preview-heading">
       <div class="preview-poster"><Thumbnail {mediaFileId} size="md" /></div>
       <div class="min-w-0 flex-1">
-        <div class="text-xs font-semibold text-accent">{i18n.m.shared.preview_optimisation}</div>
+        <div class="text-xs font-semibold text-ink-3">{i18n.m.shared.preview_optimisation}</div>
         <h2 class="line-clamp-2 break-words text-lg font-semibold" title={title}>{title}</h2>
         <p class="line-clamp-2 break-all font-mono text-xs text-ink-3" title={relativePath}>{relativePath}</p>
       </div>
       <div class="flex flex-shrink-0 items-center gap-1">
-        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise_preview}>
+        <button class="btn btn-ghost btn-icon" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise_preview}>
           <Icon name="minus" class="h-4 w-4" />
         </button>
-        <button class="btn btn-ghost px-2" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.discard_preview}>
+        <button class="btn btn-ghost btn-icon" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.discard_preview}>
           <Icon name="x" class="h-4 w-4" />
         </button>
       </div>
@@ -188,17 +188,17 @@
 
     <div class="preview-body">
     {#if preview?.sourceInterlaced}
-      <p class="card tone-warn mb-3 p-3 text-xs" data-testid="preview-interlaced">{i18n.m.shared.preview_interlaced}</p>
+      <p class="callout tone-warn mb-3 p-3 text-xs" data-testid="preview-interlaced">{i18n.m.shared.preview_interlaced}</p>
     {/if}
     {#if preview?.skippedQualitySearches?.length}
-      <div class="card tone-info mb-3 space-y-1 p-3 text-xs" data-testid="preview-skipped-searches">
+      <div class="callout tone-info mb-3 space-y-1 p-3 text-xs" data-testid="preview-skipped-searches">
         {#each preview.skippedQualitySearches as search (search)}
           {#if skippedSearchNote(search)}<p>{skippedSearchNote(search)}</p>{/if}
         {/each}
       </div>
     {/if}
     {#if error}
-      <div class="card tone-bad p-3 text-sm">{error}</div>
+      <div class="callout tone-bad p-3 text-sm">{error}</div>
     {:else if !preview || isRunning}
       <div class="flex flex-col items-center gap-3 py-10 text-ink-3">
         <div class="progress-track w-64"><div class="progress-indeterminate"></div></div>
@@ -216,7 +216,7 @@
       </div>
     {:else}
       {#if preview.status === 'Failed'}
-        <div class="card mb-4 tone-warn p-3 text-sm">
+        <div class="callout tone-warn mb-4 p-3 text-sm">
           {t(i18n.m.shared.preview_failed, { error: preview.errorMessage ?? i18n.m.shared.unknown_error })}
         </div>
       {/if}
@@ -249,9 +249,9 @@
       {/if}
 
       <!-- Stats comparison -->
-      <div class="card mb-4 overflow-x-auto">
+      <div class="surface-sunken mb-4 overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-line-soft text-left text-xs font-semibold text-ink-3">
+          <thead class="hairline-b text-left text-xs font-semibold text-ink-3">
             <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
           <tbody class="divide-y divide-line-soft">

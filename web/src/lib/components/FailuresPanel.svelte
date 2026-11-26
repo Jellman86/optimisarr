@@ -114,7 +114,7 @@
                   {/if}
                   {#if sample.errorMessage || sample.verificationChecks.length > 0}
                     <details class="mt-1 text-xs text-ink-3">
-                      <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
+                      <summary class="focus-ring cursor-pointer rounded">{i18n.m.queue.technical_error}</summary>
                       {#if sample.verificationChecks.length > 0}
                         <dl class="mt-2 space-y-1.5">
                           {#each sample.verificationChecks as check}
@@ -157,7 +157,7 @@
         </ul>
 
         {#if group.count > group.samples.length}
-          <div class="border-t border-line-soft px-4 py-2 text-xs text-ink-4">
+          <div class="hairline-t px-4 py-2 text-xs text-ink-4">
             {t(i18n.m.shared.failures_showing, { shown: group.samples.length, total: group.count })}
           </div>
         {/if}

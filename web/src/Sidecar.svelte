@@ -155,7 +155,7 @@
     </div>
     <div class="flex items-center gap-2">
       {#if server}
-        <a class="btn whitespace-nowrap" href={server}><span class="hidden sm:inline">Open</span> Optimisarr<Icon name="arrow-up-right" class="h-3.5 w-3.5" /></a>
+        <a class="btn whitespace-nowrap" href={server}><span><span class="hidden sm:inline">Open{' '}</span>Optimisarr</span><Icon name="arrow-up-right" class="h-3.5 w-3.5" /></a>
       {/if}
       <button class="btn btn-ghost btn-icon" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
         <Icon name={theme.icon} class="h-4 w-4" />
@@ -389,7 +389,7 @@
               {#each status.recent as item (item.jobId + item.finishedAt)}
                 <li class="flex items-start gap-2 text-sm">
                   {#if item.delivered}<OkMark class="mt-0.5 h-4 w-4" />{:else}<Icon name="warning" class="mt-0.5 h-4 w-4 flex-none text-warn" />{/if}
-                  <span class="min-w-0 flex-1"><span class="line-clamp-2 break-words text-ink">{item.title}</span><span class="text-xs text-ink-3">{item.delivered ? 'Returned to the server' : 'Stopped here; the server has the details'}</span></span>
+                  <span class="min-w-0 flex-1"><span class="line-clamp-2 break-words text-ink">{item.title}</span><span class="mt-0.5 block text-xs text-ink-3">{item.delivered ? 'Returned to the server' : 'Stopped here; the server has the details'}</span></span>
                   <span class="whitespace-nowrap text-micro tabular-nums text-ink-3">{sinceLabel(item.finishedAt, now)} ago</span>
                 </li>
               {/each}
@@ -400,8 +400,8 @@
         </section>
       </div>
 
-      <footer class="flex flex-wrap justify-between gap-x-6 gap-y-2 px-1 pt-2 text-xs text-ink-3">
-        <a class="btn btn-ghost" href="/api/sidecar/diagnostics" download="optimisarr-sidecar-diagnostics.json">Export local diagnostics</a>
+      <footer class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-1 pt-2 text-xs text-ink-3">
+        <a class="btn btn-sm btn-ghost -ml-2.5" href="/api/sidecar/diagnostics" download="optimisarr-sidecar-diagnostics.json">Export local diagnostics</a>
         <span class="font-mono">{status.name} · v{status.version}</span>
         <span>This page is read-only apart from pairing. Pause, drain and scheduling live on the server.</span>
       </footer>

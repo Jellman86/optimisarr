@@ -9,10 +9,12 @@
   import { formatSize } from '../format'
   import { createSelection } from '../selection.svelte'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
+  import Banner from './Banner.svelte'
   import BatchResult from './BatchResult.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import DataTable from './DataTable.svelte'
   import FilterBar from './FilterBar.svelte'
+  import Icon from './Icon.svelte'
   import PreviewCompare from './PreviewCompare.svelte'
   import SelectionCheckbox from './SelectionCheckbox.svelte'
   import SelectionToolbar from './SelectionToolbar.svelte'
@@ -116,7 +118,7 @@
     { value: 'skipped', label: t(i18n.m.shared.skipped_count, { count: skippedCount }) },
   ]} />
 
-  {#if error}<div class="card tone-bad mb-4 p-3 text-sm text-bad" role="alert">{error}</div>{/if}
+  {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
   {#if outcome}
     <BatchResult
       title={i18n.m.shared.batch_exclude}
@@ -242,9 +244,9 @@
   </span>
   {#if pageCount > 1}
     <span class="data-table-pages">
-      <button class="btn btn-sm btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
+      <button class="btn btn-ghost btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}><Icon name="arrow-left" /></button>
       <span>{t(i18n.m.shared.page_of, { page: Math.min(page, pageCount).toLocaleString(), count: pageCount.toLocaleString() })}</span>
-      <button class="btn btn-sm btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
+      <button class="btn btn-ghost btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}><Icon name="arrow-right" /></button>
     </span>
   {/if}
 {/snippet}
