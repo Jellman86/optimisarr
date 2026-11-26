@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Retry the image build's Real-CUGAN, Real-ESRGAN and Jellyfin key downloads up to four times, so a brief GitHub or mirror outage no longer fails the whole build. Checksums are still verified. No migration.
+- Retry the image build's downloads, so a brief GitHub or package-mirror outage no longer fails the whole build: the Real-CUGAN and Real-ESRGAN archives and the Jellyfin signing key retry up to four times (their checksums are still verified, and the key is saved before it is imported), and package-list updates retry up to five times. An unreachable Jellyfin repository now fails at the update that reaches it, not later as a missing package. No migration.
 
 - Show which files are interlaced (#548). A file's details in the Inventory now carry an **Interlaced** tag, and its information button says which field comes first (top or bottom) and ffprobe's field order. An **Interlaced** filter beside the Inventory filters lists only interlaced files, with their count, and works with the library, search and verdict filters. `GET /api/inventory` gains an optional `interlaced=true` query parameter and an `interlaced` count, and each file now includes `fieldOrder`. A file probed before field order was recorded needs Re-probe to show up. Requested by [Blorti](https://github.com/Blorti). No migration.
 
