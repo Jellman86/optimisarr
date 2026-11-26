@@ -750,6 +750,10 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     probe: 'Sondear',
     reprobe: 'Volver a sondear',
     preview: 'Vista previa',
+    search_label: 'Buscar archivos',
+    search_placeholder: 'Filtrar por nombre de archivo o carpeta…',
+    clear_search: 'Borrar búsqueda',
+    empty_search: 'Ningún archivo coincide con «{query}».',
   },
   queue: {
     clear_review_included: "Esto también elimina {count} trabajos retenidos para revisar el tamaño.",

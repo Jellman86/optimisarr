@@ -736,7 +736,11 @@ filter_all: "すべて ({count})",
     error_queue: "このファイルをキューに追加できませんでした",
     probe: "プローブ",
     reprobe: "再プローブ",
-    preview: "プレビュー"
+    preview: "プレビュー",
+    search_label: "ファイルを検索",
+    search_placeholder: "ファイル名やフォルダ名で絞り込む…",
+    clear_search: "検索をクリア",
+    empty_search: "「{query}」に一致するファイルはありません。",
   },
   queue: {
     clear_review_included: "サイズ確認のため保留中のジョブ {count} 件も削除されます。",

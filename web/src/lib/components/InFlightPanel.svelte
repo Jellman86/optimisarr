@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Job, OptimisationResult, QueueStatus } from '../api'
-  import { formatRelative, formatSize, mediaTitle } from '../format'
+  import { formatDateTime, formatSize, mediaTitle } from '../format'
   import Chip from './Chip.svelte'
   import PosterGlow from './PosterGlow.svelte'
   import SizeChange from './SizeChange.svelte'
@@ -124,7 +124,7 @@
           <strong class="truncate text-title font-semibold text-ink">{lastTitle.primary ?? i18n.m.dashboard.unnamed_file}</strong>
           {#if lastTitle.episode}<span class="text-sm text-ink-2">{[lastTitle.episode, lastTitle.secondary].filter(Boolean).join(' · ')}</span>{/if}
           <span class="mt-2 text-sm tabular-nums text-ink-2">{formatSize(lastResult.sourceSizeBytes)} → {formatSize(lastResult.outputSizeBytes)} <SizeChange sourceSizeBytes={lastResult.sourceSizeBytes} outputSizeBytes={lastResult.outputSizeBytes} class="font-semibold" /></span>
-          <span class="text-xs text-ink-3">{[lastResult.libraryName, lastResult.workerName ?? i18n.m.dashboard.this_server, formatRelative(lastResult.finishedAt, new Date(), i18n.locale)].filter(Boolean).join(' · ')}</span>
+          <span class="text-xs text-ink-3">{[lastResult.libraryName, lastResult.workerName ?? i18n.m.dashboard.this_server, formatDateTime(lastResult.finishedAt, new Date(), i18n.locale)].filter(Boolean).join(' · ')}</span>
         </span>
       </section>
     {/if}

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile, type MediaProbeBatch } from '../api'
+  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type InventorySort, type Library, type MediaFile, type MediaProbeBatch } from '../api'
   import { formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
-  import DataTable from '../components/DataTable.svelte'
+  import DataTable, { type SortState } from '../components/DataTable.svelte'
   import FilterBar, { type FilterItem } from '../components/FilterBar.svelte'
   import Icon from '../components/Icon.svelte'
   import InventoryDetail from '../components/InventoryDetail.svelte'
@@ -24,6 +24,13 @@
   let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0 })
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<InventoryFilter>('all')
+  // What is typed shows at once; the search it asks for waits for a pause in typing, so each
+  // keystroke does not refetch the library.
+  let searchText = $state('')
+  let search = $state('')
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  let searchField: HTMLInputElement | undefined = $state()
+  let sort = $state<InventorySort | null>(null)
   let page = $state(1)
   const pageSize = 50
   let selected = $state<InventoryRow | null>(null)
@@ -54,21 +61,23 @@
   let bulkOutcomeTitle = $derived(bulkOutcomeKind === 'exclude' ? i18n.m.shared.batch_exclude : i18n.m.inventory.batch_reprobe_result)
 
   $effect(() => { void loadLibraries() })
-  $effect(() => { void loadInventory(selectedLibrary, show, page) })
-  onDestroy(() => { disposed = true; requestId++ })
+  $effect(() => { void loadInventory(selectedLibrary, show, page, search, sort) })
+  onDestroy(() => { disposed = true; requestId++; clearTimeout(searchTimer) })
+
+  function reload() { return loadInventory(selectedLibrary, show, page, search, sort) }
 
   async function loadLibraries() {
     try { libraries = await api.libraries() }
     catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
-  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, query: string, order: InventorySort | null) {
     // A slow response from a previous filter must never replace the current selection.
     const request = ++requestId
     loading = true
     error = null
     try {
-      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, page: pageNumber, pageSize })
+      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, search: query || undefined, sort: order ?? undefined, page: pageNumber, pageSize })
       if (request !== requestId || disposed) return
       const lastPage = Math.max(1, Math.ceil(result.total / pageSize))
       if (pageNumber > lastPage) { page = lastPage; return }
@@ -93,7 +102,7 @@
       const updated = await api.probe(file.id)
       if (selected?.file.id === file.id) selected = { ...selected, file: updated }
       if (disposed) return
-      await loadInventory(selectedLibrary, show, page)
+      await reload()
       if (!disposed) {
         if (error) probeError = error
         else probeMessage = i18n.m.inventory.probe_complete
@@ -136,7 +145,7 @@
       selection.remove([...excluded])
       bulkOutcomeKind = 'exclude'
       bulkOutcome = { succeeded: result.succeeded.length, skipped: 0, failures: result.failures }
-      await loadInventory(selectedLibrary, show, page)
+      await reload()
     } catch (err) {
       if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
     } finally {
@@ -198,7 +207,7 @@
     bulkOutcome = batch.completed > 0 ? { succeeded: batch.succeeded, skipped: batch.skipped, failures } : null
     selection.remove(batch.items.filter(item => item.outcome === 'Succeeded').map(item => item.mediaFileId))
     if (batch.state === 'Failed') probeError = i18n.m.inventory.batch_reprobe_failed
-    await loadInventory(selectedLibrary, show, page)
+    await reload()
     if (batch.state === 'Cancelled' && !disposed) probeMessage = i18n.m.inventory.batch_reprobe_cancelled
   }
 
@@ -231,6 +240,52 @@
     selection.clear()
   }
   function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null; selection.clear() }
+
+  // A new search or order shows a different set of rows, so it starts from the first page and
+  // drops the picks made among the old rows.
+  function startOver() { page = 1; selected = null; selection.clear() }
+  function applySearch(value: string) {
+    clearTimeout(searchTimer)
+    const query = value.trim()
+    if (query === search) return
+    search = query
+    startOver()
+  }
+  function typeSearch(event: Event) {
+    searchText = (event.currentTarget as HTMLInputElement).value
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => applySearch(searchText), 250)
+  }
+  function submitSearch(event: SubmitEvent) {
+    event.preventDefault()
+    applySearch(searchText)
+  }
+  function clearSearch() {
+    searchText = ''
+    applySearch('')
+    searchField?.focus()
+  }
+  function searchKey(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || searchText === '') return
+    event.preventDefault()
+    clearSearch()
+  }
+
+  type SortColumn = 'name' | 'size' | 'verdict'
+  function sortState(column: SortColumn): SortState {
+    if (!sort?.startsWith(`${column}_`)) return 'none'
+    return sort.endsWith('_asc') ? 'ascending' : 'descending'
+  }
+  // Size starts with the largest file, the one most worth a look; names and verdicts start from
+  // the top of their order. A third click returns to the plain path order.
+  function cycleSort(column: SortColumn) {
+    const first = column === 'size' ? 'desc' : 'asc'
+    const second = first === 'asc' ? 'desc' : 'asc'
+    const current = sort?.startsWith(`${column}_`) ? sort.slice(column.length + 1) : null
+    const next = current === null ? first : current === first ? second : null
+    sort = next ? (`${column}_${next}` as InventorySort) : null
+    startOver()
+  }
   function selectRow(row: InventoryRow) { selected = row; retriedFileId = null; probeError = null; probeMessage = null }
   async function closeDetails() {
     const id = selected?.file.id
@@ -268,12 +323,18 @@
     {/snippet}
   </PageHeader>
   {#if libraryError}<Banner kind="error" class="mb-4">{libraryError}</Banner>{/if}
-  {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => loadInventory(selectedLibrary, show, page)}>{i18n.m.setup.retry}</button></Banner>{/if}
+  {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={reload}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
     <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
-    <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading && rows.length > 0 ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
+    <form role="search" class="relative w-full min-w-0 sm:w-72" onsubmit={submitSearch}>
+      <label class="sr-only" for="inventory-search">{i18n.m.inventory.search_label}</label>
+      <Icon name="search" class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink-4" />
+      <input id="inventory-search" bind:this={searchField} type="search" class={['input pl-9 [&::-webkit-search-cancel-button]:appearance-none', searchText && 'pr-12']} placeholder={i18n.m.inventory.search_placeholder} value={searchText} oninput={typeSearch} onkeydown={searchKey} autocomplete="off" spellcheck="false" />
+      {#if searchText}<button type="button" class="btn btn-ghost btn-icon btn-sm absolute top-1/2 right-1 -translate-y-1/2" aria-label={i18n.m.inventory.clear_search} onclick={clearSearch}><Icon name="x" class="h-4 w-4" /></button>{/if}
+    </form>
+    <div class={['flex flex-wrap items-center', loading && rows.length > 0 && 'gap-3']}><span class="inventory-loading" role="status">{loading && rows.length > 0 ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
   {#if bulkOutcome}
     <BatchResult
@@ -299,29 +360,29 @@
       {#if !bulkBusy}<button type="button" class="btn ml-2" onclick={resumeProbeBatch}>{i18n.m.setup.retry}</button>{/if}
     </p>
   {/if}
-  <DataTable rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
+  <DataTable density="compact" rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
     {#snippet head()}
       <tr>
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
-        <th scope="col">{i18n.m.inventory.col_file}</th>
-        <th scope="col" class="hidden w-[13%] sm:table-cell">{i18n.m.inventory.col_size}</th>
+        <th scope="col" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
+        <th scope="col" aria-sort={sortState('size')} class="hidden w-[13%] sm:table-cell"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
         <th scope="col" class="hidden w-[21%] sm:table-cell">{i18n.m.inventory.col_format}</th>
-        <th scope="col" class="w-[28%] sm:w-[19%]">{i18n.m.inventory.rule_verdict}</th>
+        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[19%]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
       </tr>
     {/snippet}
     {#each rows as row (row.file.id)}{@const file = row.file}
       <tr class:selected-row={selected?.file.id === file.id}>
         <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
-        <td><button id={`inventory-file-${file.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring sm:gap-3.5" onclick={() => selectRow(row)}>
-          <Thumbnail mediaFileId={file.id} />
-          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent">{fileName(file.relativePath)}</span><span class="mt-1.5 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="sm:hidden">{' · '}{formatSize(file.sizeBytes)}</span></span></span>
+        <td><button id={`inventory-file-${file.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
+          <Thumbnail mediaFileId={file.id} size="xs" />
+          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="sm:hidden">{' · '}{formatSize(file.sizeBytes)}</span></span></span>
         </button></td>
         <td class="hidden whitespace-nowrap tabular-nums sm:table-cell">{formatSize(file.sizeBytes)}</td>
         <td class="hidden sm:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
-        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4" title={row.reason}>{row.reason}</span>{/if}</td>
+        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
       </tr>
     {/each}
-    {#snippet empty()}<Icon name="film" class="h-7 w-7 text-ink-4" /><p>{counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>{/snippet}
+    {#snippet empty()}<Icon name="film" class="h-7 w-7 text-ink-4" /><p>{search ? t(i18n.m.inventory.empty_search, { query: search }) : counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>{#if search}<button type="button" class="btn" onclick={clearSearch}>{i18n.m.inventory.clear_search}</button>{/if}{/snippet}
   </DataTable>
 </div>
 
@@ -332,7 +393,7 @@
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => { retriedFileId = selected?.file.id ?? null; void loadInventory(selectedLibrary, show, page) }} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => { retriedFileId = selected?.file.id ?? null; void reload() }} />
   {/key}
 {/if}
 {#if previewing}

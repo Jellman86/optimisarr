@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { api, type QuarantinedDuplicates, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize, formatSizeChangeBytes } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime, formatSize, formatSizeChangeBytes } from '../format'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
@@ -244,7 +244,7 @@
         {#if selected}
           <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-3">
             <span class="badge {selected.status === 'Replaced' ? 'tone-ok' : 'tone-neutral'}">{selected.status === 'Replaced' ? i18n.m.quarantine.status_replaced : selected.status === 'Purged' ? i18n.m.quarantine.status_purged : i18n.m.quarantine.status_rolled_back}</span>
-            <span>{new Date(selected.replacedAt).toLocaleString()}</span>
+            <time datetime={selected.replacedAt} title={formatAbsoluteDateTime(selected.replacedAt, i18n.locale)}>{formatDateTime(selected.replacedAt, new Date(), i18n.locale)}</time>
             {#if selected.crossFilesystem}<span class="badge tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>{/if}
           </div>
         {/if}
@@ -260,19 +260,8 @@
       <div class="review-metrics grid grid-cols-3 gap-2 sm:gap-4">
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.original_quarantined : i18n.m.shared.original}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.originalSizeBytes)}</p></div>
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.replacement_in_place : i18n.m.shared.encoded}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.newSizeBytes)}</p></div>
-        <div class="card p-3 sm:p-5"><p class="min-h-10 break-words text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_size_change}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSizeChangeBytes(r.originalSizeBytes, r.newSizeBytes)} <span class="text-sm">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span></p></div>
+        <div class="card p-3 sm:p-5"><p class="min-h-10 break-words text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_size_change}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSizeChangeBytes(r.originalSizeBytes, r.newSizeBytes)} <span class="whitespace-nowrap text-sm">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span></p></div>
       </div>
-      {#if r.status === 'Replaced'}
-        <section class="card p-5 sm:p-6" aria-labelledby="quarantine-decision">
-          <h2 id="quarantine-decision" class="text-base font-semibold">{i18n.m.quarantine.decision_title}</h2>
-          <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3">{i18n.m.quarantine.action_note}</p>
-          {#if error}<div role="alert"><Banner kind="error" class="mt-4">{error}</Banner></div>{/if}
-          <div class="mt-5 flex flex-wrap gap-3">
-            <button class="btn btn-lg btn-primary" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
-            <button class="btn btn-lg btn-danger" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
-          </div>
-        </section>
-      {/if}
       {#if r.status === 'Replaced'}
         <section class="card p-4 sm:p-6" aria-labelledby="quarantine-compare">
           <h2 id="quarantine-compare" class="mb-4 text-base font-semibold">{i18n.m.quarantine.compare_title}</h2>
@@ -281,7 +270,7 @@
               left={{ label: i18n.m.quarantine.original_quarantined, url: api.replacementOriginalContentUrl(r.id), sizeBytes: r.originalSizeBytes }}
               right={{ label: i18n.m.quarantine.replacement_in_place, url: api.replacementReplacementContentUrl(r.id), sizeBytes: r.newSizeBytes }} />
           {/key}
-          <details class="mt-5 border-t border-line pt-4">
+          <details class="hairline-t mt-5 pt-4">
             <summary class="focus-ring cursor-pointer rounded py-2 text-sm text-ink-2">{i18n.m.quarantine.file_locations}</summary>
             <dl class="mt-3 grid gap-4 text-xs sm:grid-cols-2">
               <div class="min-w-0"><dt class="text-ink-3">{i18n.m.quarantine.original_quarantined}</dt><dd class="mt-2 break-all font-mono text-ink-2">{r.quarantinePath}</dd></div>
@@ -301,6 +290,21 @@
         <ImagePerceptualReport report={imageReport(detail)} />
         {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>
+      {#if r.status === 'Replaced'}
+        <!-- The decision follows the evidence and stays pinned to the bottom of the view while the
+             comparison and the checks scroll by, so the choice and what it costs are always in sight. -->
+        <section class="card sticky-actions flex flex-wrap items-center gap-x-6 gap-y-3 px-4 pt-4 sm:px-6" aria-labelledby="quarantine-decision" data-decision-bar>
+          <div class="min-w-0 flex-1 basis-64">
+            <h2 id="quarantine-decision" class="text-label font-semibold text-ink">{i18n.m.quarantine.decision_title}</h2>
+            <p class="mt-1 max-w-3xl text-caption text-ink-3">{i18n.m.quarantine.action_note}</p>
+          </div>
+          {#if error}<div class="w-full" role="alert"><Banner kind="error">{error}</Banner></div>{/if}
+          <div class="flex w-full flex-wrap gap-3 sm:w-auto">
+            <button class="btn btn-lg btn-primary max-sm:flex-auto" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
+            <button class="btn btn-lg btn-danger max-sm:flex-auto" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
+          </div>
+        </section>
+      {/if}
     {:else}<div class="card p-8 text-sm text-ink-3">{i18n.m.quarantine.unavailable}</div>{/if}
     <a class="btn" href="#/quarantine"><Icon name="arrow-left" />{i18n.m.nav.quarantine}</a>
   </div>
@@ -345,7 +349,7 @@
               <div class="mt-1 break-all font-mono text-caption text-ink-3">{t(i18n.m.quarantine.duplicate_kept, { path })}</div>
             {/each}
             {#if group.attentionReason}<p class="mt-1 text-xs text-warn">{group.attentionReason}</p>{/if}
-            <div class="mt-1 text-caption text-ink-3">{new Date(group.heldSince).toLocaleString()}</div>
+            <time class="mt-1 block text-caption text-ink-3" datetime={group.heldSince} title={formatAbsoluteDateTime(group.heldSince, i18n.locale)}>{formatDateTime(group.heldSince, new Date(), i18n.locale)}</time>
           </div>
           <div class="flex flex-wrap gap-2">
             {#if group.state !== 'Purging'}<button class="btn" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>{/if}
@@ -421,7 +425,7 @@
           <span class="whitespace-nowrap">{formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}</span>
           <span class="whitespace-nowrap">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span>
         </td>
-        <td class="hidden text-caption text-ink-3 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
+        <td class="hidden text-caption text-ink-3 md:table-cell"><time datetime={r.replacedAt} title={formatAbsoluteDateTime(r.replacedAt, i18n.locale)}>{formatDateTime(r.replacedAt, new Date(), i18n.locale)}</time></td>
       </tr>
     {/each}
     {#snippet empty()}{i18n.m.quarantine.empty}{/snippet}

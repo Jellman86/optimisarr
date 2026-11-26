@@ -2,6 +2,7 @@
   import { tick, untrack } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type RuleProfileSpec, type SaveLibrary, type TargetFolderCheck, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
+  import { formatDateTime } from '../format'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -2772,7 +2773,7 @@
           </button>
           <a class="btn btn-ghost" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
-            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: formatDateTime(library.lastAutoEnqueueAt, new Date(), i18n.locale) })}</span>
           {/if}
         </div>
       </div>

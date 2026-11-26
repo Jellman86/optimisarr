@@ -11,7 +11,7 @@
   import JobStages from '../components/JobStages.svelte'
   import MediaCompare from '../components/MediaCompare.svelte'
   import { api, type BatchFailure, type BulkReplacementResult, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type SoundtrackSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize, sizeChangePercent } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime, formatSize, sizeChangePercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { jobFailureStory } from '../i18n/jobErrors'
@@ -1014,7 +1014,7 @@
       {/if}
       <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes != null && selectedJob.outputSizeBytes > 0 ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
       <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
-      <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+      <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{#if selectedJob.verifiedAt}<time datetime={selectedJob.verifiedAt} title={formatAbsoluteDateTime(selectedJob.verifiedAt, i18n.locale)}>{formatDateTime(selectedJob.verifiedAt, new Date(), i18n.locale)}</time>{:else}—{/if}</dd></div>
     </dl>
 
     {#if report?.context?.vmafSampling}
@@ -1074,7 +1074,7 @@
               <div class="attempt-card">
                 <div class="attempt-card-top">
                   <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {attempt.outcome === 'Failed' ? i18n.m.queue.attempt_failed : i18n.m.queue.attempt_rejected}</strong>
-                  <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
+                  <time datetime={attempt.endedAt} title={formatAbsoluteDateTime(attempt.endedAt, i18n.locale)}>{formatDateTime(attempt.endedAt, new Date(), i18n.locale)}</time>
                 </div>
                 <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
                 {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason === 'WorkerHandback' ? i18n.m.queue.attempt_worker_handback : attempt.reason}</p>{/if}
@@ -1108,7 +1108,7 @@
       {:else if diagnosticCapture}
         <button class="btn" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
         <button class="btn" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
-        {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
+        {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {formatAbsoluteDateTime(diagnosticCapture.retainUntil, i18n.locale)}</span>{/if}
       {:else}
         <button class="btn" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
       {/if}

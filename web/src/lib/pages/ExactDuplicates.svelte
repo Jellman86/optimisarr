@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { api, type AutoDuplicateCleanup, type DuplicateCleanupPreview, type DuplicateCleanupRefusal, type DuplicateCleanupStatus, type Library, type ExactDuplicateStatus } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
-  import { formatSize } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime, formatSize } from '../format'
   import Banner from '../components/Banner.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
@@ -143,7 +143,7 @@
     const outcome = value.lastOutcome
     if (!value.lastRunAt || !outcome) return i18n.m.duplicates.auto_never
     const result = t(i18n.m.duplicates[`auto_${outcome}`], { moved: value.lastMoved, size: formatSize(value.lastBytes) })
-    return t(i18n.m.duplicates.auto_last, { time: new Date(value.lastRunAt).toLocaleString(), result })
+    return t(i18n.m.duplicates.auto_last, { time: formatDateTime(value.lastRunAt, new Date(), i18n.locale), result })
   }
 
   onDestroy(() => { disposed = true; revision++; clearTimeout(timer); clearTimeout(cleanupTimer) })
@@ -255,7 +255,7 @@
     <section class="card p-5 sm:p-6" aria-busy={loading || running}>
       <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 class="text-base font-semibold text-ink" aria-live="polite">{loading ? i18n.m.common.loading_short : statusLabel}</h2>
-        {#if report.finishedAt}<span class="text-xs tabular-nums text-ink-3">{new Date(report.finishedAt).toLocaleString()}</span>{/if}
+        {#if report.finishedAt}<time class="text-xs tabular-nums text-ink-3" datetime={report.finishedAt}>{formatDateTime(report.finishedAt, new Date(), i18n.locale)}</time>{/if}
       </div>
       {#if running}
         <div class="scan-progress mt-4">
@@ -318,7 +318,7 @@
             </label>
             {#if schedule.enabled && schedule.dryRun}<p class="mt-2 text-sm text-warn" role="status">{i18n.m.duplicates.auto_dry_run}</p>{/if}
             {#if schedule.enabled || schedule.lastRunAt}
-              <p class="mt-2 text-sm text-ink-2" role="status">{lastRunText(schedule)}{#if schedule.enabled && schedule.lastRunAt && schedule.nextRunAfter} {t(i18n.m.duplicates.auto_next, { time: new Date(schedule.nextRunAfter).toLocaleString() })}{/if}</p>
+              <p class="mt-2 text-sm text-ink-2" role="status">{lastRunText(schedule)}{#if schedule.enabled && schedule.lastRunAt && schedule.nextRunAfter} {t(i18n.m.duplicates.auto_next, { time: formatAbsoluteDateTime(schedule.nextRunAfter, i18n.locale) })}{/if}</p>
             {/if}
           {:else}
             <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.auto_unsupported}</p>
