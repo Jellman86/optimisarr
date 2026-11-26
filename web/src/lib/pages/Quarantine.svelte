@@ -389,8 +389,8 @@
     {#snippet head()}
       <tr>
         <th scope="col" class="w-28 sm:w-32">{i18n.m.quarantine.col_status}</th>
-        <th scope="col">{i18n.m.quarantine.col_replaced_file}</th>
-        <th scope="col" class="hidden w-48 lg:w-52 sm:table-cell">{i18n.m.quarantine.col_size_change}</th>
+        <th scope="col" class="data-table-primary">{i18n.m.quarantine.col_replaced_file}</th>
+        <th scope="col" class="w-48 lg:w-52">{i18n.m.quarantine.col_size_change}</th>
         <th scope="col" class="hidden w-44 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
       </tr>
     {/snippet}
@@ -409,7 +409,7 @@
             <span class="badge ml-1 tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
           {/if}
         </td>
-        <td>
+        <td class="data-table-primary">
           <div class="flex items-center gap-3">
           <Thumbnail mediaFileId={r.mediaFileId} alt="" />
           <div class="min-w-0">
@@ -422,7 +422,7 @@
           </div>
           </div>
         </td>
-        <td class="hidden text-caption tabular-nums sm:table-cell">
+        <td class="text-caption tabular-nums">
           <span class="whitespace-nowrap">{formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}</span>
           <span class="whitespace-nowrap">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span>
         </td>

@@ -362,6 +362,13 @@ p {
   background: transparent;
 }
 
+/* Something fixed to the bottom of the window clears a phone's home indicator. The page itself
+   needs no such allowance: the shell already stops it above the inset (App.svelte), so a sticky
+   action bar inside it never reaches the indicator either. */
+@utility bottom-safe-4 {
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* One focus ring for everything that can be pressed. An outline rather than a
    box-shadow ring: it follows the corner radius, needs no offset colour to fake
    a gap against whichever surface the control sits on, and never fights a
@@ -895,6 +902,75 @@ p {
       display: none;
     }
   }
+  /* Only the app's own strip opens and closes; the worker sidecar's always shows everything. */
+  .status-strip-toggle {
+    display: none;
+  }
+  .status-strip-open .status-strip-toggle svg {
+    transform: rotate(180deg);
+  }
+  /* On a phone the app's strip is one line of a fixed height, so a reason that changes with each
+     poll never moves the page under a thumb: the state, as much of its reason as fits, and the
+     pause control by its symbol. The figures and the rest of the reason are one tap away, and stay
+     in the page for a screen reader. */
+  @media (max-width: 639px) {
+    .status-strip-collapsible {
+      @apply relative;
+    }
+    .status-strip-collapsible .status-strip-toggle {
+      display: inline-flex;
+    }
+    .status-strip-open .status-strip-optional {
+      display: flex;
+    }
+    /* Open, the state keeps the first line with its toggle, so the toggle stays where it was. */
+    .status-strip-open .status-strip-state {
+      flex-basis: calc(100% - var(--control-lg) - 1.5rem);
+    }
+    .status-strip-collapsible:not(.status-strip-open) {
+      flex-wrap: nowrap;
+      gap: 0.25rem;
+      min-height: calc(var(--control-lg) + 1.1rem);
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-state {
+      flex: 1 1 auto;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-text {
+      @apply flex-row items-center gap-2;
+    }
+    .status-strip-collapsible:not(.status-strip-open) :is(.status-strip-label, .status-strip-reason) {
+      display: block;
+      min-height: 0;
+      overflow: hidden;
+      overflow-wrap: normal;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-label {
+      flex: 0 1 auto;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-reason {
+      flex: 1 1 0;
+    }
+    /* The touch target keeps its height as one line of the row. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-playback {
+      line-height: var(--control-lg);
+    }
+    .status-strip-collapsible:not(.status-strip-open) :is(.status-strip-fact, .status-strip-action-label) {
+      @apply sr-only;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action {
+      @apply ml-0 flex-none;
+    }
+    /* Last on the line, the same corner it keeps once the strip is open. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-toggle {
+      order: 1;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action button {
+      width: var(--control-lg);
+      padding-inline: 0;
+    }
+  }
 
   /* A field or section label. Sentence case and a little bolder, the way macOS labels
      a group, rather than tracked capitals. */
@@ -1015,13 +1091,67 @@ p {
   .data-table-pages {
     @apply flex items-center gap-2;
   }
+  /* On a phone a row reads as two lines instead of a squeezed grid: the cell the page marks
+     `.data-table-primary` (the title or file) takes the first line whatever its column, and the
+     other cells the page leaves visible follow on the second, in column order. The pick-a-row
+     checkbox keeps its own column beside both lines. The header row stays a row of labels and
+     sort buttons. It stays a table underneath, so rows, cells and `aria-sort` read the same. */
   @media (max-width: 639px) {
-    .data-table th,
-    .data-table td {
-      @apply px-3;
+    .data-table,
+    .data-table > thead,
+    .data-table > tbody {
+      display: block;
+    }
+    .data-table tr {
+      @apply relative flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5;
+    }
+    .data-table thead tr {
+      @apply py-0;
+      min-height: 2.5rem;
+    }
+    .data-table tr:has(> .selection-column) {
+      padding-inline-start: 2.75rem;
+    }
+    .data-table :is(th, td) {
+      flex: 0 1 max-content;
+      @apply min-w-0 max-w-full p-0;
+    }
+    .data-table th {
+      background: none;
+      box-shadow: none;
+    }
+    /* A header sized to its button: the negative inset that aligns the label with a column's
+       text would make the button wider than the cell it is measured from, and wrap it. */
+    .data-table th .table-sort {
+      margin-inline: 0;
+    }
+    .data-table .data-table-primary {
+      order: -1;
+    }
+    .data-table tbody .data-table-primary {
+      flex: 1 1 100%;
     }
     .data-table .selection-column {
-      @apply w-10 pr-1 pl-3;
+      @apply absolute top-0 left-0 flex w-11 items-center p-0 pl-3;
+      height: 100%;
+    }
+    /* Beside the first line rather than centred on both, so it sits level with the title. */
+    .data-table tbody .selection-column {
+      top: 0.625rem;
+      height: var(--control-lg);
+    }
+    .data-table td,
+    .data-table tbody tr:first-child td {
+      border-top: 0;
+    }
+    .data-table tbody tr + tr {
+      border-top: 1px solid var(--divide-soft);
+    }
+    .data-table tbody tr:is(:hover, .selected-row) td {
+      background: none;
+    }
+    .data-table tbody tr:is(:hover, .selected-row) {
+      background: var(--lit);
     }
   }
 

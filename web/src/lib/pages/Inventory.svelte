@@ -364,8 +364,8 @@
     {#snippet head()}
       <tr>
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
-        <th scope="col" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
-        <th scope="col" aria-sort={sortState('size')} class="hidden w-[13%] sm:table-cell"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
+        <th scope="col" class="data-table-primary" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
+        <th scope="col" aria-sort={sortState('size')} class="w-[13%]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
         <th scope="col" class="hidden w-[21%] sm:table-cell">{i18n.m.inventory.col_format}</th>
         <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[19%]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
       </tr>
@@ -373,11 +373,11 @@
     {#each rows as row (row.file.id)}{@const file = row.file}
       <tr class:selected-row={selected?.file.id === file.id}>
         <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
-        <td><button id={`inventory-file-${file.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
+        <td class="data-table-primary"><button id={`inventory-file-${file.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
           <Thumbnail mediaFileId={file.id} size="xs" />
-          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="sm:hidden">{' · '}{formatSize(file.sizeBytes)}</span></span></span>
+          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}</span></span>
         </button></td>
-        <td class="hidden whitespace-nowrap tabular-nums sm:table-cell">{formatSize(file.sizeBytes)}</td>
+        <td class="whitespace-nowrap tabular-nums">{formatSize(file.sizeBytes)}</td>
         <td class="hidden sm:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
         <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
       </tr>

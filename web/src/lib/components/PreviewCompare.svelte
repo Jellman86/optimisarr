@@ -146,7 +146,7 @@
 
 {#if minimized}
   <!-- Collapsed: a small floating widget, so the rest of the UI is usable while the preview runs. -->
-  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-line bg-panel p-3 shadow-lg">
+  <div class="fixed bottom-safe-4 right-4 z-50 w-72 rounded-lg border border-line bg-panel p-3 shadow-lg">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
         <div class="truncate text-xs font-semibold text-ink-2" title={title}>{title}</div>

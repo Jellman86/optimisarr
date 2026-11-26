@@ -1153,9 +1153,10 @@ test('a new page starts at its top', async ({ page }) => {
   expect(await main.evaluate((element) => element.scrollTop)).toBe(0)
 })
 
-test('a long status reason wraps onto further lines instead of being cut off', async ({ page }) => {
+test('a long status reason wraps onto further lines instead of being cut off once the phone strip is open', async ({ page }) => {
   // The reason used to be clipped to one line with an ellipsis, and the rest lived only in a
-  // tooltip that touch and keyboard users could not open.
+  // tooltip that touch and keyboard users could not open. A phone still shows one line until the
+  // strip is opened, with a real button, and then the whole reason is on screen.
   const waiting = '1418 job(s) waiting for the TV optimise window (00:00–05:00), and 12 more waiting for the Films optimise window (01:00–06:00) on this server'
   await page.setViewportSize({ width: 390, height: 844 })
   await mockDashboard(page, { queue: { waitingReason: waiting } })
@@ -1163,6 +1164,7 @@ test('a long status reason wraps onto further lines instead of being cut off', a
 
   const reason = page.locator('.status-strip-reason')
   await expect(reason).toHaveText(waiting)
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'State' }).click()
   await expect(reason).not.toHaveCSS('text-overflow', 'ellipsis')
   await expect(reason).not.toHaveCSS('white-space', 'nowrap')
   // All of it is on screen: more than one line tall, and nothing hidden past its right edge.
@@ -1192,6 +1194,7 @@ test('a wrapped playback link keeps its lines together on a touch screen', async
     },
   })
   await page.goto('/#/')
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'State' }).click()
   const reason = page.locator('.status-strip-playback')
   await expect(reason).toContainText('An Example Show With A Long Name')
   const metrics = await reason.evaluate((element) => ({

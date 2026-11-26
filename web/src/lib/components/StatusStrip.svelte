@@ -11,7 +11,7 @@
   // The queue's state on every page, so the answer to "is it working?" is never a click away.
   let queue = $derived(counts.queue)
   let workers = $derived(queue?.workloadLanes?.find((lane) => lane.lane === 'Workers') ?? null)
-  let state = $derived<DashboardState | null>(
+  let current = $derived<DashboardState | null>(
     queue
       ? dashboardStateFor(queue, counts.stats?.queued ?? 0)
       : null,
@@ -28,7 +28,7 @@
     unexplained: () => i18n.m.dashboard.state_unexplained,
   }
 
-  let tone = $derived(state?.severity === 'live' ? 'text-accent' : state?.severity === 'attention' ? 'text-bad' : 'text-ink')
+  let tone = $derived(current?.severity === 'live' ? 'text-accent' : current?.severity === 'attention' ? 'text-bad' : 'text-ink')
   let capacity = $derived(queue ? localWorkloadCapacity(queue) : null)
   let slots = $derived(capacity ? `${queue?.runningJobs ?? 0} / ${capacity}` : `${queue?.runningJobs ?? 0}`)
   // Only a server with workers shows their slots; one without them has nothing to count.
@@ -37,38 +37,44 @@
   // whose hold it is. A state with no reason of its own gets a plain sentence instead of nothing.
   // Held by playback: name what is playing and who, rather than only how many streams.
   let phrases = $derived(playbackPhrases(i18n.m))
-  let holds = $derived(state?.kind === 'blocked' ? queue?.playbackHolds ?? [] : [])
+  let holds = $derived(current?.kind === 'blocked' ? queue?.playbackHolds ?? [] : [])
   let detail = $derived(
-    !state ? null
-    : state.kind === 'workers' && state.localPaused ? i18n.m.dashboard.state_workers_local_paused
-    : state.kind === 'workers' && state.detail ? t(i18n.m.dashboard.state_workers_local_held, { reason: state.detail })
-    : state.kind === 'unexplained' ? i18n.m.dashboard.state_unexplained_detail
+    !current ? null
+    : current.kind === 'workers' && current.localPaused ? i18n.m.dashboard.state_workers_local_paused
+    : current.kind === 'workers' && current.detail ? t(i18n.m.dashboard.state_workers_local_held, { reason: current.detail })
+    : current.kind === 'unexplained' ? i18n.m.dashboard.state_unexplained_detail
     : holds.length > 0 ? t(i18n.m.queue.playback_status, { count: holds.length, summary: playbackSummary(holds, phrases) ?? '' })
-    : state.detail,
+    : current.detail,
   )
   // The reason wraps rather than clips, so it is complete on screen. Only several playbacks have
   // more to say than fits in a sentence: the tooltip lists each one, and the link opens the
   // queue with the same detail for touch and keyboard.
   let detailTitle = $derived(holds.length > 0 ? holds.map((hold) => `${hold.watcher} · ${playbackLine(hold, phrases)}`).join('\n') : undefined)
+
+  // On a phone the strip keeps to one line, so a changing reason never pushes the page down: the
+  // reason is cut short and the figures step aside until the strip is opened. A failed pause opens
+  // it, because an alert is never cut short.
+  let open = $state(false)
+  let expanded = $derived(open || Boolean(counts.pauseError))
 </script>
 
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
      that announces each poll would talk over whatever the reader is doing on the page. -->
-<section class="status-strip card" aria-label={i18n.m.dashboard.state}>
+<section id="status-strip" class="status-strip status-strip-collapsible card" class:status-strip-open={expanded} aria-label={i18n.m.dashboard.state}>
   <!-- One block: the artwork (or the state's dot), then the state over its reason. -->
   <div class="status-strip-state">
     {#if holds[0]?.artworkUrl}
       <Thumbnail src={holds[0].artworkUrl} size="sm" shape={holds[0].kind === 'Track' ? 'square' : 'portrait'} />
-    {:else if state?.severity === 'live'}
+    {:else if current?.severity === 'live'}
       <span class="h-2 w-2 flex-none animate-pulse rounded-full bg-accent" aria-hidden="true"></span>
-    {:else if state?.severity === 'attention'}
+    {:else if current?.severity === 'attention'}
       <span class="h-2 w-2 flex-none rounded-full bg-bad" aria-hidden="true"></span>
     {:else}
       <span class="h-2 w-2 flex-none rounded-full bg-ink-4" aria-hidden="true"></span>
     {/if}
     <div class="status-strip-text">
       <span class="sr-only">{i18n.m.dashboard.state}:</span>
-      <span class="status-strip-label text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
+      <span class="status-strip-label text-sm font-semibold {tone}">{current ? LABEL[current.kind]() : '—'}</span>
       {#if detail}
         {#if holds.length > 0}
           <a class="status-strip-reason status-strip-playback text-label focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
@@ -78,6 +84,19 @@
       {/if}
     </div>
   </div>
+
+  <!-- Phone only. Its name is the strip's own, so it reads as "State, collapsed" with the state
+       itself just before it. -->
+  <button
+    type="button"
+    class="status-strip-toggle btn btn-sm btn-ghost btn-icon"
+    aria-label={i18n.m.dashboard.state}
+    aria-expanded={expanded}
+    aria-controls="status-strip"
+    onclick={() => (open = !open)}
+  >
+    <Icon name="chevron" class="h-4 w-4" />
+  </button>
 
   <div class="status-strip-fact">
     <span class="label mb-0">{i18n.m.dashboard.slots}</span>
@@ -115,7 +134,7 @@
         title={queue.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title}
       >
         <Icon name={queue.manuallyPaused ? 'play' : 'pause'} class="h-3.5 w-3.5" />
-        {counts.pauseBusy ? i18n.m.common.loading_short : queue.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}
+        <span class="status-strip-action-label">{counts.pauseBusy ? i18n.m.common.loading_short : queue.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}</span>
       </button>
     </div>
   {/if}

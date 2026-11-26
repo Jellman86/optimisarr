@@ -30,7 +30,7 @@
   <DataTable bare density="compact" rowCount={results?.length ?? 0} loading={results === null} labelledby="recent-results-heading">
     {#snippet head()}
       <tr>
-        <th scope="col">{i18n.m.dashboard.col_title}</th>
+        <th scope="col" class="data-table-primary">{i18n.m.dashboard.col_title}</th>
         <th scope="col" class="hidden w-[12%] @min-[64rem]:table-cell">{i18n.m.dashboard.col_library}</th>
         <th scope="col" class="w-[30%] @min-[44rem]:w-[26%] @min-[64rem]:w-1/5">{i18n.m.dashboard.col_sizes}</th>
         <th scope="col" class="w-22 @min-[44rem]:w-24">{i18n.m.dashboard.col_size_change}</th>
@@ -45,7 +45,7 @@
       {@const status = sizeChangeStatus(result.sourceSizeBytes, result.outputSizeBytes)}
       {@const shares = sizeBarShares(result.sourceSizeBytes, result.outputSizeBytes)}
       <tr>
-        <td>
+        <td class="data-table-primary">
           <div class="flex min-w-0 items-center gap-3">
             <Thumbnail mediaFileId={result.mediaFileId} />
             <span class="min-w-0">
