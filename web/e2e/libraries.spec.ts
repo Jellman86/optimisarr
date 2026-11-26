@@ -2138,6 +2138,7 @@ test('Browse falls back to the default root when an existing library path no lon
 
   const picker = page.getByRole('dialog', { name: 'Choose a folder' })
   await expect(picker.getByRole('alert')).toContainText('Not a directory: /missing/old-films')
+  await expect(picker.getByRole('alert')).toContainText('Showing the default folder instead.')
   await picker.getByRole('button', { name: 'media', exact: true }).click()
   await picker.getByRole('button', { name: 'films', exact: true }).click()
   await picker.getByRole('button', { name: 'Select folder', exact: true }).click()
@@ -2146,4 +2147,48 @@ test('Browse falls back to the default root when an existing library path no lon
   const saved = savedRequest(page)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ path: '/media/films' })
+})
+
+test('Browse stays where it is when a subfolder cannot be opened, and says why', async ({ page }) => {
+  await mockLibraries(page, { ...library, path: '/media' })
+  await page.route('**/api/fs/browse**', async (route: Route) => {
+    const folder = new URL(route.request().url()).searchParams.get('path')
+    if (folder === '/media/locked') {
+      return route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'filesystem.accessDenied', error: 'Access denied', args: { path: '/media/locked' } }),
+      })
+    }
+    return json(route, { path: '/media', parent: '/', directories: [{ name: 'locked', path: '/media/locked' }] })
+  })
+
+  await page.goto('/#/libraries/1/configure/files')
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a folder' })
+  await picker.getByRole('button', { name: 'locked', exact: true }).click()
+
+  await expect(picker.getByRole('alert')).toHaveText('Access denied: /media/locked')
+  await expect(picker.locator('code')).toHaveText('/media')
+  await expect(picker.getByRole('button', { name: 'Select folder', exact: true })).toBeEnabled()
+  const accessibility = await new AxeBuilder({ page }).include('dialog').analyze()
+  expect(accessibility.violations).toEqual([])
+})
+
+test('Browse shows a server failure as it is instead of opening the default folder', async ({ page }) => {
+  await mockLibraries(page, { ...library, path: '/media/films' })
+  let defaultRequested = false
+  await page.route('**/api/fs/browse**', async (route: Route) => {
+    const folder = new URL(route.request().url()).searchParams.get('path')
+    if (!folder) defaultRequested = true
+    return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Internal error' }) })
+  })
+
+  await page.goto('/#/libraries/1/configure/files')
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a folder' })
+
+  await expect(picker.getByRole('alert')).toHaveText('Internal error')
+  await expect(picker.getByRole('button', { name: 'Select folder', exact: true })).toBeDisabled()
+  expect(defaultRequested).toBe(false)
 })

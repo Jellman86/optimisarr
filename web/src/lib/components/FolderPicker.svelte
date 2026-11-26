@@ -1,6 +1,6 @@
 <script lang="ts">
   import { i18n } from '../i18n/i18n.svelte'
-  import { api, type BrowseResponse } from '../api'
+  import { api, ApiError, type BrowseResponse } from '../api'
   import { modal } from '../modal'
   import Icon from './Icon.svelte'
 
@@ -31,20 +31,29 @@
     try {
       listing = await api.browse(trimmed)
     } catch (err) {
-      // A saved library or target folder may point to a path that was moved, unmounted or
-      // removed. Fall back to the default root so the operator can pick a replacement instead
-      // of being trapped on an error screen with every navigation control disabled.
       const reason = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      // A saved library or target folder may have been moved, unmounted or removed. Only then
+      // open the default folder so a replacement can be picked; any other failure (the server
+      // unreachable, an internal error) is shown as it is rather than hidden behind a fallback.
+      if (!isUnusablePath(err)) {
+        listing = null
+        error = reason
+        return
+      }
       try {
         listing = await api.browse(undefined)
-        notice = reason
+        notice = `${reason} ${i18n.m.shared.browse_showing_default}`
       } catch (fallbackErr) {
         listing = null
-        error = fallbackErr instanceof Error ? fallbackErr.message : reason
+        error = `${reason} · ${fallbackErr instanceof Error ? fallbackErr.message : i18n.m.shared.browse_failed}`
       }
     } finally {
       loading = false
     }
+  }
+
+  function isUnusablePath(err: unknown): boolean {
+    return err instanceof ApiError && (err.code === 'filesystem.notDirectory' || err.code === 'filesystem.accessDenied')
   }
 
   async function navigate(path?: string) {
@@ -92,7 +101,7 @@
 
   <div class="min-h-0 overflow-y-auto p-2">
     {#if notice}
-      <p role="alert" class="mb-2 rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{notice}</p>
+      <p role="alert" class="callout tone-bad mb-2">{notice}</p>
     {/if}
     {#if loading}
       <p class="p-4 text-center text-sm text-ink-3">{i18n.m.common.loading_short}</p>
