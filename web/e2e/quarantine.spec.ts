@@ -413,7 +413,8 @@ test('recent replacements read relative and older ones as a date to the minute',
   await page.setViewportSize({ width: 1280, height: 720 })
   const recent = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
   const older = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
-  older.setUTCSeconds(47)
+  // Minutes pinned away from 47, so ":47" can only come from the seconds, whatever the clock says.
+  older.setUTCMinutes(12, 47)
   await mockQuarantine(page, [
     { ...replacement, id: 1, finalPath: '/media/Recent.mp4', replacedAt: recent },
     { ...replacement, id: 2, finalPath: '/media/Older.mp4', replacedAt: older.toISOString() },
