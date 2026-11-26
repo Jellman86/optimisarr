@@ -1367,6 +1367,23 @@ function tryParseJson(text: string): unknown {
   }
 }
 
+/** A failed API request, keeping the server's error code so callers can react to a specific cause. */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+
+  constructor(message: string, status: number, code: string | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+function apiErrorCode(payload: unknown): string | null {
+  return payload && typeof payload === 'object' && 'code' in payload ? String(payload.code) : null
+}
+
 function apiErrorMessage(payload: unknown, status: number): string {
   if (!payload || typeof payload !== 'object') return t(i18n.m.common.api_request_failed, { status })
   const error = 'error' in payload ? String(payload.error) : t(i18n.m.common.api_request_failed, { status })
@@ -1455,7 +1472,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (response.status === 401) handleAuthRequired()
 
   if (!response.ok) {
-    throw new Error(apiErrorMessage(payload, response.status))
+    throw new ApiError(apiErrorMessage(payload, response.status), response.status, apiErrorCode(payload))
   }
 
   return payload as T

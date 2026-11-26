@@ -1753,7 +1753,7 @@ export const zh: Messages = {
     expand: "扩张",
     close_detail: "关闭详细信息面板",
     choose_folder: "选择一个文件夹",
-    browse_failed: "无法浏览",
+    browse_failed: "无法浏览", browse_showing_default: '已改为显示默认文件夹。',
     up_one_level: "上升一级",
     no_subfolders: "这里没有子文件夹。",
     select_highlighted: "选择上面突出显示的文件夹",
