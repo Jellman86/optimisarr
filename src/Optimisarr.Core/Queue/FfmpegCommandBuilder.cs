@@ -85,6 +85,9 @@ public sealed record TranscodeSpec(
     /// </summary>
     public AudioTrimOnlyPlan? AudioTrimOnly { get; init; }
 
+    /// <summary>The ID3 tags a trim-only MP3's source has, which its output is written to match.</summary>
+    public Id3Layout? TrimOnlyId3 { get; init; }
+
     /// <summary>
     /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
     /// single library bitrate for every re-encoded track.
@@ -734,7 +737,7 @@ public static class FfmpegCommandBuilder
 
         var start = Seconds(trim.StartSample, trim.SampleRate);
         var duration = trim.EndSample is { } end ? Seconds(end - trim.StartSample, trim.SampleRate) : null;
-        var seeksInput = Path.GetExtension(spec.OutputPath).ToLowerInvariant() is ".mp3" or ".m4a";
+        var seeksInput = Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase);
         return seeksInput
             ? new(trim.TrimsStart ? start : null, null, duration, trim.TrimsStart ? 1 : 0)
             : new(null, trim.TrimsStart ? start : null, duration, 0);
@@ -749,8 +752,8 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
-        // Cover art is copied as it is. Ogg and WAV cannot carry it, and M4A loses it to the marker,
-        // so such files are never trimmed without converting (see AudioTrimOnly); the map finds none.
+        // Cover art is copied as it is. Ogg and WAV cannot carry it, so such files are never trimmed
+        // without converting (see AudioTrimOnly).
         if (extension is not (".opus" or ".ogg" or ".wav"))
         {
             args.Add("-map");
@@ -770,15 +773,6 @@ public static class FfmpegCommandBuilder
             args.Add("12");
         }
 
-        // Timed lyrics in an M4A are copied; a file that has them is only trimmed at the end.
-        if (extension == ".m4a")
-        {
-            args.Add("-map");
-            args.Add($"{copyCut?.PictureInput ?? 0}:s?");
-            args.Add("-c:s");
-            args.Add("copy");
-        }
-
         if (copyCut is null)
         {
             // The exact samples, as a conversion trims them.
@@ -786,13 +780,7 @@ public static class FfmpegCommandBuilder
             return;
         }
 
-        // The source's iTunes gapless figures describe the whole file, not the cut. FFmpeg writes
-        // the cut's own: a new LAME header for MP3, an edit list for MP4.
-        if (extension is ".mp3" or ".m4a")
-        {
-            args.Add("-metadata");
-            args.Add("iTunSMPB=");
-        }
+        if (extension == ".mp3") AppendTrimOnlyId3Arguments(args, spec);
 
         if (copyCut.OutputSeekSeconds is { } outputSeek)
         {
@@ -805,6 +793,22 @@ public static class FfmpegCommandBuilder
             args.Add("-t");
             args.Add(duration);
         }
+    }
+
+    /// <summary>
+    /// An MP3's tags are written in the source's own ID3 version, so 2.3 frames stay 2.3 frames, with
+    /// an ID3v1 tag again when the source has one. Its iTunes gapless figures (iTunSMPB) and length
+    /// (TLEN) describe the whole file, not the cut, so they go; FFmpeg writes the cut's own encoder
+    /// delay in a new LAME header.
+    /// </summary>
+    private static void AppendTrimOnlyId3Arguments(List<string> args, TranscodeSpec spec)
+    {
+        // Read from the source when the job was planned; never written blind.
+        if (spec.TrimOnlyId3 is not { } id3)
+            throw new InvalidOperationException("A trim-only MP3 job needs the source's ID3 layout.");
+        args.AddRange(["-metadata", "iTunSMPB=", "-metadata", "TLEN="]);
+        if (id3.Version == 3) args.AddRange(["-id3v2_version", "3"]);
+        if (id3.HasId3v1) args.AddRange(["-write_id3v1", "1"]);
     }
 
     private static void AppendImageArguments(List<string> args, TranscodeSpec spec)

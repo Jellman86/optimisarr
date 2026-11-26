@@ -42,4 +42,7 @@ public sealed record MediaProperties(
 {
     /// <summary>All inventory audio codec names; this summary does not prove per-track identity.</summary>
     public string? AudioCodecSummary { get; init; }
+
+    /// <summary>Why the file's tags would not survive a trim without converting it; see <see cref="Queue.TrimOnlyTags"/>.</summary>
+    public string? TrimOnlyTagRefusal { get; init; }
 }

@@ -1503,6 +1503,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("SubtitleTrackCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TrimOnlyTagRefusal")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 

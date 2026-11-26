@@ -72,6 +72,13 @@ public sealed class MediaFile
     /// <summary>Embedded album-art streams reported with the attached-picture disposition.</summary>
     public int AttachedPictureCount { get; set; }
 
+    /// <summary>
+    /// Why this music file's tags would not survive a trim without converting it, read from the file
+    /// when it was probed or when a trim-only job was planned. Null when nothing stands in the way or
+    /// the tags have not been read; cleared with the other probe results when the file changes.
+    /// </summary>
+    public string? TrimOnlyTagRefusal { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 

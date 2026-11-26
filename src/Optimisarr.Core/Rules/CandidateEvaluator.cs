@@ -164,7 +164,7 @@ public static class CandidateEvaluator
         // Every reason not to convert is about the conversion, so none of them stops a trim that
         // keeps the file's format. The size floor goes too: it asks whether a conversion saves
         // enough, and a trim is asked for to remove silence, not to save space.
-        var trimOnly = AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount);
+        var trimOnly = AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal);
         return trimOnly.Plan is null
             ? CandidateDecision.Skipped($"{conversion.Reason}. {trimOnly.Reason}")
             : CandidateDecision.Eligible(trimOnly.Reason) with { TrimsOnly = true };
@@ -176,7 +176,7 @@ public static class CandidateEvaluator
     /// </summary>
     public static AudioTrimOnlyPlan? TrimOnlyPlanFor(MediaProperties media, RuleSettings rules) =>
         media.Kind == MediaKind.Audio && EvaluateAudio(media, rules).TrimsOnly
-            ? AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount).Plan
+            ? AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal).Plan
             : null;
 
     private static CandidateDecision EvaluateAudioConversion(MediaProperties media, string audioCodec, RuleSettings rules)

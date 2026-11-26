@@ -235,13 +235,18 @@ public sealed class CandidateEvaluatorTests
     [Fact]
     public void Every_reason_a_file_is_not_converted_can_lead_to_a_trim_only_job()
     {
-        var already = AudioFile("aac", audioBitrateKbps: 256, relativePath: "Music/Album/Track.m4a");
+        var already = AudioFile("opus", audioBitrateKbps: 256, relativePath: "Music/Album/Track.opus");
         var lossyLeftAlone = AudioFile("opus", audioBitrateKbps: 320, relativePath: "Music/Album/Track.opus");
         var artBlocksConversion = AudioFile("flac", attachedPictureCount: 1);
         var tooSmallToSave = AudioFile("mp3", sizeBytes: 3L * 1024 * 1024, audioBitrateKbps: 320, relativePath: "Music/Album/Track.mp3");
 
-        Assert.All([already, lossyLeftAlone, artBlocksConversion, tooSmallToSave],
+        Assert.True(CandidateEvaluator.Evaluate(already, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
+        Assert.All([lossyLeftAlone, artBlocksConversion, tooSmallToSave],
             media => Assert.True(CandidateEvaluator.Evaluate(media, TrimsOnly).TrimsOnly));
+        // An M4A already in the target codec is not converted, and its tags keep it from a trim too.
+        var m4a = CandidateEvaluator.Evaluate(AudioFile("aac", audioBitrateKbps: 256, relativePath: "Music/Album/Track.m4a"), TrimsOnly);
+        Assert.False(m4a.IsEligible);
+        Assert.EndsWith("Trimming M4A without converting would rewrite its tags in a form many players can't read.", m4a.Reason);
         Assert.Equal(new Optimisarr.Core.Queue.AudioTrimOnlyPlan(Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode, "flac", "flac"),
             CandidateEvaluator.TrimOnlyPlanFor(artBlocksConversion, TrimsOnly));
     }

@@ -379,30 +379,61 @@ format, name, bitrate, tags and cover art:
 
 | Format | How it is trimmed |
 | --- | --- |
-| FLAC (`.flac`), ALAC (`.m4a`), PCM WAV (`.wav`) | Decoded, cut to the exact sample, and written again with the same lossless codec, bit depth and sample rate. FLAC uses FFmpeg's strongest setting. |
-| MP3 (`.mp3`), AAC (`.m4a`) | The audio frames are copied without re-encoding. An M4A file with embedded cover art is left alone, because FFmpeg drops the picture when it writes Optimisarr's marker into an M4A. The cut falls on a frame, starting up to 50 ms before the planned start. FFmpeg writes the new file's own encoder delay: a fresh LAME header for MP3, an edit list for M4A. The old iTunes `iTunSMPB` gapless figures are removed, because they describe the original length. |
+| FLAC (`.flac`), PCM WAV (`.wav`) | Decoded, cut to the exact sample, and written again with the same lossless codec, bit depth and sample rate. FLAC uses FFmpeg's strongest setting. |
+| MP3 (`.mp3`) | The audio frames are copied without re-encoding. The cut falls on a frame, starting up to 50 ms before the planned start, and FFmpeg writes the new file's own encoder delay in a fresh LAME header. The tags are written in the source's ID3 version (2.3 stays 2.3), with an ID3v1 tag again when the source has one. The iTunes `iTunSMPB` gapless figures and the `TLEN` length are removed, because they describe the original length. |
 | Opus (`.opus`, `.ogg`) | The audio frames are copied without re-encoding. Ogg cannot carry an embedded picture through FFmpeg, so an Opus file with cover art is left alone. |
 
-Everything else is left alone, with the reason in Candidates: Vorbis, WMA, APE, AIFF, raw ADTS
-`.aac` (which records no encoder delay and only estimates its length), M4A and WAV with embedded cover art,
-and any codec in a container it is not normally found in.
+Everything else is left alone, with the reason in Candidates: M4A (AAC or ALAC), Vorbis, WMA, APE,
+AIFF, raw ADTS `.aac` (which records no encoder delay and only estimates its length), Opus and WAV
+with embedded cover art, and any codec in a container it is not normally found in. M4A is left alone
+because FFmpeg writes an M4A's tags back as QuickTime keys, in place of the iTunes atoms most music
+software reads, when it keeps Optimisarr's marker.
+
+**Tags must survive unchanged.** FFmpeg reads a file's tags into its own list and writes them again,
+and some do not come back the same. Optimisarr reads every tag itself, byte for byte, when it probes a
+file and again just before a job starts, and leaves alone, naming the tags in Candidates, any file
+that has one FFmpeg is known to lose or change:
+
+- MP3: comments (`COMM`), unsynchronised and synchronised lyrics (`USLT`, `SYLT`), ratings and play
+  counts (`POPM`, `PCNT`), MusicBrainz and other unique IDs (`UFID`), URL frames, chapters
+  (`CHAP`, `CTOC`), and any other frame outside the plain text frames, `TXXX`, `APIC` and `PRIV`. Also
+  a text frame with more than one value, a numeric genre such as `(17)`, an ID3v2.3 `TCMP` or `TSOP`,
+  an ID3v2.4 `TDRL`, a frame that appears twice, an APE or Lyrics3 tag, and a compressed or encrypted
+  frame.
+- FLAC and Opus: a field with more than one value (FFmpeg joins two `ARTIST` fields into one
+  `A;B`), `COMMENT` (written back as `DESCRIPTION`), chapter fields, and FLAC `APPLICATION` and
+  `CUESHEET` blocks.
+- WAV: any chunk other than the format, the samples and `LIST INFO`, such as `bext`, `iXML` or an
+  `id3` chunk, and an `ITRK` entry (written back as `IPRT`).
+
+A tag Optimisarr cannot read in full counts as one it cannot keep. Each trimmed file then gets one
+more check, **Tags kept unchanged**: the output's tags are read the same way and must hold every one
+of the source's, with the same values, as many times. Only the encoder name, Optimisarr's marker and
+the length tags above may differ, and FLAC's padding and seek table are written again. Anything else
+lost or changed fails the job and the original is not replaced.
 
 A lossy file is never re-encoded to trim it: that would lose quality to save nothing. A copy can
-only start on an audio frame (about 26 ms for MP3, 23 ms for AAC and 20 ms for Opus), and a decoder
-starting mid-file needs a frame or two to settle. Both happen inside the quarter second of silence
-that is kept, so the music is untouched.
+only start on an audio frame (about 26 ms for MP3 and 20 ms for Opus), and a decoder starting
+mid-file needs a frame or two to settle. Both happen inside the quarter second of silence that is
+kept, so the music is untouched.
 
-Each trimmed file gets the usual checks, including **Silence trimmed as planned**, and one more,
+Each trimmed file also gets the usual checks, including **Silence trimmed as planned**, and
 **Kept audio matches the original**. A lossless file must decode to exactly the source's samples
 between the cuts. A copied file must contain the source's own audio frames, every one, in order and
 unchanged. A lossless file written again must still be smaller than the original, so a file the
 source encoder compressed harder than FFmpeg can fails the size check and is not replaced.
 
-When the job finds no silence to trim, it stops without writing anything, and the file is not
-offered again until it changes. ReplayGain and R128 tags are kept as they are: loudness measurement
-ignores silence, so removing it leaves them correct (on test signals the change was 0.0 dB for
-ReplayGain and at most 0.1 LU for EBU R128). A preview of such a file shows the conversion, not the
-trim.
+When the job measures the file and finds no silence to trim, it stops without writing anything, and
+the file is not offered again until it changes or the library's silence threshold or shortest
+silence changes. A job that could not measure the file, such as one with more than one audio stream
+or whose decoded length disagrees with its container, stops with that reason and does not hold the
+file back. ReplayGain and R128 tags are kept as they are: loudness measurement ignores silence, so
+removing it leaves them correct (on test signals the change was 0.0 dB for ReplayGain and at most
+0.1 LU for EBU R128). A preview of such a file shows the conversion, not the trim.
+
+Chapters in a converted file other than an `.m4b` are a known limit: they are kept with their
+original times, so after a trim they start up to the trimmed silence early. A file that is not
+converted and has chapters is left alone (see the tags above).
 
 ![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
 

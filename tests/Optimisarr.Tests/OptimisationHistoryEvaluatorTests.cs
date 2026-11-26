@@ -38,13 +38,16 @@ public sealed class OptimisationHistoryEvaluatorTests
         Assert.Equal(42, result.RetryJobId);
     }
 
+    private static readonly RuleSettings TrimRules = RuleProfileDefaults.For(Optimisarr.Core.Domain.RuleProfile.ConservativeHevc)
+        with { TrimAudioSilence = true, TrimSilenceWithoutConverting = true, AudioSilenceThresholdDb = -60, AudioSilenceMinimumSeconds = 2 };
+
     [Fact]
     public void A_trim_only_file_already_measured_with_nothing_to_trim_is_not_offered_again()
     {
         var trimOnly = CandidateDecision.Eligible("Trims silence only") with { TrimsOnly = true };
-        var history = new OptimisationHistory(null, null) { LastNothingToTrimAt = Modified.AddHours(1) };
+        var history = new OptimisationHistory(null, null) { LastNothingToTrim = new(Modified.AddHours(1), -60, 2) };
 
-        var result = OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified);
+        var result = OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified, TrimRules);
 
         Assert.False(result.IsEligible);
         Assert.Equal("Measured for silence to trim, and there was none", result.Reason);
@@ -53,11 +56,25 @@ public sealed class OptimisationHistoryEvaluatorTests
     [Fact]
     public void Nothing_to_trim_says_nothing_about_a_file_that_is_converted_or_has_changed_since()
     {
-        var history = new OptimisationHistory(null, null) { LastNothingToTrimAt = Modified.AddHours(1) };
+        var history = new OptimisationHistory(null, null) { LastNothingToTrim = new(Modified.AddHours(1), -60, 2) };
         var trimOnly = CandidateDecision.Eligible("Trims silence only") with { TrimsOnly = true };
 
-        Assert.True(OptimisationHistoryEvaluator.Apply(Eligible, history, Modified).IsEligible);
-        Assert.True(OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified.AddHours(2)).IsEligible);
+        Assert.True(OptimisationHistoryEvaluator.Apply(Eligible, history, Modified, TrimRules).IsEligible);
+        Assert.True(OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified.AddHours(2), TrimRules).IsEligible);
+    }
+
+    [Theory]
+    [InlineData(-70, 2)]
+    [InlineData(-60, 1)]
+    public void A_new_silence_threshold_or_minimum_length_offers_the_file_again(double thresholdDb, double minimumSeconds)
+    {
+        var history = new OptimisationHistory(null, null) { LastNothingToTrim = new(Modified.AddHours(1), -60, 2) };
+        var trimOnly = CandidateDecision.Eligible("Trims silence only") with { TrimsOnly = true };
+
+        var result = OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified,
+            TrimRules with { AudioSilenceThresholdDb = thresholdDb, AudioSilenceMinimumSeconds = minimumSeconds });
+
+        Assert.True(result.IsEligible);
     }
 
     [Fact]

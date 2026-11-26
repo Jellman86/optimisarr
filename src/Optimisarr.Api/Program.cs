@@ -60,6 +60,7 @@ builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new SilenceDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new KeptAudioComparisonService(transcodeFfmpeg));
+builder.Services.AddSingleton<MusicTagService>();
 var timestampIntegrity = new TimestampIntegrityCheck(ffprobe);
 builder.Services.AddSingleton(timestampIntegrity);
 builder.Services.AddSingleton<ISourceTimelinePreflight>(

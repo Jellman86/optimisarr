@@ -33,9 +33,6 @@ public sealed record Candidate(
 /// </summary>
 public sealed class CandidateService(OptimisarrDbContext db)
 {
-    /// <summary>What a job stores in <see cref="Job.DetectedSilenceTrim"/> when it measured no silence to trim.</summary>
-    public const string NothingToTrim = "none";
-
     private const string ReservedReason = "Reserved by an unresolved duplicate action; resolve or cancel that action before optimising.";
     public async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId, CancellationToken cancellationToken)
     {
@@ -96,7 +93,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             decision = OptimisationHistoryEvaluator.Apply(
                 decision,
                 history.GetValueOrDefault(file.Id, OptimisationHistory.None),
-                file.ModifiedAt);
+                file.ModifiedAt,
+                rules);
 
             // An explicit exclusion overrides every other verdict with a clear, durable reason.
             if (excludedPaths.Contains(file.Path))
@@ -215,7 +213,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
             TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages),
             file.HardLinkCount,
-            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs };
+            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs, TrimOnlyTagRefusal = file.TrimOnlyTagRefusal };
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }
@@ -262,7 +260,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             .Where(job => job.Type == JobType.Normal
                 && job.FinishedAt != null
                 && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed
-                    || job.Status == JobStatus.Cancelled && job.DetectedSilenceTrim == NothingToTrim));
+                    || job.Status == JobStatus.Cancelled && job.DetectedSilenceTrim != null
+                        && job.DetectedSilenceTrim.StartsWith(SilenceTrimRecord.NothingToTrimPrefix + ":")));
         if (libraryId is not null)
         {
             query = query.Where(job => job.LibraryId == libraryId);
@@ -289,9 +288,13 @@ public sealed class CandidateService(OptimisarrDbContext db)
                         .Where(row => row.Status == JobStatus.Failed)
                         .MaxBy(row => row.FinishedAt)?.Id)
                 {
-                    LastNothingToTrimAt = group
-                        .Where(row => row.Status == JobStatus.Cancelled && row.DetectedSilenceTrim == NothingToTrim)
-                        .Max(row => row.FinishedAt),
+                    LastNothingToTrim = group
+                        .Where(row => row.Status == JobStatus.Cancelled)
+                        .OrderByDescending(row => row.FinishedAt)
+                        .Select(row => SilenceTrimRecord.TryReadNothingToTrim(row.DetectedSilenceTrim, out var threshold, out var minimum)
+                            ? new NothingToTrim(row.FinishedAt!.Value, threshold, minimum)
+                            : null)
+                        .FirstOrDefault(none => none is not null),
                 });
     }
 }

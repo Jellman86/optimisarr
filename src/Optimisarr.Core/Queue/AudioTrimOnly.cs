@@ -21,6 +21,10 @@ public enum AudioTrimOnlyMethod
 /// <param name="Encoder">The lossless encoder that writes it again; null for a stream copy.</param>
 public sealed record AudioTrimOnlyPlan(AudioTrimOnlyMethod Method, string Codec, string? Encoder);
 
+/// <param name="Version">The ID3v2 version, 3 or 4; null when the file has no ID3v2 tag.</param>
+/// <param name="HasId3v1">The file also ends with an ID3v1 tag.</param>
+public sealed record Id3Layout(int? Version, bool HasId3v1);
+
 /// <summary>A way to trim a file without converting it, or why there is none.</summary>
 public sealed record AudioTrimOnlyDecision(AudioTrimOnlyPlan? Plan, string Reason);
 
@@ -44,31 +48,42 @@ public static class AudioTrimOnly
         "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le",
     };
 
-    public static AudioTrimOnlyDecision Decide(string? codec, string relativePath, int attachedPictureCount)
+    /// <param name="tagRefusal">
+    /// Why the file's tags would not survive a trim unchanged (see <see cref="TrimOnlyTags.Refusal"/>),
+    /// as last read from the file; null when nothing stands in the way or the tags are not read yet.
+    /// </param>
+    public static AudioTrimOnlyDecision Decide(string? codec, string relativePath, int attachedPictureCount, string? tagRefusal = null)
     {
         var extension = Path.GetExtension(relativePath).ToLowerInvariant();
         var normalised = codec?.Trim().ToLowerInvariant();
+        // FFmpeg writes an M4A's tags back as QuickTime keys when it keeps Optimisarr's marker
+        // (use_metadata_tags), in place of the iTunes atoms most music software reads.
+        if (extension is ".m4a")
+            return new(null, "Trimming M4A without converting would rewrite its tags in a form many players can't read.");
         var plan = (normalised, extension) switch
         {
             ("flac", ".flac") => Lossless("flac"),
-            ("alac", ".m4a") => Lossless("alac"),
             (_, ".wav") when normalised is not null && WavPcmCodecs.Contains(normalised) => Lossless(normalised),
-            // MP3 and MP4 record their encoder delay, which FFmpeg writes again for the cut.
-            ("mp3", ".mp3") or ("aac", ".m4a") => Copy(normalised),
+            // MP3 records its encoder delay, which FFmpeg writes again for the cut.
+            ("mp3", ".mp3") => Copy(normalised),
             // Ogg Opus records its pre-skip and its end in the page granule positions.
             ("opus", ".opus" or ".ogg") => Copy(normalised),
             _ => null,
         };
         if (plan is null)
             return new(null, $"{codec ?? "Unknown"} audio in a {extension} file cannot be trimmed without converting it.");
-        // Neither FFmpeg's Ogg writer nor its WAV writer can carry an embedded picture, and its M4A
-        // writer drops one when it keeps Optimisarr's marker (use_metadata_tags), in 6.1 and 7.1 alike.
-        if (attachedPictureCount > 0 && extension is ".opus" or ".ogg" or ".wav" or ".m4a")
+        // Neither FFmpeg's Ogg writer nor its WAV writer can carry an embedded picture.
+        if (attachedPictureCount > 0 && extension is ".opus" or ".ogg" or ".wav")
             return new(null, $"The cover art in a {extension} file could not be kept, so it is not trimmed without converting it.");
+        if (tagRefusal is not null) return new(null, tagRefusal);
         return new(plan, plan.Method == AudioTrimOnlyMethod.StreamCopy
             ? $"Trims silence only, copying the {plan.Codec} audio unchanged."
             : $"Trims silence only, keeping the {plan.Codec} audio lossless.");
     }
+
+    /// <summary>Whether a file in this format could be trimmed without converting, so its tags are worth reading.</summary>
+    public static bool ReadsTags(string relativePath) =>
+        Path.GetExtension(relativePath).ToLowerInvariant() is ".mp3" or ".flac" or ".opus" or ".ogg" or ".wav";
 
     /// <summary>
     /// The window a stream copy keeps: from <see cref="StreamCopyLeadSeconds"/> before the planned

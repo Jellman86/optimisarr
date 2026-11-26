@@ -29,6 +29,7 @@ const exact: Record<string, keyof Labels> = {
   'Picture shape': 'picture_shape',
   'Silence trimmed': 'silence_trimmed',
   'Kept audio unchanged': 'kept_audio',
+  'Tags kept unchanged': 'tags_kept',
   'Audio codec': 'audio_format',
   'Audio codecs unchanged': 'audio_untouched',
   'Audio fidelity': 'audio_fidelity',

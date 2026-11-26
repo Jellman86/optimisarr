@@ -1,3 +1,4 @@
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
@@ -865,12 +866,48 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void A_trim_only_file_passes_only_when_its_tags_were_read_and_every_one_is_unchanged()
+    {
+        static MusicTagRead Id3(params MusicTag[] tags) => MusicTagRead.Read(new MusicTagSet(MusicTagLayout.Id3, tags, 3));
+        var kept = Trimmed(Trim.KeptSeconds) with
+        {
+            TagsKept = new TagsKeptEvidence(Id3(new MusicTag("TIT2", ["T"]), new MusicTag("POPM", ["abc"])), Id3(new MusicTag("TIT2", ["T"]), new MusicTag("POPM", ["abc"]))),
+        };
+
+        Assert.True(VerificationEvaluator.Evaluate(kept, VerificationPolicy.Default).Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(kept, VerificationPolicy.Default), VerificationEvaluator.TagsKeptCheckName));
+
+        // The ffprobe view of the tags is unchanged, which is exactly what a lost POPM looks like there.
+        var lost = kept with { TagsKept = kept.TagsKept! with { Output = Id3(new MusicTag("TIT2", ["T"])) } };
+        var lostReport = VerificationEvaluator.Evaluate(lost, VerificationPolicy.Default);
+        Assert.False(lostReport.Passed);
+        Assert.Equal("The tags lost POPM.", lostReport.Checks.Single(c => c.Name == VerificationEvaluator.TagsKeptCheckName).Detail);
+
+        foreach (var unread in new[] { new TagsKeptEvidence(null, null), kept.TagsKept! with { Output = MusicTagRead.Unreadable("an APE tag") } })
+            Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(kept with { TagsKept = unread }, VerificationPolicy.Default),
+                VerificationEvaluator.TagsKeptCheckName));
+    }
+
+    [Fact]
+    public void An_mp3_length_tag_is_technical_and_may_be_cleared_because_it_describes_the_old_length()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalFormatTags = new Dictionary<string, string> { ["title"] = "Track", ["TLEN"] = "183000" },
+            OutputFormatTags = new Dictionary<string, string> { ["title"] = "Track" },
+        };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Audio metadata and artwork"));
+    }
+
+    [Fact]
     public void An_untrimmed_file_has_no_trim_check_and_keeps_its_plain_length_check()
     {
         var report = VerificationEvaluator.Evaluate(HealthyAudio(), VerificationPolicy.Default);
 
         Assert.DoesNotContain(report.Checks, c => c.Name == "Silence trimmed");
         Assert.DoesNotContain(report.Checks, c => c.Name == "Kept audio unchanged");
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.TagsKeptCheckName);
         Assert.StartsWith("Original 3600s", report.Checks.Single(c => c.Name == "Duration").Detail);
     }
 

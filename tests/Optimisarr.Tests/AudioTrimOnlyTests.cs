@@ -8,7 +8,6 @@ public sealed class AudioTrimOnlyTests
 {
     [Theory]
     [InlineData("flac", "Album/Track.flac", "flac")]
-    [InlineData("alac", "Album/Track.m4a", "alac")]
     [InlineData("pcm_s16le", "Album/Track.wav", "pcm_s16le")]
     [InlineData("pcm_s24le", "Album/Track.WAV", "pcm_s24le")]
     public void Lossless_files_are_re_encoded_losslessly_in_their_own_codec(string codec, string path, string encoder)
@@ -20,7 +19,6 @@ public sealed class AudioTrimOnlyTests
 
     [Theory]
     [InlineData("mp3", "Album/Track.mp3")]
-    [InlineData("aac", "Album/Track.m4a")]
     [InlineData("opus", "Album/Track.opus")]
     [InlineData("opus", "Album/Track.ogg")]
     public void Lossy_files_are_cut_by_copying_their_audio_frames(string codec, string path)
@@ -41,8 +39,6 @@ public sealed class AudioTrimOnlyTests
     [Theory]
     [InlineData("opus", "Album/Track.opus")]
     [InlineData("pcm_s16le", "Album/Track.wav")]
-    [InlineData("aac", "Album/Track.m4a")]
-    [InlineData("alac", "Album/Track.m4a")]
     public void Files_whose_cover_art_could_not_be_written_back_are_left_alone(string codec, string path)
     {
         var decision = AudioTrimOnly.Decide(codec, path, attachedPictureCount: 1);
@@ -59,7 +55,7 @@ public sealed class AudioTrimOnlyTests
     [InlineData("ape", "Album/Track.ape")]
     [InlineData("pcm_s16be", "Album/Track.aiff")]
     // A codec in a container it is not usually found in is not guessed at.
-    [InlineData("mp3", "Album/Track.m4a")]
+    [InlineData("mp3", "Album/Track.mp4")]
     [InlineData("flac", "Album/Track.ogg")]
     public void Other_formats_are_left_alone_with_the_reason(string codec, string path)
     {
@@ -67,6 +63,29 @@ public sealed class AudioTrimOnlyTests
 
         Assert.Null(decision.Plan);
         Assert.Contains(codec, decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("aac", 0)]
+    [InlineData("alac", 0)]
+    [InlineData("aac", 1)]
+    public void M4a_files_are_left_alone_because_their_tags_would_be_rewritten_as_quicktime_keys(string codec, int pictures)
+    {
+        var decision = AudioTrimOnly.Decide(codec, "Album/Track.m4a", pictures);
+
+        Assert.Null(decision.Plan);
+        Assert.Equal("Trimming M4A without converting would rewrite its tags in a form many players can't read.", decision.Reason);
+    }
+
+    [Fact]
+    public void Tags_a_trim_would_not_keep_leave_the_file_alone_with_that_reason()
+    {
+        const string refusal = "Trimming it without converting would lose or change some of its tags (POPM), so it is left alone.";
+
+        var decision = AudioTrimOnly.Decide("mp3", "Album/Track.mp3", 0, refusal);
+
+        Assert.Null(decision.Plan);
+        Assert.Equal(refusal, decision.Reason);
     }
 
     [Fact]
@@ -107,9 +126,10 @@ public sealed class AudioTrimOnlyTests
     // 2.75 s off the start and 2.75 s off the end of a 16 s track at 44.1 kHz.
     private static readonly AudioTrimPlan Trim = new(121_275, 584_325, 44_100, 16, -60);
 
-    private static TranscodeSpec Spec(string relativePath, AudioTrimOnlyPlan plan, AudioTrimPlan? trim) =>
+    private static TranscodeSpec Spec(string relativePath, AudioTrimOnlyPlan plan, AudioTrimPlan? trim, Id3Layout? id3 = null) =>
         TranscodeSpecResolver.Resolve(Rules, "/music/" + relativePath, relativePath, "/work", sourceIsHdr: false,
-            crf: null, preset: null, MediaKind.Audio, sourceMaxAudioChannels: 2, audioTrimOnly: plan) with { SilenceTrim = trim };
+            crf: null, preset: null, MediaKind.Audio, sourceMaxAudioChannels: 2, audioTrimOnly: plan)
+            with { SilenceTrim = trim, TrimOnlyId3 = id3 ?? (relativePath.EndsWith(".mp3") ? new(4, false) : null) };
 
     private static readonly AudioTrimOnlyPlan Flac = new(AudioTrimOnlyMethod.LosslessReencode, "flac", "flac");
     private static readonly AudioTrimOnlyPlan Copy = new(AudioTrimOnlyMethod.StreamCopy, "mp3", null);
@@ -137,26 +157,23 @@ public sealed class AudioTrimOnlyTests
     }
 
     [Fact]
-    public void A_lossless_m4a_keeps_its_timed_lyrics_and_a_wav_has_no_picture_to_map()
+    public void A_wav_has_no_picture_to_map()
     {
-        var alac = FfmpegCommandBuilder.Build(Spec("Album/Track.m4a", new(AudioTrimOnlyMethod.LosslessReencode, "alac", "alac"), Trim));
         var wav = FfmpegCommandBuilder.Build(Spec("Album/Track.wav", new(AudioTrimOnlyMethod.LosslessReencode, "pcm_s24le", "pcm_s24le"), Trim));
 
-        Assert.Contains("0:s?", alac);
-        Assert.DoesNotContain("-compression_level", alac);
         Assert.Equal(["-map_metadata", "0", "-map", "0:a", "-c:a", "pcm_s24le"], wav.Skip(6).Take(6));
     }
 
     [Fact]
-    public void An_mp3_or_m4a_copy_seeks_its_audio_and_takes_the_cover_art_from_a_second_unseeked_read()
+    public void An_mp3_copy_seeks_its_audio_and_takes_the_cover_art_from_a_second_unseeked_read()
     {
         // Cut by the output instead, FFmpeg drops an attached picture, which sits at the very start.
         var args = FfmpegCommandBuilder.Build(Spec("Album/Track.mp3", Copy, AudioTrimOnly.ForStreamCopy(Trim)));
 
         Assert.Equal(["-y", "-progress", "pipe:1", "-nostats", "-ss", "2.700000", "-i", "/music/Album/Track.mp3",
             "-i", "/music/Album/Track.mp3", "-map_metadata", "0", "-map", "1:v?", "-c:v", "copy", "-map", "0:a", "-c:a", "copy",
-            // The source's iTunes gapless figures describe the whole file, not the cut.
-            "-metadata", "iTunSMPB=", "-t", "10.550000", "/work/Album/Track.mp3"], args);
+            // The source's iTunes gapless figures and length describe the whole file, not the cut.
+            "-metadata", "iTunSMPB=", "-metadata", "TLEN=", "-t", "10.550000", "/work/Album/Track.mp3"], args);
         Assert.DoesNotContain("-af", args);
         // The job records the filter it ran, and a copy runs none.
         Assert.Null(FfmpegCommandBuilder.AudioFilterChain(Spec("Album/Track.mp3", Copy, Trim)));
@@ -164,15 +181,34 @@ public sealed class AudioTrimOnlyTests
     }
 
     [Fact]
+    public void An_mp3_copy_keeps_the_sources_id3_version_and_its_id3v1_tag()
+    {
+        var args = FfmpegCommandBuilder.Build(Spec("Album/Track.mp3", Copy, Trim, new Id3Layout(3, HasId3v1: true)));
+
+        // 2.3 frames such as TYER, TDAT and TORY stay as they are only in a 2.3 tag.
+        Assert.Equal(["-id3v2_version", "3"], args.SkipWhile(arg => arg != "-id3v2_version").Take(2));
+        Assert.Equal(["-write_id3v1", "1"], args.SkipWhile(arg => arg != "-write_id3v1").Take(2));
+        Assert.DoesNotContain("-id3v2_version", FfmpegCommandBuilder.Build(Spec("Album/Track.mp3", Copy, Trim, new Id3Layout(4, false))));
+    }
+
+    [Fact]
+    public void An_mp3_copy_is_never_written_without_reading_the_sources_tags_first()
+    {
+        var spec = Spec("Album/Track.mp3", Copy, Trim) with { TrimOnlyId3 = null };
+
+        Assert.Throws<InvalidOperationException>(() => FfmpegCommandBuilder.Build(spec));
+    }
+
+    [Fact]
     public void A_copy_that_keeps_its_start_reads_the_file_once_and_only_limits_the_length()
     {
         var endOnly = Trim with { StartSample = 0 };
 
-        var args = FfmpegCommandBuilder.Build(Spec("Album/Track.m4a", Copy with { Codec = "aac" }, endOnly));
+        var args = FfmpegCommandBuilder.Build(Spec("Album/Track.mp3", Copy, endOnly));
 
-        Assert.Equal(["-y", "-progress", "pipe:1", "-nostats", "-i", "/music/Album/Track.m4a",
-            "-map_metadata", "0", "-map", "0:v?", "-c:v", "copy", "-map", "0:a", "-c:a", "copy", "-map", "0:s?", "-c:s", "copy",
-            "-metadata", "iTunSMPB=", "-t", "13.250000", "/work/Album/Track.m4a"], args);
+        Assert.Equal(["-y", "-progress", "pipe:1", "-nostats", "-i", "/music/Album/Track.mp3",
+            "-map_metadata", "0", "-map", "0:v?", "-c:v", "copy", "-map", "0:a", "-c:a", "copy",
+            "-metadata", "iTunSMPB=", "-metadata", "TLEN=", "-t", "13.250000", "/work/Album/Track.mp3"], args);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
@@ -16,6 +17,12 @@ public sealed record KeptAudioEvidence(
     string? OutputDecodedDigest = null,
     IReadOnlyList<string>? SourcePacketDigests = null,
     IReadOnlyList<string>? OutputPacketDigests = null);
+
+/// <summary>
+/// The tags of a trim-only file and its source, read byte for byte rather than through FFmpeg, which
+/// shows a lost or rewritten frame the same as a kept one. Null when they were not read, which fails.
+/// </summary>
+public sealed record TagsKeptEvidence(MusicTagRead? Source, MusicTagRead? Output);
 
 /// <summary>Reads the per-packet digests of FFmpeg's <c>framehash</c> muxer.</summary>
 public static class FrameHashParser

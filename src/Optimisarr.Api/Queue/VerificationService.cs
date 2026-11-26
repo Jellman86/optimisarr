@@ -116,7 +116,8 @@ public sealed class VerificationService(
     SoundtrackQualityObservationService? soundtrackQuality = null,
     ImagePerceptualObservationService? imagePerceptualQuality = null,
     SilenceDetectService? silence = null,
-    KeptAudioComparisonService? keptAudio = null)
+    KeptAudioComparisonService? keptAudio = null,
+    MusicTagService? musicTags = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -361,6 +362,15 @@ public sealed class VerificationService(
                     ? await keptAudio.CompareAsync(reference.Path, outputPath, trimOnly.Method, kept, cancellationToken)
                     : new KeptAudioEvidence(trimOnly.Method)
                 : null;
+            // ffprobe shows a lost or rewritten tag the same as a kept one, so both files' tags are
+            // read byte for byte. The source is the original itself: a trim-only job has no clip.
+            var tagsKeptEvidence = reference.AudioTrimOnly is not null
+                ? musicTags is not null && remoteEvidence is null && clip is null
+                    ? new TagsKeptEvidence(
+                        await musicTags.ReadAsync(reference.Path, cancellationToken),
+                        await musicTags.ReadAsync(outputPath, cancellationToken))
+                    : new TagsKeptEvidence(null, null)
+                : null;
 
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
@@ -434,6 +444,7 @@ public sealed class VerificationService(
                 SilenceTrim: reference.SilenceTrim,
                 OutputEdgeSilence: outputEdgeSilence,
                 KeptAudio: keptAudioEvidence,
+                TagsKept: tagsKeptEvidence,
                 RequirePixelShapeRetained: reference.PixelShapeMustMatch,
                 OriginalPixelAspect: originalProbe.PixelAspect,
                 OutputPixelAspect: outputProbe.PixelAspect,
