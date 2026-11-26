@@ -355,7 +355,7 @@
   .duplicate-controls > div { flex-basis:18rem; }
   .duplicate-controls button, .duplicate-pagination button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
   .scope-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:.5rem; }
-  .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border-radius:var(--radius-sm); background:var(--panel); box-shadow:var(--lift-1); cursor:pointer; }
+  .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border-radius:var(--radius-field); background:var(--panel); box-shadow:var(--lift-1); cursor:pointer; }
   .scope-library:has(input:checked) { background:linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }
   .duplicate-view .badge { min-width:0; max-width:100%; }
   .scan-progress { display:flex; align-items:center; gap:.75rem; }

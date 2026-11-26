@@ -118,7 +118,7 @@
     { value: 'skipped', label: t(i18n.m.shared.skipped_count, { count: skippedCount }) },
   ]} />
 
-  {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
+  {#if error}<div role="alert"><Banner kind="error" class="mb-4">{error}</Banner></div>{/if}
   {#if outcome}
     <BatchResult
       title={i18n.m.shared.batch_exclude}

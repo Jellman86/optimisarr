@@ -127,7 +127,7 @@
 
 <style>
   .copy-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr)); gap:1rem; list-style:none; padding:0; }
-  .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border-radius:var(--radius-md); background:var(--sunken); }
+  .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border-radius:var(--radius-panel); background:var(--sunken); }
   .keep-control { margin-top:auto; padding-top:1rem; }
   .copy-kept { background:var(--accent-soft); }
   .copy-card h3, summary h2 { overflow-wrap:anywhere; min-width:0; max-width:100%; }

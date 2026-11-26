@@ -163,7 +163,7 @@
   .schedule-dispatch-reason { color: var(--ink-2); font-size: .875rem; line-height: 1.5; margin-top: 1rem; overflow-wrap: anywhere; }
   .schedule-dispatch-reason.blocked { color: var(--warn); }
   .schedule-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: 1.25rem; }
-  .schedule-metrics > div { background: var(--sunken); border-radius: var(--radius-sm); padding: .875rem 1rem; min-width: 0; }
+  .schedule-metrics > div { background: var(--sunken); border-radius: var(--radius-field); padding: .875rem 1rem; min-width: 0; }
   .schedule-metrics dd { color: var(--ink); font-size: 1rem; font-variant-numeric: tabular-nums; font-weight: 600; margin-top: .375rem; overflow-wrap: anywhere; }
   .schedule-section-head { align-items: center; margin-bottom: 1rem; }
   .schedule-section-head h2 { color: var(--ink); font-size: 1rem; font-weight: 650; }
