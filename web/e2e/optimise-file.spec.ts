@@ -389,6 +389,8 @@ test('a track cleanup plan below the minimum says how much it would save and tha
   const size = row(page, 'size')
 
   await expect(size).toContainText("Removing the tracks saves about 120 MB (0.2%). That is below this library's minimum of 5%, so this file is skipped.")
+  // A skipped file never runs, so what a run must achieve isn't said about it.
+  await expect(size).not.toContainText('Preview encodes a short part')
   await expect(size.locator('[data-plan-tag]')).toContainText('Skipped')
   await expect(size).not.toContainText('Not known until')
 })

@@ -89,6 +89,7 @@
   const trackSavingMinimumText = $derived(trackSaving
     ? trackSavingMinimum({ minimumTrackRemovalSavingPercent: trackSaving.minimumPercent, minimumTrackRemovalSavingBytes: trackSaving.minimumBytes }, i18n.locale)
     : null)
+  const trackSavingSkips = $derived(Boolean(trackSavingMinimumText) && trackSaving != null && trackSaving.meetsMinimum !== true)
   function formatSavingPercent(percent: number | null): string {
     if (percent == null) return '—'
     return `${percent.toLocaleString(i18n.locale, { maximumFractionDigits: percent >= 1 ? 1 : 2 })}%`
@@ -322,8 +323,11 @@
             {:else}
               {i18n.m.onePlan.size_unknown}
             {/if}
-            {#if library?.requireSizeReduction}{' '}{i18n.m.onePlan.size_must_shrink}{/if}
-            {' '}{i18n.m.onePlan.size_preview}
+            <!-- A file the minimum skips never runs, so what a run must achieve doesn't apply to it. -->
+            {#if !trackSavingSkips}
+              {#if library?.requireSizeReduction}{' '}{i18n.m.onePlan.size_must_shrink}{/if}
+              {' '}{i18n.m.onePlan.size_preview}
+            {/if}
           </span>
         </div>
 

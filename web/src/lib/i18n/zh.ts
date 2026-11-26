@@ -1592,7 +1592,7 @@ export const zh: Messages = {
     track_saving_size_label: "最低大小（GB）",
     track_saving_and: "且至少",
     track_saving_none: "无",
-    gb: "国标",
+    gb: "GB",
     skip_efficient_label: "跳过已经高效的资源",
     skip_efficient_tip: "对于其分辨率而言，已采用很低比特率的文件通常无法明显缩小，因此会在转码前跳过，避免浪费时间生成会被体积缩减验证拒绝的结果。关闭此选项可将所有符合条件的文件都交给编码器。",
     skip_efficient_hint: "避免在无法缩小的文件上浪费编码。关闭以重新编码所有内容。",
