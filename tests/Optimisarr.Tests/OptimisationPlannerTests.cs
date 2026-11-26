@@ -242,4 +242,21 @@ public sealed class OptimisationPlannerTests
         Assert.Equal("IMG_0001.webp", image.File.FileName);
         Assert.Null(image.Sound);
     }
+
+    [Fact]
+    public void Plan_for_a_music_file_that_is_only_trimmed_keeps_its_name_and_codec()
+    {
+        var song = new MediaProperties("mp3", null, null, null, 6_000_000, false, "Album/01 Track.mp3", Kind: MediaKind.Audio,
+            AudioCodec: "mp3", AudioBitrateKbps: 128, MaxAudioChannels: 2);
+        var rules = Rules(RuleProfile.ConservativeHevc, RuleOverrides.None with
+        {
+            TargetAudioCodec = "opus", TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+        });
+
+        var plan = OptimisationPlanner.Plan(song, rules, crf: null);
+
+        Assert.Equal(new PlannedSound("mp3", null, false, TrimsSilence: true, TrimOnly: true), plan.Sound);
+        Assert.Equal("01 Track.mp3", plan.File.FileName);
+        Assert.False(plan.File.Renamed);
+    }
 }

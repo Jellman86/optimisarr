@@ -13,6 +13,7 @@ from .core import Blocked, inside, quality_failures, require, save, sha256
 from .quality_first import validate_search, validate_image_command
 from .image_metadata import add_synthetic_image_metadata, read_icc_profile
 from .media import compare_report, validate_shadow_report, validate_soundtrack_report
+from . import audio_tags
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
 MODES = {"libx264": "Cpu", "libx265": "Cpu", "libsvtav1": "Cpu",
@@ -198,7 +199,7 @@ class Harness:
 
     def output(self, case):
         directory = inside(self.root / "work", self.root / "work" / str(case["mediaId"]))
-        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".webp", ".jpg", ".avif")]
+        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".flac", ".webp", ".jpg", ".avif")]
         require(len(files) == 1, f"Expected exactly one delivered candidate, found {files}")
         return inside(self.root / "work", files[0])
 
@@ -710,6 +711,161 @@ class Harness:
         save(self.report.root / name / "independent-trim.json", {"duration": duration, "silence": log, "source": before, "candidate": after})
         self.replace_restore(case, candidate)
         return {"duration": duration, "restoredOriginal": True}
+
+    # Each format the library does not convert, with the codec and library target that leave it alone.
+    # M4A is never trimmed without converting: FFmpeg would rewrite its tags as QuickTime keys.
+    TRIM_ONLY = {
+        "flac": (".flac", ["-c:a", "flac"], "aac", True),   # cover art keeps FLAC out of an AAC library
+        "mp3": (".mp3", ["-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3"], "opus", True),
+        "opus": (".opus", ["-c:a", "libopus", "-b:a", "96k"], "opus", False),
+    }
+
+    # Tags written over FFmpeg's, byte for byte. "kept" holds only tags FFmpeg writes back unchanged,
+    # and the file must be trimmed with every one intact; "lost" holds tags FFmpeg drops or rewrites,
+    # and the file must be refused before any job is queued.
+    TRIM_ONLY_TAGS = {
+        ("mp3", "kept"): lambda path: audio_tags.write_id3(path, [
+            audio_tags.id3_text("TIT2", "Trim-only fixture"), audio_tags.id3_text("TPE1", "Optimisarr acceptance"),
+            audio_tags.id3_text("TALB", "Fixtures é"), audio_tags.id3_text("TRCK", "3/12"), audio_tags.id3_text("TYER", "2001"),
+            audio_tags.id3_text("TDAT", "0503"), audio_tags.id3_text("TORY", "1999"), audio_tags.id3_text("TCON", "Rock"),
+            audio_tags.id3_frame("TXXX", b"\x00MusicBrainz Album Id\x00b0b0b0b0-0000-4000-8000-000000000001"),
+            audio_tags.id3_frame("PRIV", b"acceptance\x00\x01\x02"),
+            audio_tags.id3_frame("APIC", b"\x00image/jpeg\x00\x03Front\x00" + Path(path).with_name("audio-cover.jpg").read_bytes()),
+            audio_tags.id3_text("TLEN", "189500")], version=3),
+        ("mp3", "lost"): lambda path: audio_tags.write_id3(path, [
+            audio_tags.id3_text("TIT2", "Trim-only fixture"), audio_tags.popm("acceptance@example.org", 196, 5),
+            audio_tags.ufid("http://musicbrainz.org", "b0b0b0b0-0000-4000-8000-000000000002"),
+            audio_tags.uslt("eng", "Words that are not timed")], version=3),
+        ("flac", "lost"): lambda path: audio_tags.write_flac(path, [
+            ("TITLE", "Trim-only fixture"), ("ARTIST", "First artist"), ("ARTIST", "Second artist")]),
+        # FFmpeg merges a second ID3v2 tag into the first, so its frames would be rewritten unseen.
+        ("mp3", "stacked"): lambda path: (
+            audio_tags.write_id3(path, [audio_tags.id3_text("TPE1", "Optimisarr acceptance"), audio_tags.popm("acceptance@example.org", 196, 5)], version=3),
+            audio_tags.prepend_id3(path, [audio_tags.id3_text("TIT2", "Trim-only fixture")], version=3)),
+        # CP1251 bytes written as ISO-8859-1 text, which FFmpeg would rewrite as other Unicode words.
+        ("mp3", "cp1251"): lambda path: audio_tags.write_id3(path, [
+            audio_tags.id3_frame("TIT2", b"\x00" + "Кино".encode("cp1251")), audio_tags.id3_text("TPE1", "Optimisarr acceptance")], version=3),
+    }
+
+    def trim_only_fixture(self, fmt, name):
+        # The audio_trim signal, in a format the library leaves alone: 3 s silence, 120 s music, a
+        # 2.5 s pause, 60 s music, 4 s silence.
+        extension, codec_args, _, artwork = self.TRIM_ONLY[fmt]
+        fixture = self.root / "fixtures" / f"{name}{extension}"
+        silence = lambda seconds: ["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={seconds}"]
+        noise = lambda seconds, seed: ["-f", "lavfi", "-i",
+            f"anoisesrc=color=white:amplitude=0.4:duration={seconds}:sample_rate=48000:seed={seed},lowpass=f=10000"]
+        inputs = silence(3) + noise(120, 42) + silence(2.5) + noise(60, 7) + silence(4)
+        maps = ["-map", "[out]"]
+        image = self.root / "fixtures" / "audio-cover.jpg"
+        if not image.exists():
+            self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=128x128:rate=1", "-frames:v", "1", self.tools.path(image)])
+        if artwork:
+            inputs += ["-i", self.tools.path(image)]
+            maps += ["-map", "5:v", "-c:v", "copy", "-disposition:v", "attached_pic"]
+        self.tools.encode(inputs + [
+            "-filter_complex", "[1]aformat=channel_layouts=stereo[a];[3]aformat=channel_layouts=stereo[b];[0][a][2][b][4]concat=n=5:v=0:a=1[out]",
+            *maps, *codec_args, "-metadata", "artist=Optimisarr acceptance", "-metadata", "title=Trim-only fixture",
+            self.tools.path(fixture)])
+        return fixture
+
+    @staticmethod
+    def trim_only_overrides(target):
+        return {"mediaType": "Music", "audioTargetCodec": target,
+            "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
+            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0,
+            "trimAudioSilence": True, "audioSilenceThresholdDb": -60, "audioSilenceMinimumSeconds": 2,
+            "trimSilenceWithoutConverting": True}
+
+    @staticmethod
+    def tag_entries(fmt, path):
+        return audio_tags.id3_entries(path) if fmt == "mp3" else audio_tags.comment_entries(path)
+
+    def audio_trim_only(self, fmt="mp3", tags=None):
+        # The file must keep its format, its own audio and every one of its tags.
+        extension, _, target, artwork = self.TRIM_ONLY[fmt]
+        name = f"audio-trim-only-{fmt}" + (f"-{tags}-tags" if tags else "")
+        fixture = self.trim_only_fixture(fmt, name)
+        if tags:
+            self.TRIM_ONLY_TAGS[(fmt, tags)](fixture)
+        case = self.create_job(name, fixture, overrides=self.trim_only_overrides(target))
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(job["status"] == "ReadyToReplace", f"Trim-only audio failed: {job['errorMessage']}")
+        checks = {check["name"]: check for check in json.loads(job["verificationReportJson"])["checks"]}
+        for check in ("Silence trimmed", "Kept audio unchanged", "Tags kept unchanged", "Audio codec", "Audio metadata and artwork", "Duration"):
+            require(checks.get(check, {}).get("outcome") == "Passed", f"No passing {check} check: {checks.get(check)}")
+        candidate = self.output(case)
+        require(candidate.suffix == extension, f"The trimmed file changed format: {candidate.name}")
+        source_probe, probe = self.tools.probe(case["source"]), self.tools.probe(candidate)
+        audio = lambda p: next(s for s in p["streams"] if s["codec_type"] == "audio")
+        for key in ("codec_name", "sample_rate", "channels", "bits_per_raw_sample"):
+            require(audio(probe).get(key) == audio(source_probe).get(key), f"The trimmed file changed its {key}")
+        if artwork:
+            require(any(s.get("disposition", {}).get("attached_pic") == 1 for s in probe["streams"]), "Lost embedded cover art")
+        # Independently of the server and of ffprobe, which shows a lost frame the same as a kept one:
+        # every tag of the source is in the trimmed file with the same values.
+        source_tags, output_tags = self.tag_entries(fmt, case["source"]), self.tag_entries(fmt, candidate)
+        lost = audio_tags.lost_or_changed(source_tags, output_tags)
+        save(self.report.root / name / "tags.json", {"source": source_tags, "candidate": output_tags, "lostOrChanged": lost})
+        require(not lost, f"The trim lost or changed tags: {lost}")
+        if fmt == "mp3":
+            require(Path(candidate).read_bytes()[3] == Path(case["source"]).read_bytes()[3], "The trim changed the ID3 version")
+        duration = float(probe["format"]["duration"])
+        # 2.75 s off the start and 3.75 s off the end; a copy starts up to 50 ms early on a frame.
+        planned = 183.0 + (0.05 if fmt != "flac" else 0)
+        require(abs(duration - planned) <= 0.15, f"Trimmed length {duration:.3f}s is not the planned {planned:.2f}s")
+        log = self.tools.run(self.tools.ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-i", self.tools.path(candidate),
+            "-af", "silencedetect=noise=-60dB:d=0.1", "-f", "null", "-"], include_stderr=True)
+        starts = [float(value) for value in re.findall(r"silence_start: (-?[\d.]+)", log)]
+        ends = [float(value) for value in re.findall(r"silence_end: ([\d.]+)", log)]
+        lead = planned - 183.0
+        require(any(abs(start - (120.25 + lead)) <= 0.2 for start in starts) and any(abs(end - (122.75 + lead)) <= 0.2 for end in ends),
+                "The pause inside the track was cut")
+        # Independently of the server: a copy holds the source's own packets in one unbroken run, and a
+        # lossless trim decodes to exactly the source's samples over the kept window.
+        if fmt == "flac":
+            digest = lambda path, extra: self.tools.run(self.tools.ffmpeg, ["-nostdin", "-v", "error", "-i", self.tools.path(path),
+                "-map", "0:a:0", *extra, "-c:a", "pcm_f64le", "-f", "hash", "-hash", "sha256", "-"]).strip()
+            window = re.search(r"atrim=start_sample=\d+:end_sample=\d+", job["appliedAudioFilter"] or "")
+            require(window, f"The lossless trim did not cut exact samples: {job['appliedAudioFilter']}")
+            require(digest(candidate, []) == digest(case["source"], ["-af", window.group(0)]),
+                    "The lossless trim changed the kept samples")
+        else:
+            packets = lambda path: [line.split(",")[5].strip() for line in self.tools.run(self.tools.ffmpeg, ["-nostdin", "-v", "error",
+                "-i", self.tools.path(path), "-map", "0:a:0", "-c", "copy", "-f", "framehash", "-hash", "sha256", "-"]).splitlines()
+                if line.strip() and not line.startswith("#")]
+            source_packets, output_packets = packets(case["source"]), packets(candidate)
+            require(any(source_packets[i:i + len(output_packets)] == output_packets for i in range(len(source_packets) - len(output_packets) + 1)),
+                    "The copied audio is not an unbroken run of the source's packets")
+        before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
+        require(abs(before["lufs"] - after["lufs"]) <= 0.5, "Trimming moved the loudness by more than 0.5 LUFS")
+        save(self.report.root / name / "independent-trim-only.json", {"duration": duration, "silence": log, "source": before, "candidate": after})
+        self.replace_restore(case, candidate)
+        return {"duration": duration, "restoredOriginal": True, "tags": len(source_tags)}
+
+    def chain_opus(self, fixture):
+        # A second Opus stream after the first, as joined tracks are: each stream carries its own tags.
+        extension, codec_args, _, _ = self.TRIM_ONLY["opus"]
+        second = fixture.with_name(fixture.stem + "-second" + extension)
+        self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.4:duration=20:sample_rate=48000:seed=9",
+            "-ac", "2", *codec_args, "-serial_offset", "4242", "-fflags", "+bitexact", "-metadata", "title=Second stream", self.tools.path(second)])
+        audio_tags._replace(fixture, fixture.read_bytes() + second.read_bytes())
+        second.unlink()
+
+    def audio_trim_only_refused(self, fmt, expected, tags="lost"):
+        # Tags FFmpeg would lose: the file is left alone before any job, with the tags named, and unchanged.
+        _, _, target, _ = self.TRIM_ONLY[fmt]
+        name = f"audio-trim-only-{fmt}-{tags}-tags"
+        fixture = self.trim_only_fixture(fmt, name)
+        if tags == "chained":
+            self.chain_opus(fixture)
+        else:
+            self.TRIM_ONLY_TAGS[(fmt, tags)](fixture)
+        case = self.create_job(name, fixture, overrides=self.trim_only_overrides(target), expected_ineligible=expected)
+        jobs = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
+        require(not jobs, f"A job was queued for a refused file: {jobs}")
+        return {"reason": case["eligibility"]["reason"], "sourceUnchanged": case["sourceUnchanged"]}
 
     def audio_final_quality_retry(self):
         self.select_worker(None)
@@ -1338,6 +1494,19 @@ class Harness:
                 self.report.case("local-audio-artwork", lambda: self.audio("mp3", artwork=True))
                 for codec in ("opus", "aac", "mp3"):
                     self.report.case(f"local-audio-trim-{codec}", lambda c=codec: self.audio_trim(c))
+                for fmt in self.TRIM_ONLY:
+                    self.report.case(f"local-audio-trim-only-{fmt}", lambda f=fmt: self.audio_trim_only(f))
+                self.report.case("local-audio-trim-only-mp3-kept-tags", lambda: self.audio_trim_only("mp3", tags="kept"))
+                self.report.case("local-audio-trim-only-mp3-lost-tags",
+                                 lambda: self.audio_trim_only_refused("mp3", "(POPM, UFID, USLT)"))
+                self.report.case("local-audio-trim-only-flac-lost-tags",
+                                 lambda: self.audio_trim_only_refused("flac", "(ARTIST ×2)"))
+                self.report.case("local-audio-trim-only-mp3-stacked-tags",
+                                 lambda: self.audio_trim_only_refused("mp3", "(a second ID3v2 tag)", tags="stacked"))
+                self.report.case("local-audio-trim-only-mp3-cp1251-tags",
+                                 lambda: self.audio_trim_only_refused("mp3", "legacy character set (TIT2)", tags="cp1251"))
+                self.report.case("local-audio-trim-only-opus-chained-tags",
+                                 lambda: self.audio_trim_only_refused("opus", "(more than one Ogg stream)", tags="chained"))
                 usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
                 if tier == "fleet" and not usable:
                     self.report.case("audio-workers", lambda: (_ for _ in ()).throw(Blocked("No audio workers paired")))

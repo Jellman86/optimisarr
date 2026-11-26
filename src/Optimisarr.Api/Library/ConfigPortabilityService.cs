@@ -217,6 +217,7 @@ public sealed class ConfigPortabilityService(
             library.TrimAudioSilence = snapshot.TrimAudioSilence ?? false;
             library.AudioSilenceThresholdDb = snapshot.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb;
             library.AudioSilenceMinimumSeconds = snapshot.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds;
+            library.TrimSilenceWithoutConverting = snapshot.TrimSilenceWithoutConverting ?? false;
             library.AutoDedupeEnabled = snapshot.AutoDedupeEnabled ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
@@ -674,7 +675,8 @@ public sealed class ConfigPortabilityService(
         library.AutoDedupeEnabled,
         library.TrimAudioSilence,
         library.AudioSilenceThresholdDb,
-        library.AudioSilenceMinimumSeconds);
+        library.AudioSilenceMinimumSeconds,
+        library.TrimSilenceWithoutConverting);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

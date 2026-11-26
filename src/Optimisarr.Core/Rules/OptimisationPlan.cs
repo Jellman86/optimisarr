@@ -30,8 +30,10 @@ public sealed record PlannedImage(string Format, int Quality, ImageDownscaleMode
 /// <summary>
 /// What happens to the sound. A null codec means every kept track is copied untouched.
 /// <see cref="TrimsSilence"/> is a rule, not a finding: the job measures whether there is any.
+/// <see cref="TrimOnly"/> is a music file that keeps its format and is only trimmed, so a job that
+/// finds no silence ends without writing anything.
 /// </summary>
-public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo, bool TrimsSilence = false);
+public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo, bool TrimsSilence = false, bool TrimOnly = false);
 
 /// <summary>One audio or subtitle track of the source, in stream order, and whether the new file keeps it.</summary>
 public sealed record PlannedTrack(int Index, string? Language, bool Kept);
@@ -75,6 +77,7 @@ public static class OptimisationPlanner
         bool sourceHasMp4IncompatibleAudio = false,
         bool upscales = false)
     {
+        var trimOnly = CandidateEvaluator.TrimOnlyPlanFor(media, rules);
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.RelativePath,
@@ -90,7 +93,8 @@ public static class OptimisationPlanner
             sourceAudioLanguages: media.AudioLanguages,
             sourceSubtitleLanguages: media.SubtitleLanguages,
             sourceWidth: media.Width,
-            sourceHeight: media.Height);
+            sourceHeight: media.Height,
+            audioTrimOnly: trimOnly);
 
         var fileName = Path.GetFileName(spec.OutputPath);
         var container = Path.GetExtension(fileName).TrimStart('.');
@@ -114,6 +118,12 @@ public static class OptimisationPlanner
                 rules.ImageDownscaleValue,
                 RecompressesLossy: media.VideoCodec is { } imageCodec && !ImageTarget.IsLossless(imageCodec));
             return new OptimisationPlan(media.Kind, Image, null, null, null, null, file, image);
+        }
+
+        if (trimOnly is not null)
+        {
+            return new OptimisationPlan(media.Kind, Audio, null,
+                new PlannedSound(trimOnly.Codec, null, false, TrimsSilence: true, TrimOnly: true), null, null, file);
         }
 
         if (media.Kind == MediaKind.Audio)

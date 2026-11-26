@@ -1439,6 +1439,20 @@ test('trimming silence is off by default, shows its two numbers when on, and sav
   expect((await saved).postDataJSON()).toMatchObject({ trimAudioSilence: true, audioSilenceThresholdDb: -60, audioSilenceMinimumSeconds: 1.5 })
 })
 
+test('trimming files that are not converted appears only while trimming is on, and saves', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/audio')
+  const trimOnly = page.getByRole('checkbox', { name: "Also trim files that aren't converted", exact: true })
+  await expect(trimOnly).toHaveCount(0)
+
+  await page.getByRole('checkbox', { name: 'Trim silence at the start and end', exact: true }).check()
+  await expect(trimOnly).not.toBeChecked()
+  await trimOnly.check()
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ trimAudioSilence: true, trimSilenceWithoutConverting: true })
+})
+
 test('trimming silence with the audio check on says why it cannot be saved', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Music', audioQualityReportingEnabled: true })
   await page.goto('/#/libraries/1/configure/audio')

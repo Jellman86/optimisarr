@@ -139,4 +139,10 @@ public sealed record VerificationInput(
     // A music file trimmed of silence at its start and end: the length to expect, and the silence
     // the output was measured to start and end with. Null when nothing was trimmed.
     Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
-    Optimisarr.Core.Queue.TrimmedEdges? OutputEdgeSilence = null);
+    Optimisarr.Core.Queue.TrimmedEdges? OutputEdgeSilence = null,
+    // A music file only trimmed, keeping its format: what proves the audio between the cuts is
+    // the source's own. Null for every other job; a trim-only job always sets it.
+    KeptAudioEvidence? KeptAudio = null,
+    // The same job's tags, source and output, read natively. Null for every other job; a trim-only
+    // job always sets it.
+    TagsKeptEvidence? TagsKept = null);

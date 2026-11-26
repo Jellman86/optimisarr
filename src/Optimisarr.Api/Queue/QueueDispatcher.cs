@@ -1503,6 +1503,35 @@ public sealed partial class QueueDispatcher(
                 MinimumImagePerceptualScore: library?.MinimumImagePerceptualScore));
 
     /// <summary>
+    /// Why a job's own spec keeps it on this server, or null. Each of these is measured against, or
+    /// checked with, something only this server has: the reference it would be judged against, or
+    /// a trim's measured window and the native comparison of the trimmed file with its source.
+    /// </summary>
+    internal static string? ServerOnlyRefusal(TranscodeSpec spec)
+    {
+        if (spec.Deinterlace)
+            return "This source is deinterlaced, which runs on this server: a worker cannot deinterlace the reference it would judge the result against.";
+        if (spec.Denoise != NoiseReduction.Off)
+            return "This library reduces noise, which runs on this server: a worker cannot clean the reference it would judge the result against.";
+        if (spec.SilenceTrim is not null || spec.AudioTrimOnly is not null)
+            return "This music file has silence trimmed from its edges, which is measured and checked on this server.";
+        return null;
+    }
+
+    /// <summary>
+    /// What verification holds a music file's sound to: the codec to expect, and for a trimmed file
+    /// the window kept and, when it was not converted, the proof that its audio and tags are the
+    /// source's own. A trim-only snapshot always carries both, so those checks cannot be skipped.
+    /// </summary>
+    internal static OriginalSnapshot WithSoundContract(OriginalSnapshot original, TranscodeSpec spec, Optimisarr.Core.Rules.RuleSettings rules) =>
+        original with
+        {
+            SilenceTrim = spec.SilenceTrim,
+            ExpectedAudioCodec = spec.Kind == MediaKind.Audio ? spec.AudioTrimOnly?.Codec ?? rules.TargetAudioCodec : null,
+            AudioTrimOnly = spec.AudioTrimOnly,
+        };
+
+    /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
     /// cannot. Runs the same preparation as local dispatch — fresh probes, crop detection, the
     /// picture and audio contract, verification policy — with the encoder chosen from the worker's
@@ -1541,20 +1570,9 @@ public sealed partial class QueueDispatcher(
         // this server's engine over this server's frames, and a worker lease carries only ffmpeg
         // arguments. Offering it would produce an ordinary source-sized candidate that passes
         // verification and replaces the original without the upscaling that was asked for.
-        if (work.Spec.Deinterlace)
+        if (ServerOnlyRefusal(work.Spec) is { } serverOnly)
         {
-            return RemoteWorkPlan.Refused(
-                "This source is deinterlaced, which runs on this server: a worker cannot deinterlace the reference it would judge the result against.");
-        }
-        if (work.Spec.Denoise != NoiseReduction.Off)
-        {
-            return RemoteWorkPlan.Refused(
-                "This library reduces noise, which runs on this server: a worker cannot clean the reference it would judge the result against.");
-        }
-        if (work.Spec.SilenceTrim is not null)
-        {
-            return RemoteWorkPlan.Refused(
-                "This music file has silence trimmed from its edges, which is measured and checked on this server.");
+            return RemoteWorkPlan.Refused(serverOnly);
         }
         if (work.SuperResolution is not null)
         {
@@ -2014,6 +2032,38 @@ public sealed partial class QueueDispatcher(
             }
         }
 
+        // A music file the library does not convert may still be trimmed, keeping its format. Only
+        // a job meant to replace its source does this: a preview shows the conversion, as before.
+        var audioTrimOnly = media.MediaKind == MediaKind.Audio && !isDisposable
+            ? Optimisarr.Core.Rules.CandidateEvaluator.TrimOnlyPlanFor(CandidateService.PropertiesOf(media), rules)
+            : null;
+        Id3Layout? trimOnlyId3 = null;
+        if (audioTrimOnly is not null)
+        {
+            // The plan keeps the codec the file has now, which a fresh probe proves; the inventory may
+            // predate a change the next scan has not seen yet.
+            freshSourceProbe ??= await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            var probedCodec = freshSourceProbe is { Success: true, AudioCodecs: [var only] } ? only : null;
+            if (!string.Equals(probedCodec, audioTrimOnly.Codec, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new JobNoLongerEligibleException(probedCodec is null
+                    ? "The file could not be probed again just before trimming, so it is left as it is."
+                    : $"The file's audio is now {probedCodec}, not the {audioTrimOnly.Codec} it was scanned as, so it is left as it is until the next scan.");
+            }
+
+            // Tags FFmpeg would not write back unchanged stop the job before any work, and the reason
+            // stays with the file so Candidates shows it until the file changes.
+            var tags = await scope.ServiceProvider.GetRequiredService<MusicTagService>().ReadAsync(media.Path, cancellationToken);
+            if (TrimOnlyTags.Refusal(tags) is { } tagRefusal)
+            {
+                await db.MediaFiles.Where(file => file.Id == media.Id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(file => file.TrimOnlyTagRefusal, tagRefusal), cancellationToken);
+                throw new JobNoLongerEligibleException(tagRefusal);
+            }
+            if (tags.Tags is { Layout: MusicTagLayout.Id3 } id3) trimOnlyId3 = new(id3.Id3Version, id3.HasId3v1);
+        }
+
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.Path,
@@ -2043,7 +2093,8 @@ public sealed partial class QueueDispatcher(
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
             adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true,
-            sourceAudioChannelLayout: sourceAudioChannelLayout);
+            sourceAudioChannelLayout: sourceAudioChannelLayout,
+            audioTrimOnly: audioTrimOnly) with { TrimOnlyId3 = trimOnlyId3 };
         // The probe just made is the authority when there is one, as it is for the other source facts.
         var sourceFieldOrder = freshSourceProbe is { Success: true, FieldOrder: { } probedOrder } ? probedOrder : media.FieldOrder;
         spec = spec with
@@ -2053,10 +2104,27 @@ public sealed partial class QueueDispatcher(
         };
         // The audio quality measurement compares windows at equal offsets in files of equal length, so
         // a library that measures it is never trimmed, whatever an older save left switched on.
-        if (media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence && spec.AudioEncoder is not null
-            && library is { AudioQualityReportingEnabled: false, AudioQualityGateEnabled: false, AdaptiveAudioQuality: false })
+        var trimsSilence = media.MediaKind == MediaKind.Audio && !isDisposable && rules.TrimAudioSilence
+            && (spec.AudioEncoder is not null || spec.AudioTrimOnly is not null)
+            && library is { AudioQualityReportingEnabled: false, AudioQualityGateEnabled: false, AdaptiveAudioQuality: false };
+        var silenceReason = "";
+        if (trimsSilence)
         {
-            spec = spec with { SilenceTrim = await PlanSilenceTrimAsync(scope, job, media, rules, cancellationToken) };
+            var silence = await PlanSilenceTrimAsync(scope, job, media, rules, freshSourceProbe, cancellationToken);
+            var silenceTrim = silence.Plan;
+            // A copy starts a little early, on a frame, and verification expects that window.
+            if (silenceTrim is not null && spec.AudioTrimOnly is { Method: AudioTrimOnlyMethod.StreamCopy })
+                silenceTrim = AudioTrimOnly.ForStreamCopy(silenceTrim);
+            spec = spec with { SilenceTrim = silenceTrim };
+            silenceReason = silence.Reason;
+        }
+
+        // A trim-only job with nothing to trim would only write the source again.
+        if (spec.AudioTrimOnly is not null && spec.SilenceTrim is null)
+        {
+            throw new JobNoLongerEligibleException(trimsSilence
+                ? $"{silenceReason} This file is not converted, so it is left as it is."
+                : "Trimming silence cannot be combined with audio quality measurement yet, and this file is not converted.");
         }
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
@@ -2169,7 +2237,7 @@ public sealed partial class QueueDispatcher(
                 throw new InvalidOperationException("Fresh source probe required for VMAF model selection failed.");
         }
 
-        var original = new OriginalSnapshot(
+        var original = WithSoundContract(new OriginalSnapshot(
             media.Path,
             media.SizeBytes,
             mediaDurationSeconds,
@@ -2200,7 +2268,6 @@ public sealed partial class QueueDispatcher(
             ExpectedWidth: spec.ExpectedSize?.Width,
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
-            SilenceTrim: spec.SilenceTrim,
             FrameRate: spec.FrameRate,
             Deinterlaced: spec.Deinterlace,
             Denoised: spec.Denoise,
@@ -2211,11 +2278,11 @@ public sealed partial class QueueDispatcher(
             // Track cleanup (no codec, no target container) promises the container type
             // is untouched; verification holds the output to that promise.
             ContainerMustMatch: rules.TargetVideoCodec is null && rules.TargetContainer is null,
-            ExpectedAudioCodec: spec.Kind == MediaKind.Audio ? rules.TargetAudioCodec : null,
             VmafModel: QualityScoreCommandBuilder.ModelForJob(job.VmafModel, job.WorkOutputPath is not null,
                 spec.CropTo?.Width ?? modelSourceProbe?.Width ?? media.Width ?? 0,
                 spec.CropTo?.Height ?? modelSourceProbe?.Height ?? media.Height ?? 0,
-                media.IsHdr || modelSourceProbe?.IsHdr == true, modelSourceProbe?.VideoFrameRate, spec.FrameRate is not null, job.AdaptiveVideoQuality is not null));
+                media.IsHdr || modelSourceProbe?.IsHdr == true, modelSourceProbe?.VideoFrameRate, spec.FrameRate is not null, job.AdaptiveVideoQuality is not null)),
+            spec, rules);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,
@@ -3884,14 +3951,16 @@ public sealed partial class QueueDispatcher(
     /// <summary>
     /// Measures a music file's silence and remembers the decision on the job for the rest of this
     /// attempt; a new attempt measures again, because the file at the path may have changed. Every
-    /// doubt resolves to no trim (see <see cref="SilenceTrimPlanner.Decide"/>).
+    /// doubt resolves to no trim (see <see cref="SilenceTrimPlanner.Decide"/>), and only a file that
+    /// was measured and has nothing to trim is recorded as such (see <see cref="SilenceTrimRecord"/>).
     /// </summary>
-    private async Task<AudioTrimPlan?> PlanSilenceTrimAsync(
-        AsyncServiceScope scope, Job job, MediaFile media, Optimisarr.Core.Rules.RuleSettings rules, CancellationToken cancellationToken)
+    private async Task<SilenceTrimDecision> PlanSilenceTrimAsync(
+        AsyncServiceScope scope, Job job, MediaFile media, Optimisarr.Core.Rules.RuleSettings rules,
+        MediaProbeResult? freshProbe, CancellationToken cancellationToken)
     {
-        if (job.DetectedSilenceTrim is { } decided) return AudioTrimPlan.TryParse(decided);
+        if (job.DetectedSilenceTrim is { } decided) return SilenceTrimRecord.Read(decided);
 
-        var probe = await scope.ServiceProvider.GetRequiredService<MediaProbeService>().ProbeAsync(media.Path, cancellationToken);
+        var probe = freshProbe ?? await scope.ServiceProvider.GetRequiredService<MediaProbeService>().ProbeAsync(media.Path, cancellationToken);
         var source = new SilenceTrimSource(
             probe.Success,
             probe.DurationSeconds,
@@ -3908,10 +3977,10 @@ public sealed partial class QueueDispatcher(
             : null;
         var decision = SilenceTrimPlanner.Decide(source, measurement, rules.AudioSilenceThresholdDb);
 
-        var stored = decision.Plan?.ToString() ?? "none";
+        var stored = SilenceTrimRecord.For(decision, rules.AudioSilenceThresholdDb, rules.AudioSilenceMinimumSeconds);
         await WithJobAsync(job.Id, tracked => tracked.DetectedSilenceTrim = stored, cancellationToken);
         logger.LogInformation("Job {JobId}: {Decision}", job.Id, decision.Reason);
-        return decision.Plan;
+        return decision;
     }
 
     internal static VerificationClip? BuildVerificationClip(

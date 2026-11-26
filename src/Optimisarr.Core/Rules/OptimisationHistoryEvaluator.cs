@@ -11,8 +11,14 @@ namespace Optimisarr.Core.Rules;
 /// <param name="LastFailedJobId">That most recent failed job, so the user can try it again.</param>
 public sealed record OptimisationHistory(DateTimeOffset? LastCompletedAt, DateTimeOffset? LastFailedAt, int? LastFailedJobId = null)
 {
+    /// <summary>When a trim-only job last measured this file and found no silence to trim, and with which settings.</summary>
+    public NothingToTrim? LastNothingToTrim { get; init; }
+
     public static readonly OptimisationHistory None = new(null, null);
 }
+
+/// <summary>A trim-only job measured a file's silence with these settings and found nothing to trim.</summary>
+public sealed record NothingToTrim(DateTimeOffset At, double ThresholdDb, double MinimumSeconds);
 
 /// <summary>
 /// Pure overlay that stops a file being optimised over and over. It sits on top of
@@ -26,7 +32,8 @@ public static class OptimisationHistoryEvaluator
     public static CandidateDecision Apply(
         CandidateDecision baseDecision,
         OptimisationHistory history,
-        DateTimeOffset fileModifiedAt)
+        DateTimeOffset fileModifiedAt,
+        RuleSettings? rules = null)
     {
         // Rule-based skips already carry the most specific reason; leave them alone.
         if (!baseDecision.IsEligible)
@@ -42,6 +49,16 @@ public static class OptimisationHistoryEvaluator
         if (IsCurrent(history.LastFailedAt, fileModifiedAt))
         {
             return CandidateDecision.HeldBackByFailure("Failed last time, so it isn't tried again by itself", history.LastFailedJobId);
+        }
+
+        // A trim-only job with nothing to trim ends without a file, so it is neither a success nor
+        // a failure; without this the file would be measured again on every pass. A different
+        // threshold or minimum length could find silence the last measurement did not, so either
+        // change offers the file again.
+        if (baseDecision.TrimsOnly && history.LastNothingToTrim is { } none && IsCurrent(none.At, fileModifiedAt)
+            && (rules is null || none.ThresholdDb.Equals(rules.AudioSilenceThresholdDb) && none.MinimumSeconds.Equals(rules.AudioSilenceMinimumSeconds)))
+        {
+            return CandidateDecision.Skipped("Measured for silence to trim, and there was none");
         }
 
         return baseDecision;

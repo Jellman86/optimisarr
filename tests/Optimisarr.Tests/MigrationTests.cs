@@ -118,6 +118,27 @@ public sealed class MigrationTests : IDisposable
         Assert.Equal(2, library.AudioSilenceMinimumSeconds);
     }
 
+    [Fact]
+    public async Task Trim_without_converting_migration_leaves_existing_libraries_off()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261119212019_TrimAudioSilence");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt, TrimAudioSilence)
+            VALUES ('Music', '/data/music', 'Music', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 1);
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        var library = await db.Libraries.SingleAsync();
+        Assert.True(library.TrimAudioSilence);
+        Assert.False(library.TrimSilenceWithoutConverting);
+    }
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
         "optimisarr-tests",

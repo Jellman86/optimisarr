@@ -240,6 +240,13 @@ public sealed class Library
     public double AudioSilenceMinimumSeconds { get; set; } = 2;
 
     /// <summary>
+    /// When true as well as <see cref="TrimAudioSilence"/>, a music file that is not converted is
+    /// still trimmed, keeping its format: lossless audio is encoded again losslessly and MP3, AAC
+    /// and Opus are cut by copying their frames. Off by default.
+    /// </summary>
+    public bool TrimSilenceWithoutConverting { get; set; }
+
+    /// <summary>
     /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
     /// tracks in any other language are removed from the output. Null (the default) keeps every
     /// track. Tracks with an unknown language are always kept, and when no track matches a kept

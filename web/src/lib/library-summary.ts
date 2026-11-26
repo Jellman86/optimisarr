@@ -55,7 +55,10 @@ export const isAudioLibrary = (mediaType: string) => mediaType === 'Music' || me
 export const isImageLibrary = (mediaType: string) => mediaType === 'Photo' || mediaType === 'Other'
 
 export function codecName(codec: string | null | undefined): string {
-  return codec ? codecNames[codec.toLowerCase()] ?? codec.toUpperCase() : ''
+  if (!codec) return ''
+  // ffprobe names PCM by its sample layout (pcm_s24le); a person knows it as PCM.
+  if (codec.toLowerCase().startsWith('pcm_')) return 'PCM'
+  return codecNames[codec.toLowerCase()] ?? codec.toUpperCase()
 }
 
 function fill(template: string, params: Record<string, string | number>): string {
@@ -278,9 +281,11 @@ function audioLine(library: SaveLibrary, { m, locale, preset }: SummaryContext):
     sentences.push(library.adaptiveAudioQuality && library.audioQualityGateEnabled
       ? fill(s.music_target, { codec })
       : fill(s.music_convert, { codec, kbps: library.audioBitrateKbps ?? preset?.audioBitrateKbps ?? 128 }))
-    sentences.push(library.reencodeLossyAudio ? s.music_lossy_too : s.music_lossy_left)
+    sentences.push(library.reencodeLossyAudio ? s.music_lossy_too
+      : library.trimAudioSilence && library.trimSilenceWithoutConverting ? s.music_lossy_kept : s.music_lossy_left)
     if (library.trimAudioSilence) {
       sentences.push(s.music_trims_silence)
+      if (library.trimSilenceWithoutConverting) sentences.push(s.music_trims_unconverted)
       tags.push({ tone: 'warn', text: s.tag_shortens })
     }
     if ((!video || !encodesVideo(library)) && library.downmixToStereo) sentences.push(s.audio_downmix)

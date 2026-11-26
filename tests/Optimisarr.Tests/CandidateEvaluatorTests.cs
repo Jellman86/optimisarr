@@ -32,8 +32,9 @@ public sealed class CandidateEvaluatorTests
         int? audioBitrateKbps = null,
         int attachedPictureCount = 0,
         int subtitleTrackCount = 0,
-        int maxAudioChannels = 2) =>
-        new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
+        int maxAudioChannels = 2,
+        string relativePath = "Music/Album/Track.flac") =>
+        new(null, null, null, null, sizeBytes, false, relativePath, null,
             MediaKind.Audio, audioCodec, audioBitrateKbps, AttachedPictureCount: attachedPictureCount,
             SubtitleTrackCount: subtitleTrackCount, MaxAudioChannels: maxAudioChannels);
 
@@ -201,6 +202,77 @@ public sealed class CandidateEvaluatorTests
 
         Assert.False(decision.IsEligible);
         Assert.Contains("384 kbps target", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly RuleSettings TrimsOnly = Hevc with { TrimAudioSilence = true, TrimSilenceWithoutConverting = true };
+
+    [Fact]
+    public void A_lossy_file_that_is_not_converted_is_trimmed_only_when_the_library_asks()
+    {
+        var mp3 = AudioFile("mp3", audioBitrateKbps: 128, relativePath: "Music/Album/Track.mp3");
+
+        var trimmed = CandidateEvaluator.Evaluate(mp3, TrimsOnly);
+        var leftAlone = CandidateEvaluator.Evaluate(mp3, TrimsOnly with { TrimSilenceWithoutConverting = false });
+        var notTrimming = CandidateEvaluator.Evaluate(mp3, TrimsOnly with { TrimAudioSilence = false });
+
+        Assert.True(trimmed.IsEligible);
+        Assert.True(trimmed.TrimsOnly);
+        Assert.Contains("Trims silence only", trimmed.Reason);
+        Assert.False(leftAlone.IsEligible);
+        Assert.False(notTrimming.IsEligible);
+    }
+
+    [Fact]
+    public void A_file_that_is_converted_is_not_a_trim_only_job()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac"), TrimsOnly);
+
+        Assert.True(decision.IsEligible);
+        Assert.False(decision.TrimsOnly);
+        Assert.Null(CandidateEvaluator.TrimOnlyPlanFor(AudioFile("flac"), TrimsOnly));
+    }
+
+    [Fact]
+    public void Every_reason_a_file_is_not_converted_can_lead_to_a_trim_only_job()
+    {
+        var already = AudioFile("opus", audioBitrateKbps: 256, relativePath: "Music/Album/Track.opus");
+        var lossyLeftAlone = AudioFile("opus", audioBitrateKbps: 320, relativePath: "Music/Album/Track.opus");
+        var artBlocksConversion = AudioFile("flac", attachedPictureCount: 1);
+        var tooSmallToSave = AudioFile("mp3", sizeBytes: 3L * 1024 * 1024, audioBitrateKbps: 320, relativePath: "Music/Album/Track.mp3");
+
+        Assert.True(CandidateEvaluator.Evaluate(already, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
+        Assert.All([lossyLeftAlone, artBlocksConversion, tooSmallToSave],
+            media => Assert.True(CandidateEvaluator.Evaluate(media, TrimsOnly).TrimsOnly));
+        // An M4A already in the target codec is not converted, and its tags keep it from a trim too.
+        var m4a = CandidateEvaluator.Evaluate(AudioFile("aac", audioBitrateKbps: 256, relativePath: "Music/Album/Track.m4a"), TrimsOnly);
+        Assert.False(m4a.IsEligible);
+        Assert.EndsWith("Trimming M4A without converting would rewrite its tags in a form many players can't read.", m4a.Reason);
+        Assert.Equal(new Optimisarr.Core.Queue.AudioTrimOnlyPlan(Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode, "flac", "flac"),
+            CandidateEvaluator.TrimOnlyPlanFor(artBlocksConversion, TrimsOnly));
+    }
+
+    [Fact]
+    public void A_file_that_cannot_be_trimmed_without_converting_says_both_why_it_is_not_converted_and_not_trimmed()
+    {
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("vorbis", audioBitrateKbps: 128, relativePath: "Music/Album/Track.ogg"), TrimsOnly);
+
+        Assert.False(decision.IsEligible);
+        Assert.False(decision.TrimsOnly);
+        Assert.Contains("lossy", decision.Reason);
+        Assert.Contains("cannot be trimmed without converting", decision.Reason);
+    }
+
+    [Fact]
+    public void A_file_with_no_audio_or_one_excluded_by_the_library_is_never_trimmed()
+    {
+        var noAudio = new MediaProperties(null, null, null, null, 40L * 1024 * 1024, false, "Music/Track.mp3", Kind: MediaKind.Audio);
+        var excluded = TrimsOnly with { SkipSourceCodecs = ["mp3"] };
+        var mp3 = AudioFile("mp3", audioBitrateKbps: 128, relativePath: "Music/Album/Track.mp3");
+
+        Assert.False(CandidateEvaluator.Evaluate(noAudio, TrimsOnly).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(mp3, excluded).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(mp3 with { OptimisedMarker = "v1" }, TrimsOnly).IsEligible);
     }
 
     [Fact]

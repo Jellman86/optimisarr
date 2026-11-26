@@ -233,4 +233,35 @@ public sealed class SilenceTrimTests
         Assert.DoesNotContain("atrim", FfmpegCommandBuilder.AudioFilterChain(Music_() with { ClipSeconds = 30 }) ?? "");
         Assert.DoesNotContain("atrim", FfmpegCommandBuilder.AudioFilterChain(Music_() with { Kind = MediaKind.Video }) ?? "");
     }
+
+    [Fact]
+    public void Only_a_measured_file_with_nothing_to_trim_is_recorded_as_such_with_the_settings_it_was_measured_with()
+    {
+        var none = SilenceTrimPlanner.Plan(new SilenceMeasurement([], 60), 44_100, -60);
+        var unprobed = SilenceTrimPlanner.Decide(new SilenceTrimSource(false, null, 1, 44_100, false), null, -60);
+        var twoStreams = SilenceTrimPlanner.Decide(new SilenceTrimSource(true, 60, 2, 44_100, false), null, -60);
+        var mismatch = SilenceTrimPlanner.Decide(new SilenceTrimSource(true, 60, 1, 44_100, false), new SilenceMeasurement([], 50), -60);
+
+        Assert.True(none.Measured);
+        Assert.Equal("none:-60:2", SilenceTrimRecord.For(none, -60, 2));
+        Assert.True(SilenceTrimRecord.TryReadNothingToTrim("none:-60:2", out var threshold, out var minimum));
+        Assert.Equal((-60, 2), (threshold, minimum));
+        Assert.All([unprobed, twoStreams, mismatch], decision =>
+        {
+            Assert.False(decision.Measured);
+            Assert.Equal(SilenceTrimRecord.Unmeasured, SilenceTrimRecord.For(decision, -60, 2));
+        });
+        // A record from before the settings were kept says nothing about which settings found nothing.
+        Assert.False(SilenceTrimRecord.TryReadNothingToTrim("none", out _, out _));
+    }
+
+    [Fact]
+    public void A_stored_record_stands_for_the_same_decision_on_a_retry()
+    {
+        var plan = new AudioTrimPlan(121_275, 584_325, 44_100, 16, -60);
+
+        Assert.Equal(plan, SilenceTrimRecord.Read(plan.ToString()).Plan);
+        Assert.True(SilenceTrimRecord.Read("none:-60:2") is { Plan: null, Measured: true });
+        Assert.True(SilenceTrimRecord.Read(SilenceTrimRecord.Unmeasured) is { Plan: null, Measured: false });
+    }
 }

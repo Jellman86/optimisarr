@@ -155,6 +155,32 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("No audio stream detected");
         }
 
+        var conversion = EvaluateAudioConversion(media, media.AudioCodec, rules);
+        if (conversion.IsEligible || !rules.TrimAudioSilence || !rules.TrimSilenceWithoutConverting)
+        {
+            return conversion;
+        }
+
+        // Every reason not to convert is about the conversion, so none of them stops a trim that
+        // keeps the file's format. The size floor goes too: it asks whether a conversion saves
+        // enough, and a trim is asked for to remove silence, not to save space.
+        var trimOnly = AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal);
+        return trimOnly.Plan is null
+            ? CandidateDecision.Skipped($"{conversion.Reason}. {trimOnly.Reason}")
+            : CandidateDecision.Eligible(trimOnly.Reason) with { TrimsOnly = true };
+    }
+
+    /// <summary>
+    /// How a music file that is not converted has its silence trimmed, or null when it is converted
+    /// or not trimmed at all. The same decision as <see cref="Evaluate"/>, for the job to act on.
+    /// </summary>
+    public static AudioTrimOnlyPlan? TrimOnlyPlanFor(MediaProperties media, RuleSettings rules) =>
+        media.Kind == MediaKind.Audio && EvaluateAudio(media, rules).TrimsOnly
+            ? AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal).Plan
+            : null;
+
+    private static CandidateDecision EvaluateAudioConversion(MediaProperties media, string audioCodec, RuleSettings rules)
+    {
         if (media.SizeBytes < AudioTarget.MinFileSizeBytes)
         {
             return CandidateDecision.Skipped($"Below minimum size ({FormatSize(AudioTarget.MinFileSizeBytes)})");
@@ -194,7 +220,7 @@ public static class CandidateEvaluator
             rules.AudioBitrateKbps, media.MaxAudioChannels, rules.DownmixToStereo);
 
         // Lossless sources are always worth re-encoding: a large saving with no audible loss.
-        if (AudioTarget.IsLossless(media.AudioCodec))
+        if (AudioTarget.IsLossless(audioCodec))
         {
             return CandidateDecision.Eligible($"{media.AudioCodec} → {rules.TargetAudioCodec}");
         }

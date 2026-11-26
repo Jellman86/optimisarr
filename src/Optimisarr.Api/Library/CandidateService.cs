@@ -93,7 +93,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             decision = OptimisationHistoryEvaluator.Apply(
                 decision,
                 history.GetValueOrDefault(file.Id, OptimisationHistory.None),
-                file.ModifiedAt);
+                file.ModifiedAt,
+                rules);
 
             // An explicit exclusion overrides every other verdict with a clear, durable reason.
             if (excludedPaths.Contains(file.Path))
@@ -212,7 +213,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
             TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages),
             file.HardLinkCount,
-            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs };
+            file.FieldOrder) { AudioCodecSummary = file.AudioCodecs, TrimOnlyTagRefusal = file.TrimOnlyTagRefusal };
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }
@@ -254,10 +255,13 @@ public sealed class CandidateService(OptimisarrDbContext db)
     private async Task<Dictionary<int, OptimisationHistory>> LoadHistoryAsync(
         int? libraryId, CancellationToken cancellationToken)
     {
+        // A trim-only job that measured no silence ends cancelled with its "none" decision kept.
         var query = db.Jobs.AsNoTracking()
             .Where(job => job.Type == JobType.Normal
                 && job.FinishedAt != null
-                && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed));
+                && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed
+                    || job.Status == JobStatus.Cancelled && job.DetectedSilenceTrim != null
+                        && job.DetectedSilenceTrim.StartsWith(SilenceTrimRecord.NothingToTrimPrefix + ":")));
         if (libraryId is not null)
         {
             query = query.Where(job => job.LibraryId == libraryId);
@@ -266,7 +270,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
         // SQLite stores DateTimeOffset as text and can't aggregate it server-side, so
         // fetch the terminal jobs and reduce to the latest per file in memory.
         var rows = await query
-            .Select(job => new { job.Id, job.MediaFileId, job.Status, job.FinishedAt })
+            .Select(job => new { job.Id, job.MediaFileId, job.Status, job.FinishedAt, job.DetectedSilenceTrim })
             .ToListAsync(cancellationToken);
 
         return rows
@@ -282,6 +286,15 @@ public sealed class CandidateService(OptimisarrDbContext db)
                         .Max(row => row.FinishedAt),
                     LastFailedJobId: group
                         .Where(row => row.Status == JobStatus.Failed)
-                        .MaxBy(row => row.FinishedAt)?.Id));
+                        .MaxBy(row => row.FinishedAt)?.Id)
+                {
+                    LastNothingToTrim = group
+                        .Where(row => row.Status == JobStatus.Cancelled)
+                        .OrderByDescending(row => row.FinishedAt)
+                        .Select(row => SilenceTrimRecord.TryReadNothingToTrim(row.DetectedSilenceTrim, out var threshold, out var minimum)
+                            ? new NothingToTrim(row.FinishedAt!.Value, threshold, minimum)
+                            : null)
+                        .FirstOrDefault(none => none is not null),
+                });
     }
 }

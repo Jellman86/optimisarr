@@ -350,7 +350,8 @@ What it does and does not cut:
   clipped.
 - Silence inside a track is never cut, and nor is a hidden track after a long gap, because that gap
   does not reach the end of the file.
-- A file is only trimmed when it is converted anyway. It does not make a file eligible on its own.
+- A file is trimmed when it is converted. A file the library would leave alone is only trimmed with
+  **Also trim files that aren't converted** (below).
 - A file with more than one audio stream is left alone, because one window would apply to all of
   them.
 - A file with synchronised lyrics, a cue sheet, chapters (`.m4b`) or a sidecar `.lrc` file only
@@ -367,6 +368,84 @@ its quarter second of silence, give or take 0.1 seconds. Too much means the cut 
 little means it reached into the music. This cannot yet be combined with **Audio
 quality**, which compares two files of the same length, so saving refuses that combination. Trimmed
 files are encoded on this server, never on a remote worker.
+
+#### Also trim files that aren't converted
+
+While trimming is on, **Also trim files that aren't converted** trims the files the library would
+otherwise leave alone: lossy files at or below the target bitrate, files already in the target
+codec, files too small for a conversion to save space, and lossless files a conversion cannot carry
+(for example FLAC with cover art in an AAC library). It is off by default. Each file keeps its
+format, name, bitrate, tags and cover art:
+
+| Format | How it is trimmed |
+| --- | --- |
+| FLAC (`.flac`), PCM WAV (`.wav`) | Decoded, cut to the exact sample, and written again with the same lossless codec, bit depth and sample rate. FLAC uses FFmpeg's strongest setting. |
+| MP3 (`.mp3`) | The audio frames are copied without re-encoding. The cut falls on a frame, starting up to 50 ms before the planned start, and FFmpeg writes the new file's own encoder delay in a fresh LAME header. The tags are written in the source's ID3 version (2.3 stays 2.3), with an ID3v1 tag again when the source has one. The iTunes `iTunSMPB` gapless figures and the `TLEN` length are removed, because they describe the original length. |
+| Opus (`.opus`, `.ogg`) | The audio frames are copied without re-encoding. Ogg cannot carry an embedded picture through FFmpeg, so an Opus file with cover art is left alone. |
+
+Everything else is left alone, with the reason in Candidates: M4A (AAC or ALAC), Vorbis, WMA, APE,
+AIFF, raw ADTS `.aac` (which records no encoder delay and only estimates its length), Opus and WAV
+with embedded cover art, and any codec in a container it is not normally found in. M4A is left alone
+because FFmpeg writes an M4A's tags back as QuickTime keys, in place of the iTunes atoms most music
+software reads, when it keeps Optimisarr's marker.
+
+**Tags must survive unchanged.** FFmpeg reads a file's tags into its own list and writes them again,
+and some do not come back the same. Optimisarr reads every tag itself, byte for byte, when it probes a
+file and again just before a job starts, and leaves alone, naming the tags in Candidates, any file
+that has one FFmpeg is known to lose or change:
+
+- MP3: comments (`COMM`), unsynchronised and synchronised lyrics (`USLT`, `SYLT`), ratings and play
+  counts (`POPM`, `PCNT`), MusicBrainz and other unique IDs (`UFID`), URL frames, chapters
+  (`CHAP`, `CTOC`), and any other frame outside the plain text frames, `TXXX`, `APIC` and `PRIV`. Also
+  a text frame with more than one value, a genre that starts with a number or a bracket such as
+  `(17)` or `80s Rock`, an ID3v2.3 `TCMP` or `TSOP`, an ID3v2.4 `TDRL`, a frame that appears twice
+  (or two `TXXX` descriptions that differ only in case), a picture whose MIME type FFmpeg respells
+  (`image/jpg` becomes `image/jpeg`), a second ID3v2 tag straight after the first, an APE, Lyrics3 or
+  enhanced ID3v1 (`TAG+`) tag, an ID3v1 genre number FFmpeg has no name for (192 to 254, written
+  back as "none"), and a compressed or encrypted frame.
+- An MP3 with both an ID3v2 and an ID3v1 tag: FFmpeg ignores the source's ID3v1 tag and writes a new
+  one from the ID3v2 frames, so fields only the ID3v1 tag held would be lost.
+- MP3 text in a legacy character set: ID3 text marked as ISO-8859-1 but holding non-ASCII bytes, in a
+  frame, a description or the ID3v1 tag. Old taggers often wrote CP1251, GBK or Shift-JIS that way,
+  and FFmpeg would write it again as Unicode that says something else. Genuine Latin-1 accents
+  written that way are left alone too, because the two cannot be told apart.
+- FLAC and Opus: a field with more than one value (FFmpeg joins two `ARTIST` fields into one
+  `A;B`), `COMMENT` (written back as `DESCRIPTION`), chapter fields, FLAC `APPLICATION` and
+  `CUESHEET` blocks, a picture whose MIME type FFmpeg respells, any tag after a FLAC stream, and a
+  chained Opus file (a second stream after the first, each with its own tags).
+- WAV: any chunk other than the format, the samples and `LIST INFO`, such as `bext`, `iXML` or an
+  `id3` chunk, and an `ITRK` entry (written back as `IPRT`).
+
+A tag Optimisarr cannot read in full counts as one it cannot keep. Each trimmed file then gets one
+more check, **Tags kept unchanged**: the output's tags are read the same way and must hold every one
+of the source's, with the same values, as many times, and no tag the source lacks. An MP3 must keep
+its ID3v2 version and its ID3v1 tag. Only the encoder name, Optimisarr's marker and the length tags
+above may differ, FLAC's padding and seek table are written again, and an MP3 with only an ID3v1 tag
+gains the same fields as ID3v2 frames. Anything else lost, changed or added fails the job and the
+original is not replaced.
+
+A lossy file is never re-encoded to trim it: that would lose quality to save nothing. A copy can
+only start on an audio frame (about 26 ms for MP3 and 20 ms for Opus), and a decoder starting
+mid-file needs a frame or two to settle. Both happen inside the quarter second of silence that is
+kept, so the music is untouched.
+
+Each trimmed file also gets the usual checks, including **Silence trimmed as planned**, and
+**Kept audio matches the original**. A lossless file must decode to exactly the source's samples
+between the cuts. A copied file must contain the source's own audio frames, every one, in order and
+unchanged. A lossless file written again must still be smaller than the original, so a file the
+source encoder compressed harder than FFmpeg can fails the size check and is not replaced.
+
+When the job measures the file and finds no silence to trim, it stops without writing anything, and
+the file is not offered again until it changes or the library's silence threshold or shortest
+silence changes. A job that could not measure the file, such as one with more than one audio stream
+or whose decoded length disagrees with its container, stops with that reason and does not hold the
+file back. ReplayGain and R128 tags are kept as they are: loudness measurement ignores silence, so
+removing it leaves them correct (on test signals the change was 0.0 dB for ReplayGain and at most
+0.1 LU for EBU R128). A preview of such a file shows the conversion, not the trim.
+
+Chapters in a converted file other than an `.m4b` are a known limit: they are kept with their
+original times, so after a trim they start up to the trimmed silence early. A file that is not
+converted and has chapters is left alone (see the tags above).
 
 ![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
 

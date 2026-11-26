@@ -34,6 +34,7 @@ public sealed record RuleOverrides
     public bool? TrimAudioSilence { get; init; }
     public double? AudioSilenceThresholdDb { get; init; }
     public double? AudioSilenceMinimumSeconds { get; init; }
+    public bool? TrimSilenceWithoutConverting { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
     public bool? ReencodeLossyAudio { get; init; }

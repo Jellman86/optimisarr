@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { RuleProfileSpec, SaveLibrary } from './api.ts'
 import { newLibraryDefaults } from './library-defaults.ts'
 import { en } from './i18n/en.ts'
-import { encodesVideo, optionalChecks, presetChanges, presetName, summariseLibrary, vmafLevelName, type SummaryContext } from './library-summary.ts'
+import { codecName, encodesVideo, optionalChecks, presetChanges, presetName, summariseLibrary, vmafLevelName, type SummaryContext } from './library-summary.ts'
 
 const balanced: RuleProfileSpec = {
   profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'Exclude',
@@ -151,6 +151,16 @@ test('keeping some languages says tracks are removed and tags the line', () => {
 test('copied audio and a stereo mix-down are said plainly', () => {
   assert.match(line('audio', { videoAudioCodec: 'copy' }).text, /^Audio is left untouched\./)
   assert.match(line('audio', { downmixToStereo: true }).text, /Mixes surround down to stereo\./)
+})
+
+test('a music library that also trims files it does not convert says so instead of leaving lossy audio alone', () => {
+  const music = summariseLibrary(library({ mediaType: 'Music', audioTargetCodec: 'opus', audioBitrateKbps: 96,
+    trimAudioSilence: true, trimSilenceWithoutConverting: true }), context)
+
+  assert.equal(music[1].text, 'Converts lossless audio to Opus at 96 kb/s. Lossy audio is not converted. '
+    + "Trims silence from the start and end of each track. Files that aren't converted are trimmed too, keeping their format. "
+    + 'A converted file gets a new extension, so its name changes.')
+  assert.equal(codecName('pcm_s24le'), 'PCM')
 })
 
 test('music and photo libraries get their own lines and no video line', () => {

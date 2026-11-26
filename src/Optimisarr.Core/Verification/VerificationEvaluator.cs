@@ -36,6 +36,8 @@ public static class VerificationEvaluator
         {
             checks.Add(DurationWithinTolerance(input, policy));
             if (input.SilenceTrim is { } trim) checks.Add(SilenceTrimmedAsPlanned(input, trim));
+            if (input.KeptAudio is { } kept) checks.Add(KeptAudioUnchanged(kept));
+            if (input.TagsKept is { } tags) checks.Add(TagsKeptUnchanged(tags));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
 
@@ -270,9 +272,11 @@ public static class VerificationEvaluator
             };
 
             // Technical container fields are regenerated legitimately and are not music tags.
+            // iTunSMPB is iTunes' encoder delay and length, and TLEN an MP3's length in milliseconds,
+            // true only of the file they were written for.
             if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
                 or "compatible_brands" or "handler_name" or "duration" or "language"
-                or "optimisarr")
+                or "optimisarr" or "itunsmpb" or "tlen")
             {
                 continue;
             }
@@ -937,6 +941,49 @@ public static class VerificationEvaluator
             return Fail(name, detail + string.Format(CultureInfo.InvariantCulture,
                 " A trimmed edge kept less than {0:0.##}s of silence, so the cut reached into the music.", least));
         return Pass(name, detail);
+    }
+
+    /// <summary>
+    /// A trim-only file changes nothing but its length. A lossless one must decode to the source's
+    /// exact samples over the kept window; a copied one must hold the source's own encoded packets,
+    /// every one, in order, with none changed or missing. Unmeasured evidence fails.
+    /// </summary>
+    private static VerificationCheck KeptAudioUnchanged(KeptAudioEvidence kept)
+    {
+        const string name = KeptAudioCheckName;
+        if (kept.Method == Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode)
+        {
+            if (kept.SourceDecodedDigest is null || kept.OutputDecodedDigest is null)
+                return Fail(name, "The decoded audio could not be compared with the source's.");
+            return string.Equals(kept.SourceDecodedDigest, kept.OutputDecodedDigest, StringComparison.OrdinalIgnoreCase)
+                ? Pass(name, "Every sample between the cuts is identical to the source's.")
+                : Fail(name, "The decoded audio between the cuts differs from the source's.");
+        }
+
+        if (kept.SourcePacketDigests is null || kept.OutputPacketDigests is null)
+            return Fail(name, "The audio frames could not be compared with the source's.");
+        return PacketRun.IsContiguousRunOf(kept.OutputPacketDigests, kept.SourcePacketDigests)
+            ? Pass(name, string.Format(CultureInfo.InvariantCulture,
+                "All {0} audio frames are unchanged copies of consecutive frames of the source's {1}.",
+                kept.OutputPacketDigests.Count, kept.SourcePacketDigests.Count))
+            : Fail(name, "The audio frames are not an unbroken, unchanged run of the source's frames.");
+    }
+
+    public const string KeptAudioCheckName = "Kept audio unchanged";
+    public const string TagsKeptCheckName = "Tags kept unchanged";
+
+    /// <summary>
+    /// A trim-only file keeps every tag the source has, frame for frame and value for value, apart
+    /// from those written again for the new length. Tags that could not be read fail.
+    /// </summary>
+    private static VerificationCheck TagsKeptUnchanged(TagsKeptEvidence evidence)
+    {
+        if (evidence.Source?.Tags is not { } source)
+            return Fail(TagsKeptCheckName, $"The original's tags could not be read: {evidence.Source?.Problem ?? "not measured"}.");
+        if (evidence.Output?.Tags is not { } output)
+            return Fail(TagsKeptCheckName, $"The new file's tags could not be read: {evidence.Output?.Problem ?? "not measured"}.");
+        var comparison = TrimOnlyTags.Compare(source, output);
+        return comparison.Kept ? Pass(TagsKeptCheckName, comparison.Detail) : Fail(TagsKeptCheckName, comparison.Detail);
     }
 
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)

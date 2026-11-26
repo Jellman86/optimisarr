@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
@@ -16,7 +17,8 @@ public sealed class LibraryInventoryService(
     OptimisarrDbContext db,
     LibraryScanner scanner,
     IMediaProbeService probe,
-    ImageMarkerService imageMarker)
+    ImageMarkerService imageMarker,
+    MusicTagService? musicTags = null)
 {
     /// <summary>Scans every enabled library and returns the combined summary.</summary>
     public async Task<ScanSummary> ScanEnabledAsync(CancellationToken cancellationToken)
@@ -91,6 +93,7 @@ public sealed class LibraryInventoryService(
                 file.FieldOrder = null;
                 file.IsVariableFrameRate = null;
                 file.AttachedPictureCount = 0;
+                file.TrimOnlyTagRefusal = null;
                 file.Width = null;
                 file.Height = null;
                 file.AudioCodecs = null;
@@ -265,6 +268,10 @@ public sealed class LibraryInventoryService(
             file.IsDolbyVision = result.IsDolbyVision;
             // Images carry their marker in EXIF/XMP (ffprobe doesn't surface it), so read it back
             // with exiftool when the container probe found none.
+            // Read now so Candidates can say why a file is not trimmed before any job is queued.
+            file.TrimOnlyTagRefusal = result.MediaKind == MediaKind.Audio && musicTags is not null && AudioTrimOnly.ReadsTags(file.Path)
+                ? TrimOnlyTags.Refusal(await ReadTagsAsync(musicTags, file.Path, cancellationToken))
+                : null;
             file.OptimisedMarker = result.OptimisedMarker
                 ?? (result.MediaKind == MediaKind.Image
                     ? await imageMarker.ReadAsync(file.Path, cancellationToken)
@@ -279,5 +286,19 @@ public sealed class LibraryInventoryService(
 
         await db.SaveChangesAsync(cancellationToken);
         return file;
+    }
+
+    // A failed tag read refuses the trim, never the probe: a file left at Discovered would be picked
+    // again by every probe sweep, ahead of the rest of the library.
+    private static async Task<MusicTagRead> ReadTagsAsync(MusicTagService musicTags, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await musicTags.ReadAsync(path, cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return MusicTagRead.Unreadable($"reading them failed: {error.Message}");
+        }
     }
 }

@@ -291,10 +291,82 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Equal(0, second.Updated);
     }
 
-    private async Task<Library> CreateLibraryAsync()
+    private sealed class AudioProbe(string codec) : IMediaProbeService
+    {
+        public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken) =>
+            Task.FromResult(MediaProbeService.Parse(
+                "{\"streams\":[{\"codec_type\":\"audio\",\"codec_name\":\"" + codec + "\",\"channels\":2,\"sample_rate\":\"44100\",\"duration\":\"16\"}],\"format\":{\"duration\":\"16\",\"format_name\":\"" + codec + "\"}}"));
+    }
+
+    [Fact]
+    public async Task Probing_a_music_file_records_the_tags_a_trim_would_lose_and_a_change_clears_them()
+    {
+        var path = WriteMediaFile("Album/Rated.mp3");
+        await File.WriteAllBytesAsync(path, [.. MusicTagFixtures.Id3v2(4, MusicTagFixtures.Frame("POPM", [.. "x@y\0"u8.ToArray(), 196, 0, 0, 0, 5])),
+            .. MusicTagFixtures.AudioFrames]);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-2));
+        var library = await CreateLibraryAsync(MediaType.Music);
+        await ScanAsync(library);
+        int id;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            id = (await db.MediaFiles.SingleAsync()).Id;
+            var service = new LibraryInventoryService(db, new LibraryScanner(), new AudioProbe("mp3"), new ImageMarkerService(), new MusicTagService());
+            var probed = await service.ProbeAsync(id, CancellationToken.None);
+
+            Assert.Equal("Trimming it without converting would lose or change some of its tags (POPM), so it is left alone.", probed!.TrimOnlyTagRefusal);
+        }
+
+        // The tags are edited: the old reason says nothing about the new file.
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
+        await ScanAsync(library);
+        await using var read = new OptimisarrDbContext(_options);
+        Assert.Null((await read.MediaFiles.SingleAsync(file => file.Id == id)).TrimOnlyTagRefusal);
+    }
+
+    [Fact]
+    public async Task A_music_file_with_tags_a_trim_keeps_has_no_refusal()
+    {
+        var path = WriteMediaFile("Album/Plain.flac");
+        await File.WriteAllBytesAsync(path, MusicTagFixtures.Flac(MusicTagFixtures.FlacBlock(0, new byte[34]),
+            MusicTagFixtures.FlacBlock(4, MusicTagFixtures.VorbisComment("x", ("TITLE", "T")), last: true)));
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
+        var library = await CreateLibraryAsync(MediaType.Music);
+        await ScanAsync(library);
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new LibraryInventoryService(db, new LibraryScanner(), new AudioProbe("flac"), new ImageMarkerService(), new MusicTagService());
+
+        var probed = await service.ProbeAsync((await db.MediaFiles.SingleAsync()).Id, CancellationToken.None);
+
+        Assert.Null(probed!.TrimOnlyTagRefusal);
+    }
+
+    private sealed class BrokenTagReader : MusicTagService
+    {
+        public override Task<MusicTagRead> ReadAsync(string path, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the tag reader failed");
+    }
+
+    [Fact]
+    public async Task A_tag_reader_failure_refuses_the_trim_but_still_probes_the_file()
+    {
+        // A file stuck at Discovered would be retried by every probe sweep ahead of the rest of the library.
+        WriteMediaFile("Album/Broken.mp3");
+        var library = await CreateLibraryAsync(MediaType.Music);
+        await ScanAsync(library);
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new LibraryInventoryService(db, new LibraryScanner(), new AudioProbe("mp3"), new ImageMarkerService(), new BrokenTagReader());
+
+        var probed = await service.ProbeAsync((await db.MediaFiles.SingleAsync()).Id, CancellationToken.None);
+
+        Assert.Equal(MediaFileStatus.Probed, probed!.Status);
+        Assert.Equal("Its tags could not be read in full (reading them failed: the tag reader failed), so it is not trimmed without converting it.", probed.TrimOnlyTagRefusal);
+    }
+
+    private async Task<Library> CreateLibraryAsync(MediaType mediaType = MediaType.Tv)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var library = new Library { Name = "Test", Path = _root, MediaType = MediaType.Tv };
+        var library = new Library { Name = "Test", Path = _root, MediaType = mediaType };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
         return library;
