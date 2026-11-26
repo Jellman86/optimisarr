@@ -2,12 +2,13 @@
   import { tick, untrack } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type RuleProfileSpec, type SaveLibrary, type TargetFolderCheck, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
-  import { formatDateTime } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime } from '../format'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import FilesChoice from '../components/FilesChoice.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import SettingRow, { type SettingOrigin, type SettingTag } from '../components/SettingRow.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Banner from '../components/Banner.svelte'
@@ -32,6 +33,7 @@
   import { encoderFamily, encoderIgnores, encoderName, type EncoderSetting } from '../encoder-support'
 
   let libraries = $state<Library[]>([])
+  let loading = $state(true)
   let options = $state<LibraryOptions>({
     mediaTypes: [],
     ruleProfiles: [],
@@ -992,6 +994,8 @@
       ;[libraries, options] = await Promise.all([api.libraries(), api.libraryOptions()])
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.libraries.error_load
+    } finally {
+      loading = false
     }
     // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
     void loadSummaries()
@@ -1611,15 +1615,17 @@
   ])
 </script>
 
+{#snippet addLibraryButton()}
+  <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
+    <Icon name="plus" class="h-4 w-4" />
+    {i18n.m.libraries.add_library}
+  </button>
+{/snippet}
+
 {#if editingId === null}
-  <PageHeader title={i18n.m.nav.libraries} subtitle={i18n.m.libraries.subtitle}>
-    {#snippet actions()}
-      <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
-        <Icon name="plus" class="h-4 w-4" />
-        {i18n.m.libraries.add_library}
-      </button>
-    {/snippet}
-  </PageHeader>
+  <!-- Add library is the list's one primary action. With no libraries yet the empty state
+       carries it instead, so the page never shows the same accent fill twice. -->
+  <PageHeader title={i18n.m.nav.libraries} subtitle={i18n.m.libraries.subtitle} actions={libraries.length > 0 ? addLibraryButton : undefined} />
 {:else}
   <PageHeader title={editorTitle} bind:headingEl={workflowHeading} headingProps={{ 'data-workflow-heading': true }}>
     {#snippet eyebrow()}
@@ -2722,7 +2728,7 @@
             />
             <div class="min-w-0 flex-1">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
-              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · <time datetime={ex.createdAt} title={formatAbsoluteDateTime(ex.createdAt, i18n.locale)}>{formatDateTime(ex.createdAt, new Date(), i18n.locale)}</time></div>
             </div>
             <button class="btn btn-sm btn-ghost flex-shrink-0" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
@@ -2730,11 +2736,13 @@
       </div>
     {/if}
   {/if}
+{:else if loading && libraries.length === 0}
+  <div class="card p-8 text-center text-ink-4" role="status">{i18n.m.common.loading_short}</div>
 {:else if libraries.length > 0}
   <!-- One card per library, as many to a row as fit at a readable width. Each leads with the number that matters (how many
        files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
-       the primary button. Exact-copy review is a secondary entry; enqueue, configure and
-       delete sit in the menu. -->
+       the card's first action but a default button: Add library is the page's one accent fill.
+       Exact-copy review is a secondary entry; enqueue, configure and delete sit in the menu. -->
   <div class="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,34rem),1fr))]">
     {#each libraries as library (library.id)}
       {@const summary = summaries[library.id]}
@@ -2773,15 +2781,15 @@
           <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>
           <span class="text-sm text-ink-3">{i18n.m.libraries.files_label}</span>
           {#if summary}
-            <!-- The one place the summary lights up: only when something is actually waiting. -->
+            <!-- A fact, not a link, so it stays in ink: work waiting reads heavier than none. -->
             {#if summary.eligible > 0}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <Icon name="plus" class="h-3.5 w-3.5" />
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-ink" data-library-ready title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <Icon name="plus" class="h-3.5 w-3.5 text-ink-3" />
                 {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
               </span>
             {:else}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-ink-3" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <Icon name="check" class="h-3.5 w-3.5" />
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-ink-2" data-library-optimal title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <OkMark class="h-3 w-3" />
                 {i18n.m.libraries.all_optimal}
               </span>
             {/if}
@@ -2806,25 +2814,22 @@
         {/if}
 
         <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
-        <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          <button class="btn btn-primary" onclick={() => scan(library)} disabled={busy || !library.enabled}>
+        <div class="hairline-t mt-auto flex flex-wrap items-center gap-2 pt-3">
+          <button class="btn" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
           <a class="btn btn-ghost" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
-            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: formatDateTime(library.lastAutoEnqueueAt, new Date(), i18n.locale) })}</span>
+            <time class="ml-auto text-xs tabular-nums text-ink-4" datetime={library.lastAutoEnqueueAt} title={formatAbsoluteDateTime(library.lastAutoEnqueueAt, i18n.locale)}>{t(i18n.m.libraries.last_run, { date: formatDateTime(library.lastAutoEnqueueAt, new Date(), i18n.locale) })}</time>
           {/if}
         </div>
       </div>
     {/each}
   </div>
-{:else}
+{:else if !error}
   <EmptyState icon="folder" title={i18n.m.libraries.empty_title} hint={i18n.m.libraries.empty_hint}>
-    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
-      <Icon name="plus" class="h-4 w-4" />
-      {i18n.m.libraries.add_library}
-    </button>
+    {@render addLibraryButton()}
   </EmptyState>
 {/if}
 

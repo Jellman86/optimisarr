@@ -823,6 +823,71 @@ p {
     box-shadow: inset 0 0 0 1.5px var(--divide);
   }
 
+  /* The live readout across the top of a page: the state over its reason, then the few figures
+     that explain it, then any action at the far edge. Shared by the app's StatusStrip and the
+     worker sidecar so the answer to "is it working?" reads the same on both. The reason wraps
+     rather than clips, so it is complete on screen. */
+  .status-strip {
+    @apply flex flex-wrap items-center gap-x-6 gap-y-1;
+    padding: 0.55rem 1rem;
+  }
+  .status-strip:has(.status-strip-action) {
+    padding-right: 0.6rem;
+  }
+  .status-strip-state {
+    @apply flex min-w-0 items-center gap-3;
+    flex: 1 1 16rem;
+  }
+  .status-strip-text {
+    @apply flex min-w-0 flex-col gap-0.5;
+  }
+  .status-strip-label,
+  .status-strip-reason {
+    @apply min-w-0;
+    overflow-wrap: anywhere;
+  }
+  .status-strip-reason {
+    color: var(--ink-2);
+  }
+  /* A link that reads as text until it is hovered or focused, like the rest of the strip. */
+  .status-strip-playback {
+    text-decoration: none;
+    text-underline-offset: 0.2em;
+  }
+  .status-strip-playback:hover,
+  .status-strip-playback:focus-visible {
+    text-decoration: underline;
+    color: var(--ink);
+  }
+  .status-strip-fact,
+  .status-strip-action {
+    @apply flex min-w-0 max-w-full flex-wrap items-center;
+  }
+  .status-strip-fact {
+    @apply gap-2.5;
+    overflow-wrap: anywhere;
+  }
+  .status-strip-action {
+    @apply ml-auto gap-3;
+  }
+  .status-strip-action button {
+    @apply min-w-0 max-w-full;
+    overflow-wrap: anywhere;
+  }
+  /* A thumb-sized target that still reads as wrapped text: the height grows the box, not the
+     gap between its lines. */
+  @media (pointer: coarse), (max-width: 639px) {
+    .status-strip-playback {
+      @apply inline-flex items-center;
+      min-height: var(--control-lg);
+    }
+  }
+  @media (max-width: 639px) {
+    .status-strip-optional {
+      display: none;
+    }
+  }
+
   /* A field or section label. Sentence case and a little bolder, the way macOS labels
      a group, rather than tracked capitals. */
   .label {
