@@ -147,7 +147,7 @@ test('on a phone the status strip keeps to one line, and opens to show the rest'
   await expect(reason).toHaveText(waiting)
 
   // One line: as tall as its pause button and padding, with the reason cut short on screen.
-  const toggle = strip.getByRole('button', { name: 'State' })
+  const toggle = strip.getByRole('button', { name: 'Status details' })
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   const collapsed = (await strip.boundingBox())!
   expect(collapsed.height).toBeLessThanOrEqual(64)
@@ -188,7 +188,7 @@ test('on a tablet the status strip shows everything without a toggle', async ({ 
   await open(page, '/inventory', TABLET)
   const strip = page.getByRole('region', { name: 'State' })
   await expect(strip.getByText('Running here')).toBeVisible()
-  await expect(strip.getByRole('button', { name: 'State' })).toBeHidden()
+  await expect(strip.getByRole('button', { name: 'Status details' })).toBeHidden()
   await expect(strip.getByRole('button', { name: 'Pause queue' })).toContainText('Pause queue')
 })
 

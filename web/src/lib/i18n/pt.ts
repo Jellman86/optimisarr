@@ -459,6 +459,7 @@ export const pt: Messages = {
     settings_tools: "Configurações e ferramentas",
     // Status bar
     state: "Estado",
+    state_details: "Detalhes do estado",
     state_reason: "Motivo",
     state_encoding: "A codificar",
     state_workers: "A codificar nos workers",

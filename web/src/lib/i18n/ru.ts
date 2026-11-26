@@ -459,6 +459,7 @@ export const ru: Messages = {
     settings_tools: "Настройки и инструменты",
     // Status bar
     state: "Состояние",
+    state_details: "Подробности состояния",
     state_reason: "Причина",
     state_encoding: "Кодирование",
     state_workers: "Кодирование на воркерах",

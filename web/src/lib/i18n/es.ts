@@ -462,6 +462,7 @@ language: {
     settings_tools: 'Ajustes y herramientas',
     // Status bar
     state: "Estado",
+    state_details: "Detalles del estado",
     state_reason: "Motivo",
     state_encoding: "Codificando",
     state_workers: "Codificando en workers",

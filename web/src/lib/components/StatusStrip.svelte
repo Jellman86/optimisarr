@@ -85,12 +85,11 @@
     </div>
   </div>
 
-  <!-- Phone only. Its name is the strip's own, so it reads as "State, collapsed" with the state
-       itself just before it. -->
+  <!-- Phone only. -->
   <button
     type="button"
     class="status-strip-toggle btn btn-sm btn-ghost btn-icon"
-    aria-label={i18n.m.dashboard.state}
+    aria-label={i18n.m.dashboard.state_details}
     aria-expanded={expanded}
     aria-controls="status-strip"
     onclick={() => (open = !open)}

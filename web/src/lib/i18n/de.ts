@@ -468,6 +468,7 @@ export const de: Messages = {
     settings_tools: 'Einstellungen & Tools',
     // Status bar
     state: "Zustand",
+    state_details: "Statusdetails",
     state_reason: "Grund",
     state_encoding: "Kodiert",
     state_workers: "Kodiert auf Workern",

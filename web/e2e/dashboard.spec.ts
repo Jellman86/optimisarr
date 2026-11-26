@@ -1164,7 +1164,7 @@ test('a long status reason wraps onto further lines instead of being cut off onc
 
   const reason = page.locator('.status-strip-reason')
   await expect(reason).toHaveText(waiting)
-  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'State' }).click()
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'Status details' }).click()
   await expect(reason).not.toHaveCSS('text-overflow', 'ellipsis')
   await expect(reason).not.toHaveCSS('white-space', 'nowrap')
   // All of it is on screen: more than one line tall, and nothing hidden past its right edge.
@@ -1194,7 +1194,7 @@ test('a wrapped playback link keeps its lines together on a touch screen', async
     },
   })
   await page.goto('/#/')
-  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'State' }).click()
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'Status details' }).click()
   const reason = page.locator('.status-strip-playback')
   await expect(reason).toContainText('An Example Show With A Long Name')
   const metrics = await reason.evaluate((element) => ({
