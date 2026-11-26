@@ -399,11 +399,15 @@ test('an empty library list offers Add library once, in the empty state', async 
 test('loading and failed library fetches do not flash a false empty state', async ({ page }) => {
   await mockLibraries(page)
   let releaseLoad = () => {}
+  let requested = false
   await page.route('**/api/libraries', async (route) => {
-    await new Promise<void>((resolve) => { releaseLoad = resolve })
+    await new Promise<void>((resolve) => { releaseLoad = resolve; requested = true })
     await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Database offline' }) })
   })
   await page.goto('/#/libraries')
+  // The page arrives after its route; hold the list's own load until the page is asking for it.
+  await expect(page.getByRole('heading', { name: 'Libraries', level: 1 })).toBeVisible()
+  await expect.poll(() => requested).toBe(true)
   await expect(page.getByRole('status')).toContainText('Loading')
   await expect(page.getByText('No libraries yet')).toHaveCount(0)
   releaseLoad()

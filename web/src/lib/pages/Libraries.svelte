@@ -2870,13 +2870,10 @@
     display: none;
   }
   [data-library-workflow] :global([data-config-section]) {
-    transition: box-shadow 180ms ease;
+    transition: box-shadow var(--motion-base) var(--motion-ease-standard);
   }
   [data-library-workflow] :global([data-config-section]:hover),
   [data-library-workflow] :global([data-config-section]:focus-within) {
     box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    [data-library-workflow] :global([data-config-section]) { transition: none; }
   }
 </style>

@@ -37,7 +37,7 @@
       src={source}
       {alt}
       loading="lazy"
-      class="h-full w-full object-cover transition-opacity duration-200"
+      class="h-full w-full object-cover transition-opacity duration-(--motion-slow) ease-(--motion-ease-enter)"
       class:opacity-0={!loaded}
       class:opacity-100={loaded}
       onload={() => (loaded = true)}

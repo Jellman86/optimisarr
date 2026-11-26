@@ -169,7 +169,7 @@
   .schedule-section-head h2 { color: var(--ink); font-size: 1rem; font-weight: 650; }
   .schedule-section-head p { color: var(--ink-3); font-size: .8125rem; line-height: 1.5; margin-top: .25rem; max-width: 55rem; }
   .schedule-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 34rem), 1fr)); gap: 1rem; }
-  .schedule-library { min-width: 0; display: flex; flex-direction: column; transition: transform 180ms ease, box-shadow 180ms ease; }
+  .schedule-library { min-width: 0; display: flex; flex-direction: column; transition: transform var(--motion-base) var(--motion-ease-standard), box-shadow var(--motion-base) var(--motion-ease-standard); }
   .schedule-library:hover, .schedule-library:focus-within { transform: translateY(-2px); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
   .schedule-library-head { align-items: center; flex-wrap: wrap; }
   .schedule-library-head h3 { color: var(--ink); font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
@@ -183,5 +183,5 @@
   .schedule-configure { align-self: flex-end; display: inline-flex; align-items: center; gap: .5rem; color: var(--accent); font-size: .8125rem; font-weight: 600; min-height: 2.75rem; margin-top: auto; padding-top: .875rem; }
   .schedule-configure:hover { text-decoration: underline; }
   @media (max-width: 560px) { .schedule-metrics { grid-template-columns: 1fr; }.schedule-dispatch-head, .schedule-section-head { flex-wrap: wrap; } }
-  @media (prefers-reduced-motion: reduce) { .schedule-library { transition: none; }.schedule-library:hover, .schedule-library:focus-within { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .schedule-library:hover, .schedule-library:focus-within { transform: none; } }
 </style>

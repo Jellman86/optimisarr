@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Unit tests quote class names as test data (a drift counter's `text-[11px]`); they are not UI. */
+@source not "./**/*.test.ts";
 
 /* Class-based dark mode: toggled by adding `dark` to <html>. Almost nothing needs it now —
    colours come from the tokens below, which swap as a set — but it stays for the rare
@@ -242,6 +244,9 @@ html.dark,
   --color-info-strong: var(--info-strong);
   --color-info-soft: var(--info-soft);
   --color-info-line: var(--info-line);
+
+  --default-transition-duration: var(--motion-fast);
+  --default-transition-timing-function: var(--motion-ease-standard);
 }
 
 /* ── Scale: type, radius and control height ─────────────────────────────────
@@ -284,6 +289,34 @@ html.dark,
   --control-sm: 1.75rem;
   --control-md: 2.25rem;
   --control-lg: 2.75rem;
+}
+
+/* Motion: three durations and three curves, and nothing else. Movement here only confirms that
+   something the reader did took effect or that something arrived; it never carries meaning of
+   its own, so asking for less motion collapses every duration to nothing and loses no
+   information. A verification result or a replacement is never animated in or shown before the
+   server has said so.
+
+     fast   feedback: a hover, a lit row, a colour change          120ms
+     base   a control changing state: a switch, a layer, a row     180ms
+     slow   something arriving: artwork, a bar filling             300ms
+
+   `standard` moves something from one resting place to another; `enter` decelerates into view
+   and `exit` accelerates out of it. Plain `transition-*` utilities take fast and standard. */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 300ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0s;
+    --motion-base: 0s;
+    --motion-slow: 0s;
+  }
 }
 
 /* Paint the document background (not just an inner element) so iOS Safari's
@@ -601,7 +634,7 @@ p {
   /* A selectable card — a processing mode, a quality strategy, a codec chip. Choosing
      one tints its fill rather than drawing a coloured outline round it. */
   .choice {
-    @apply cursor-pointer transition-[background,box-shadow] duration-150 focus-ring;
+    @apply cursor-pointer transition-[background,box-shadow] focus-ring;
     background: var(--panel);
     box-shadow: var(--lift-1);
   }
@@ -769,11 +802,11 @@ p {
   /* A switch, drawn as the macOS one: a grey capsule that fills with the accent, and a
      white knob. Both are driven by the real checkbox that sits over them. */
   .switch-track {
-    @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-200;
+    @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-(--motion-base);
     background: var(--switch-off);
   }
   .switch-knob {
-    @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200;
+    @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-(--motion-base);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   }
   .peer:checked ~ .switch-track {
@@ -1079,7 +1112,7 @@ p {
     @apply px-4 py-3.5 align-middle;
     border-top: 1px solid var(--divide-soft);
     overflow-wrap: anywhere;
-    transition: background-color 120ms ease-out;
+    transition: background-color var(--motion-fast) var(--motion-ease-standard);
   }
   .data-table tbody tr:first-child td {
     border-top: 0;
@@ -1243,7 +1276,7 @@ p {
     background: var(--lit);
   }
   .progress-fill {
-    @apply h-full rounded-full transition-[width] duration-300 ease-out;
+    @apply h-full rounded-full transition-[width] duration-(--motion-slow) ease-(--motion-ease-standard);
     background: var(--accent-fill);
   }
   /* Verifying is checking work that is already done, so it fills in the "ok" colour. */
@@ -1255,6 +1288,17 @@ p {
     background: var(--accent);
     opacity: 0.7;
     animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+
+  /* The room a page takes while its code arrives: tall enough that the page landing in it does
+     not drag the scroll position or the strip above it about, and silent until the wait is long
+     enough to notice, so a quick navigation never flashes a word. */
+  .page-pending {
+    @apply flex min-h-[60dvh] flex-col items-center justify-center gap-4 text-center;
+  }
+  .page-pending-label {
+    visibility: hidden;
+    animation: page-pending-reveal 0s 400ms forwards;
   }
 
   /* A finger needs 44px whatever the control's desktop size. Phone width counts as well as a
@@ -1274,14 +1318,8 @@ p {
 }
 
 /* Anyone who has asked for less motion gets the lift without the movement, and
-   the state without the throb. */
+   the state without the throb. Transitions already collapse with the motion tokens. */
 @media (prefers-reduced-motion: reduce) {
-  .choice,
-  .switch-track,
-  .switch-knob,
-  .data-table td {
-    transition: none;
-  }
   .choice:hover,
   .choice:active {
     transform: none;
@@ -1300,6 +1338,12 @@ p {
   }
   50% {
     box-shadow: 0 0 0 5px var(--accent-soft);
+  }
+}
+
+@keyframes page-pending-reveal {
+  to {
+    visibility: visible;
   }
 }
 

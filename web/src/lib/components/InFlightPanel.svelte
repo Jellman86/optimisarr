@@ -2,7 +2,6 @@
   import type { Job, OptimisationResult, QueueStatus } from '../api'
   import { formatDateTime, formatSize, mediaTitle } from '../format'
   import Chip from './Chip.svelte'
-  import PosterGlow from './PosterGlow.svelte'
   import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
   import { i18n, t } from '../i18n/i18n.svelte'
@@ -120,7 +119,6 @@
       <!-- While nothing runs, the last finished title stands in for the work, so the panel
            answers "what has it been doing?" instead of sitting empty. -->
       <section class="last-result" aria-label={i18n.m.dashboard.last_finished}>
-        <PosterGlow mediaFileId={lastResult.mediaFileId} />
         <Thumbnail mediaFileId={lastResult.mediaFileId} size="lg" />
         <span class="last-result-text">
           <span class="label mb-0">{i18n.m.dashboard.last_finished}</span>
@@ -217,7 +215,6 @@
 
 <style>
   .last-result {
-    position: relative;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -229,6 +226,5 @@
     background: var(--sunken);
     text-align: left;
   }
-  .last-result > :global(:not(.poster-glow)) { position: relative; }
   .last-result-text { display: flex; min-width: 0; flex-direction: column; gap: 0.15rem; }
 </style>

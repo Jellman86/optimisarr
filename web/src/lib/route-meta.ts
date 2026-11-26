@@ -48,6 +48,28 @@ export function settingsRoomTitle(room: SettingsRoomKey, m: Messages): string {
   return titles[room]
 }
 
+/** The pages the shell can show. Each is loaded only when first visited, so the name is what the
+ *  shell resolves before it has the component itself. */
+export type PageName =
+  | 'dashboard' | 'libraries' | 'qualityLab' | 'exactDuplicates' | 'inventory' | 'optimiseFile'
+  | 'queue' | 'quarantine' | 'schedule' | 'settings'
+
+export function pageNameFor(path: string): PageName {
+  if (/^\/libraries\/\d+\/quality-check$/.test(path)) return 'qualityLab'
+  if (/^\/libraries\/\d+\/duplicates$/.test(path)) return 'exactDuplicates'
+  if (path.startsWith('/libraries')) return 'libraries'
+  // Inventory absorbed the Candidates view; the old /candidates route still lands there.
+  if (/^\/inventory\/optimise\/\d+$/.test(path)) return 'optimiseFile'
+  if (path === '/inventory/duplicates') return 'exactDuplicates'
+  if (path.startsWith('/inventory') || path.startsWith('/candidates')) return 'inventory'
+  if (path.startsWith('/queue')) return 'queue'
+  if (path.startsWith('/quarantine')) return 'quarantine'
+  if (path.startsWith('/schedule')) return 'schedule'
+  // Tools moved into Settings; the old route still lands there (opens the Tools tab).
+  if (path.startsWith('/tools') || path.startsWith('/settings')) return 'settings'
+  return 'dashboard'
+}
+
 /** True when the rendered page already displays live work, so the sidebar omits NowEncoding. */
 export function showsActiveWork(path: string): boolean {
   const clean = cleanPath(path)
