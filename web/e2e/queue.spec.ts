@@ -1021,7 +1021,7 @@ for (const width of [375, 1440]) {
   for (const theme of ['dark', 'light']) {
     test(`audio gate verdict and selected limit stay clear at ${width}px in ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1100 })
-      await page.addInitScript(selected => localStorage.setItem('optimisarr-theme', selected), theme)
+      await page.addInitScript(selected => localStorage.setItem('optimisarr.theme', selected), theme)
       const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Above the selected limit. The original is unchanged.' }],
         audioQuality: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: false, maximumDistance: 0.005,
           evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 90,
@@ -1268,6 +1268,9 @@ test('retained capture shows historical gates after a newer capture targets anot
   await page.locator('#queue-job-8').click()
   const details = page.getByRole('dialog', { name: /Job details/ })
   await expect(details.getByRole('button', { name: 'Download diagnostics' })).toBeVisible()
+  // The captured history waits behind its own disclosure, below the actions that use it.
+  await expect(details.getByText('Verification · Worker', { exact: true })).toBeHidden()
+  await details.getByText('Captured history', { exact: true }).click()
   await details.getByText('Verification · Worker', { exact: true }).click()
   await expect(details.getByText('TimestampIntegrity', { exact: true })).toBeVisible()
   await expect(details.getByText('VMAF: 97.50')).toBeVisible()
@@ -1291,6 +1294,7 @@ for (const clipboard of ['missing', 'denied']) {
     await expect(summary).toBeVisible()
     await expect(summary).toHaveValue(/summary-reference/)
     expect(await summary.inputValue()).not.toContain('/private/title.mkv')
+    await details.getByText('Captured history', { exact: true }).click()
     await expect(details.getByText('No events were captured for this job.', { exact: true })).toBeVisible()
     await expect(details.locator('.queue-diagnostic-action')).not.toContainText('146 events')
   })
@@ -1607,6 +1611,123 @@ test('each check is named in plain words and keeps the name a log would quote', 
   await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveText('Plays from start to end without errors')
   await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveAttribute('title', 'Decode health')
   await expect(dialog.locator('[data-check-name="Perceptual quality (VMAF)"]')).toHaveText('Picture quality')
+})
+
+test('verification evidence reads at body size with drawn glyphs, never typed marks', async ({ page }) => {
+  await mockQueue(page)
+  const passed = { ...job(10, 'Completed', true), verificationReportJson: JSON.stringify({ checks: [
+    { name: 'Decode health', outcome: 'Passed', detail: 'Complete decode finished without errors.' }] }) }
+  await page.route('**/api/jobs', route => route.request().method() === 'GET'
+    ? json(route, [failedJob('Perceptual quality (VMAF)', 'VMAF 91.2 is below the target of 93.'), passed]) : route.fallback())
+  await page.goto('/#/queue')
+
+  // The list says passed or failed with a drawn mark beside the word, not a typed one.
+  for (const [id, word] of [[9, 'failed'], [10, 'passed']] as const) {
+    const cell = page.locator('tr').filter({ has: page.locator(`#queue-job-${id}`) }).locator('td.verification-column')
+    await expect(cell.getByRole('button')).toHaveText(word)
+    await expect(cell.locator('svg')).toHaveCount(1)
+    expect(await cell.textContent()).not.toMatch(/[✓✗✔✘]/)
+  }
+
+  await page.locator('#queue-job-9').click()
+  const evidence = page.locator('#queue-job-dialog [data-evidence-list]')
+  const rows = evidence.locator('li')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0)).toHaveAttribute('data-evidence', 'passed')
+  await expect(rows.nth(0).locator('[data-ok-mark]')).toHaveCount(1)
+  await expect(rows.nth(1)).toHaveAttribute('data-evidence', 'failed')
+  await expect(rows.nth(1).locator('svg')).toHaveCount(1)
+  // The glyph is decorative, so the state is also said in words for a screen reader.
+  await expect(rows.nth(1).locator('.sr-only')).toHaveText('failed')
+  await expect(rows.nth(1)).toContainText('VMAF 91.2 is below the target of 93.')
+  expect(await evidence.textContent()).not.toMatch(/[✓✗✔✘]/)
+  const smallest = await evidence.evaluate(list => Math.min(...[...list.querySelectorAll('li, li *')]
+    .filter(node => node.textContent?.trim() && !node.classList.contains('sr-only'))
+    .map(node => parseFloat(getComputedStyle(node).fontSize))))
+  expect(smallest).toBeGreaterThanOrEqual(14)
+})
+
+for (const width of [375, 1440]) {
+  test(`job detail leads with the outcome and its proof, then facts, then the command at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockQueue(page)
+    const audioQuality = { measurementLocation: 'Server', unavailableReason: null,
+      evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 30, elapsedSeconds: 2,
+        windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }] } } }
+    const failed = { ...failedJob('Perceptual quality (VMAF)', 'Below what this library asks for.', { audioQuality }),
+      ffmpegArguments: '-i /media/Film 9.mkv -c:v libx265 /work/9.mkv' }
+    await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failed]) : route.fallback())
+    await page.goto('/#/queue')
+    await page.locator('#queue-job-9').click()
+    const dialog = page.locator('#queue-job-dialog')
+
+    const order = ['[data-job-result]', '[data-job-evidence]', '[data-measure-report]', '[data-job-facts]', '[data-job-command]', '.queue-diagnostic-action']
+    for (const selector of order) await expect(dialog.locator(selector)).toHaveCount(1)
+    expect(await dialog.evaluate((root, selectors) => {
+      const nodes = selectors.map(selector => root.querySelector(selector)!)
+      return nodes.every((node, index) => index === 0 || Boolean(nodes[index - 1].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING))
+    }, order)).toBe(true)
+    await expect(dialog.locator('[data-job-facts]')).toContainText('Encoder')
+
+    // The command is under the hood: it waits behind a disclosure until asked for.
+    const command = dialog.getByText('ffmpeg -i /media/Film 9.mkv', { exact: false })
+    await expect(command).toBeHidden()
+    await dialog.getByText('FFmpeg command', { exact: true }).click()
+    await expect(command).toBeVisible()
+    expect(await page.locator('body').evaluate(element => element.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}
+
+test('quality reports are flat sections with tabular figures and a lit chosen candidate', async ({ page }) => {
+  await mockQueue(page)
+  const audio = { measurementLocation: 'Worker', unavailableReason: null,
+    evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 30, elapsedSeconds: 2,
+      windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }] } } }
+  const search = { kind: 'Audio', encoder: 'aac', sourceSha256: 'a'.repeat(64), measurementLocation: 'Server',
+    minimumImageScore: null, maximumAudioDistance: 0.01, audioWindows: [{ startSeconds: 0, durationSeconds: 30 }],
+    result: { decision: { selectedValue: 96, nextValue: null, fellBack: false, reason: 'The smallest measured passing candidate was selected.' },
+      probes: [128, 96].map((value, index) => ({ value, encodedBytes: 1000 - index * 200,
+        measurement: { available: true, meetsTarget: true, score: 0.005, error: null } })) } }
+  const reported = { ...job(12, 'Completed', true), relativePath: 'Film 12.mkv', verificationReportJson: JSON.stringify({
+    checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+    audioQuality: audio, perceptualSearch: search,
+    soundtrackQuality: { unavailableReason: null, tracks: [{ track: { sourceAudioIndex: 0, candidateAudioIndex: 0, language: 'eng', title: null }, report: audio }] },
+    imagePerceptualQuality: { measurement: { width: 96, height: 64, alpha: false, maximumAlphaError: 0, score: 82.125, backgroundScores: [82.125] },
+      error: null, gateEnabled: true, minimumScore: 80, gatePassed: true },
+  }) }
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [reported]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-12').click()
+  const dialog = page.locator('#queue-job-dialog')
+  const reports = dialog.locator('[data-measure-report]')
+  // Audio, soundtrack (with one nested track report), image and the quality-first search.
+  await expect(reports).toHaveCount(5)
+
+  const strokes = await reports.evaluateAll(sections => sections.flatMap(section => [section, ...section.querySelectorAll('section, div, dl, ol, li')])
+    .filter(node => ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(getComputedStyle(node).getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0))
+    .map(node => node.outerHTML.slice(0, 80)))
+  expect(strokes).toEqual([])
+  const filled = await reports.evaluateAll(sections => sections.filter(section => getComputedStyle(section).backgroundColor !== 'rgba(0, 0, 0, 0)').length)
+  expect(filled).toBe(0)
+
+  const figures = dialog.locator('[data-metric] dd')
+  await expect(figures.first()).toHaveText('0.00123')
+  for (const figure of await figures.all()) {
+    const style = await figure.evaluate(element => ({ family: getComputedStyle(element).fontFamily, numeric: getComputedStyle(element).fontVariantNumeric }))
+    expect(style.family).not.toMatch(/mono/i)
+    expect(style.numeric).toContain('tabular-nums')
+  }
+
+  const search_ = dialog.getByRole('region', { name: 'Quality-first search', exact: true })
+  const chosen = search_.locator('[data-probe="chosen"]')
+  await expect(chosen).toHaveCount(1)
+  await expect(chosen).toContainText('Chosen')
+  const [chosenFill, otherFill] = await search_.locator('li').evaluateAll(items => items
+    .sort((a, b) => Number(b.hasAttribute('data-probe')) - Number(a.hasAttribute('data-probe')))
+    .map(item => getComputedStyle(item).backgroundColor))
+  expect(chosenFill).not.toBe(otherFill)
+  expect(await chosen.evaluate(element => getComputedStyle(element).fontFamily)).not.toMatch(/mono/i)
+  expect(await search_.locator('li p').first().evaluate(element => getComputedStyle(element).fontFamily)).not.toMatch(/mono/i)
 })
 
 test('when unlocking would delete or replace straight away, it shows the counts and needs a second press', async ({ page }) => {

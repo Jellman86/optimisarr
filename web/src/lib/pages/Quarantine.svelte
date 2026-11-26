@@ -284,11 +284,12 @@
           {#if r.acceptedBelowTargetAt}<span class="badge tone-warn" data-accepted-below-target>{i18n.m.quarantine.accepted_below_target}</span>
           {:else if r.verificationPassed !== null}<span class="badge {r.verificationPassed ? 'tone-ok' : 'tone-bad'}">{r.verificationPassed ? i18n.m.quarantine.passed : i18n.m.quarantine.failed}</span>{/if}
         </div>
+        <!-- The checks lead, because they decided the outcome; each measure follows as a section. -->
+        {#if checks}<VerificationChecks {checks} />{:else}<p class="text-body text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
         <AudioQualityReport report={audioReport(detail)} />
         <SoundtrackQualityReport report={soundtrackReport(detail)} />
         <PerceptualSearchReport report={searchReport(detail)} />
         <ImagePerceptualReport report={imageReport(detail)} />
-        {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>
       {#if r.status === 'Replaced'}
         <!-- The decision follows the evidence and stays pinned to the bottom of the view while the

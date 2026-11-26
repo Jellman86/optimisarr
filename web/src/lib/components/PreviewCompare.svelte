@@ -251,7 +251,7 @@
       <!-- Stats comparison -->
       <div class="card mb-4 overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-line text-left text-xs font-semibold text-ink-3">
+          <thead class="border-b border-line-soft text-left text-xs font-semibold text-ink-3">
             <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
           <tbody class="divide-y divide-line-soft">
