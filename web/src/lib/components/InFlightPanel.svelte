@@ -46,7 +46,7 @@
     return location === 'worker' ? job.workerName ?? i18n.m.queue.lane_workers
       : location === 'transfer' ? i18n.m.queue.location_transfer
       // Back from a worker and waiting here: say whose output it is, or it reads as local work.
-      : job.workerName && !job.remoteStage ? t(i18n.m.queue.now_returned, { worker: job.workerName })
+      : job.workerName && !job.remoteStage && verificationPhase(job) === 'waiting' ? t(i18n.m.queue.now_returned, { worker: job.workerName })
       : i18n.m.dashboard.this_server
   }
 

@@ -347,3 +347,13 @@ test('a hint fixed to the bottom of a phone clears the home indicator', async ({
   // However long, it stops below the top of the window rather than running under it.
   await expect(tip).toHaveCSS('max-height', `${PHONE.height - 32 - HOME_INDICATOR}px`)
 })
+
+test('a narrow tablet still reads Inventory as two-line rows without the Format column', async ({ page }) => {
+  // Just under the phone breakpoint, the table is wide enough for Format by its own width, but
+  // the rows are still the phone's two lines, where a stacked codec block does not belong.
+  const { table } = await openList(page, lists[1], { width: 620, height: 900 })
+  await expect(table.getByRole('columnheader', { name: 'Format' })).toBeHidden()
+  const rows = await rowCells(table)
+  expect(rows.length).toBeGreaterThan(0)
+  for (const row of rows) expect(row.cells.length).toBe(3)
+})

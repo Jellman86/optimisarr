@@ -368,7 +368,7 @@
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
         <th scope="col" class="data-table-primary" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
         <th scope="col" aria-sort={sortState('size')} class="w-[13%]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
-        <th scope="col" class="hidden w-[21%] @min-[36rem]:table-cell">{i18n.m.inventory.col_format}</th>
+        <th scope="col" class="hidden w-[21%] sm:@min-[36rem]:table-cell">{i18n.m.inventory.col_format}</th>
         <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[max(19%,7.5rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
       </tr>
     {/snippet}
@@ -380,7 +380,7 @@
           <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}</span></span>
         </button></td>
         <td class="whitespace-nowrap tabular-nums max-sm:text-caption">{formatSize(file.sizeBytes)}</td>
-        <td class="hidden @min-[36rem]:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
+        <td class="hidden sm:@min-[36rem]:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
         <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}<span class="min-w-0">{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span></span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
       </tr>
     {/each}
