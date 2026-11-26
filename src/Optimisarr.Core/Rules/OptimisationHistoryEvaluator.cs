@@ -11,6 +11,9 @@ namespace Optimisarr.Core.Rules;
 /// <param name="LastFailedJobId">That most recent failed job, so the user can try it again.</param>
 public sealed record OptimisationHistory(DateTimeOffset? LastCompletedAt, DateTimeOffset? LastFailedAt, int? LastFailedJobId = null)
 {
+    /// <summary>When a trim-only job last measured this file and found no silence to trim.</summary>
+    public DateTimeOffset? LastNothingToTrimAt { get; init; }
+
     public static readonly OptimisationHistory None = new(null, null);
 }
 
@@ -42,6 +45,13 @@ public static class OptimisationHistoryEvaluator
         if (IsCurrent(history.LastFailedAt, fileModifiedAt))
         {
             return CandidateDecision.HeldBackByFailure("Failed last time, so it isn't tried again by itself", history.LastFailedJobId);
+        }
+
+        // A trim-only job with nothing to trim ends without a file, so it is neither a success nor
+        // a failure; without this the file would be measured again on every pass.
+        if (baseDecision.TrimsOnly && IsCurrent(history.LastNothingToTrimAt, fileModifiedAt))
+        {
+            return CandidateDecision.Skipped("Measured for silence to trim, and there was none");
         }
 
         return baseDecision;

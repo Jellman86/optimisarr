@@ -1353,6 +1353,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("TrimAudioSilence")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("TrimSilenceWithoutConverting")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 

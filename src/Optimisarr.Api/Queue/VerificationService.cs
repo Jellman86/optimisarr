@@ -60,7 +60,10 @@ public sealed record OriginalSnapshot(
     bool PixelShapeMustMatch = false,
     // The silence the encode trimmed from a music file's start and end, with the level that counted
     // as silence, so verification expects the shorter length and checks where the cut fell.
-    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null);
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
+    // A music file that kept its format and was only trimmed, so verification also proves the
+    // audio between the cuts is the source's own.
+    Optimisarr.Core.Queue.AudioTrimOnlyPlan? AudioTrimOnly = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -112,7 +115,8 @@ public sealed class VerificationService(
     AudioQualityObservationService? audioQuality = null,
     SoundtrackQualityObservationService? soundtrackQuality = null,
     ImagePerceptualObservationService? imagePerceptualQuality = null,
-    SilenceDetectService? silence = null)
+    SilenceDetectService? silence = null,
+    KeptAudioComparisonService? keptAudio = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -351,6 +355,12 @@ public sealed class VerificationService(
             var outputEdgeSilence = reference.SilenceTrim is { } trim && silence is not null && remoteEvidence is null
                 ? await silence.MeasureEdgesAsync(outputPath, trim.ThresholdDb, cancellationToken)
                 : null;
+            // Missing evidence fails the check rather than skipping it.
+            var keptAudioEvidence = reference.AudioTrimOnly is { } trimOnly
+                ? reference.SilenceTrim is { } kept && keptAudio is not null && remoteEvidence is null && clip is null
+                    ? await keptAudio.CompareAsync(reference.Path, outputPath, trimOnly.Method, kept, cancellationToken)
+                    : new KeptAudioEvidence(trimOnly.Method)
+                : null;
 
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
@@ -423,6 +433,7 @@ public sealed class VerificationService(
                 ExpectedHeight: reference.ExpectedHeight,
                 SilenceTrim: reference.SilenceTrim,
                 OutputEdgeSilence: outputEdgeSilence,
+                KeptAudio: keptAudioEvidence,
                 RequirePixelShapeRetained: reference.PixelShapeMustMatch,
                 OriginalPixelAspect: originalProbe.PixelAspect,
                 OutputPixelAspect: outputProbe.PixelAspect,

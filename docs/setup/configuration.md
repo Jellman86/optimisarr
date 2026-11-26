@@ -350,7 +350,8 @@ What it does and does not cut:
   clipped.
 - Silence inside a track is never cut, and nor is a hidden track after a long gap, because that gap
   does not reach the end of the file.
-- A file is only trimmed when it is converted anyway. It does not make a file eligible on its own.
+- A file is trimmed when it is converted. A file the library would leave alone is only trimmed with
+  **Also trim files that aren't converted** (below).
 - A file with more than one audio stream is left alone, because one window would apply to all of
   them.
 - A file with synchronised lyrics, a cue sheet, chapters (`.m4b`) or a sidecar `.lrc` file only
@@ -367,6 +368,41 @@ its quarter second of silence, give or take 0.1 seconds. Too much means the cut 
 little means it reached into the music. This cannot yet be combined with **Audio
 quality**, which compares two files of the same length, so saving refuses that combination. Trimmed
 files are encoded on this server, never on a remote worker.
+
+#### Also trim files that aren't converted
+
+While trimming is on, **Also trim files that aren't converted** trims the files the library would
+otherwise leave alone: lossy files at or below the target bitrate, files already in the target
+codec, files too small for a conversion to save space, and lossless files a conversion cannot carry
+(for example FLAC with cover art in an AAC library). It is off by default. Each file keeps its
+format, name, bitrate, tags and cover art:
+
+| Format | How it is trimmed |
+| --- | --- |
+| FLAC (`.flac`), ALAC (`.m4a`), PCM WAV (`.wav`) | Decoded, cut to the exact sample, and written again with the same lossless codec, bit depth and sample rate. FLAC uses FFmpeg's strongest setting. |
+| MP3 (`.mp3`), AAC (`.m4a`) | The audio frames are copied without re-encoding. An M4A file with embedded cover art is left alone, because FFmpeg drops the picture when it writes Optimisarr's marker into an M4A. The cut falls on a frame, starting up to 50 ms before the planned start. FFmpeg writes the new file's own encoder delay: a fresh LAME header for MP3, an edit list for M4A. The old iTunes `iTunSMPB` gapless figures are removed, because they describe the original length. |
+| Opus (`.opus`, `.ogg`) | The audio frames are copied without re-encoding. Ogg cannot carry an embedded picture through FFmpeg, so an Opus file with cover art is left alone. |
+
+Everything else is left alone, with the reason in Candidates: Vorbis, WMA, APE, AIFF, raw ADTS
+`.aac` (which records no encoder delay and only estimates its length), M4A and WAV with embedded cover art,
+and any codec in a container it is not normally found in.
+
+A lossy file is never re-encoded to trim it: that would lose quality to save nothing. A copy can
+only start on an audio frame (about 26 ms for MP3, 23 ms for AAC and 20 ms for Opus), and a decoder
+starting mid-file needs a frame or two to settle. Both happen inside the quarter second of silence
+that is kept, so the music is untouched.
+
+Each trimmed file gets the usual checks, including **Silence trimmed as planned**, and one more,
+**Kept audio matches the original**. A lossless file must decode to exactly the source's samples
+between the cuts. A copied file must contain the source's own audio frames, every one, in order and
+unchanged. A lossless file written again must still be smaller than the original, so a file the
+source encoder compressed harder than FFmpeg can fails the size check and is not replaced.
+
+When the job finds no silence to trim, it stops without writing anything, and the file is not
+offered again until it changes. ReplayGain and R128 tags are kept as they are: loudness measurement
+ignores silence, so removing it leaves them correct (on test signals the change was 0.0 dB for
+ReplayGain and at most 0.1 LU for EBU R128). A preview of such a file shows the conversion, not the
+trim.
 
 ![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
 

@@ -48,7 +48,9 @@ public static class TranscodeSpecResolver
         bool adaptiveImageQuality = false,
         // The channel layout the source's audio tracks declare, or null when it was not probed.
         // An Opus re-encode maps the side-surround variant onto the standard one.
-        string? sourceAudioChannelLayout = null)
+        string? sourceAudioChannelLayout = null,
+        // A music file that is not converted, only trimmed of silence; see AudioTrimOnly.
+        AudioTrimOnlyPlan? audioTrimOnly = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -68,6 +70,21 @@ public static class TranscodeSpecResolver
                     && !adaptiveImageQuality
                     && sourceImageCodec is not null
                     && ImageTarget.IsLossless(sourceImageCodec));
+        }
+
+        if (kind == MediaKind.Audio && audioTrimOnly is not null)
+        {
+            // The same name, codec and channels: only the silence changes.
+            return new TranscodeSpec(
+                inputPath,
+                BuildOutputPath(workRoot, relativePath, Path.GetExtension(relativePath)),
+                VideoCodec: null,
+                Crf: null,
+                Preset: null,
+                TonemapToSdr: false,
+                Kind: MediaKind.Audio,
+                AudioEncoder: audioTrimOnly.Encoder)
+            { AudioTrimOnly = audioTrimOnly };
         }
 
         if (kind == MediaKind.Audio)

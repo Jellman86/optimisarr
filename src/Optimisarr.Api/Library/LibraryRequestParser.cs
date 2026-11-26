@@ -102,7 +102,8 @@ internal readonly record struct ParsedLibrary(
     NoiseReduction? NoiseReduction = null,
     bool TrimAudioSilence = false,
     double AudioSilenceThresholdDb = SilenceTrimSettings.DefaultThresholdDb,
-    double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds);
+    double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds,
+    bool TrimSilenceWithoutConverting = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -710,7 +711,8 @@ internal static class LibraryRequestParser
             noiseReduction,
             request.TrimAudioSilence ?? false,
             request.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb,
-            request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds);
+            request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds,
+            request.TrimSilenceWithoutConverting ?? false);
         error = null;
         return true;
     }

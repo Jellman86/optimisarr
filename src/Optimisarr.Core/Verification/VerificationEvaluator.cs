@@ -36,6 +36,7 @@ public static class VerificationEvaluator
         {
             checks.Add(DurationWithinTolerance(input, policy));
             if (input.SilenceTrim is { } trim) checks.Add(SilenceTrimmedAsPlanned(input, trim));
+            if (input.KeptAudio is { } kept) checks.Add(KeptAudioUnchanged(kept));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
 
@@ -270,9 +271,10 @@ public static class VerificationEvaluator
             };
 
             // Technical container fields are regenerated legitimately and are not music tags.
+            // iTunSMPB is iTunes' encoder delay and length, true only of the file it was written for.
             if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
                 or "compatible_brands" or "handler_name" or "duration" or "language"
-                or "optimisarr")
+                or "optimisarr" or "itunsmpb")
             {
                 continue;
             }
@@ -937,6 +939,32 @@ public static class VerificationEvaluator
             return Fail(name, detail + string.Format(CultureInfo.InvariantCulture,
                 " A trimmed edge kept less than {0:0.##}s of silence, so the cut reached into the music.", least));
         return Pass(name, detail);
+    }
+
+    /// <summary>
+    /// A trim-only file changes nothing but its length. A lossless one must decode to the source's
+    /// exact samples over the kept window; a copied one must hold the source's own encoded packets,
+    /// every one, in order, with none changed or missing. Unmeasured evidence fails.
+    /// </summary>
+    private static VerificationCheck KeptAudioUnchanged(KeptAudioEvidence kept)
+    {
+        const string name = "Kept audio unchanged";
+        if (kept.Method == Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode)
+        {
+            if (kept.SourceDecodedDigest is null || kept.OutputDecodedDigest is null)
+                return Fail(name, "The decoded audio could not be compared with the source's.");
+            return string.Equals(kept.SourceDecodedDigest, kept.OutputDecodedDigest, StringComparison.OrdinalIgnoreCase)
+                ? Pass(name, "Every sample between the cuts is identical to the source's.")
+                : Fail(name, "The decoded audio between the cuts differs from the source's.");
+        }
+
+        if (kept.SourcePacketDigests is null || kept.OutputPacketDigests is null)
+            return Fail(name, "The audio frames could not be compared with the source's.");
+        return PacketRun.IsContiguousRunOf(kept.OutputPacketDigests, kept.SourcePacketDigests)
+            ? Pass(name, string.Format(CultureInfo.InvariantCulture,
+                "All {0} audio frames are unchanged copies of consecutive frames of the source's {1}.",
+                kept.OutputPacketDigests.Count, kept.SourcePacketDigests.Count))
+            : Fail(name, "The audio frames are not an unbroken, unchanged run of the source's frames.");
     }
 
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)

@@ -196,6 +196,13 @@ public sealed record RuleSettings
     public double AudioSilenceMinimumSeconds { get; init; } = SilenceTrimSettings.DefaultMinimumSeconds;
 
     /// <summary>
+    /// When <c>true</c> as well as <see cref="TrimAudioSilence"/>, a music file that is not
+    /// converted still has its silence trimmed, keeping its format: lossless audio is encoded
+    /// again losslessly and lossy audio is cut by copying its frames. See <see cref="Queue.AudioTrimOnly"/>.
+    /// </summary>
+    public bool TrimSilenceWithoutConverting { get; init; }
+
+    /// <summary>
     /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other
     /// language are removed from the output. Empty (the default) keeps every track. Tracks
     /// whose language is unknown are always kept, and when no track matches a kept language

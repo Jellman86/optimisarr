@@ -194,6 +194,30 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Trimming_files_that_are_not_converted_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Vinyl", Path = "/data/vinyl", MediaType = MediaType.Music, TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/vinyl").TrimSilenceWithoutConverting);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { TrimSilenceWithoutConverting = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/vinyl")).TrimSilenceWithoutConverting);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/vinyl")).TrimSilenceWithoutConverting);
+    }
+
+    [Fact]
     public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
     {
         await using (var db = CreateDb())

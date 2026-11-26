@@ -170,6 +170,50 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_music_file_measured_with_no_silence_to_trim_is_not_offered_again_until_it_changes()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Music", Path = "/data/music", MediaType = MediaType.Music, RuleProfile = RuleProfile.ConservativeHevc,
+                TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            MediaFile Song(string name) => new()
+            {
+                LibraryId = library.Id, Path = $"/data/music/{name}", RelativePath = name, SizeBytes = 6_000_000,
+                Status = MediaFileStatus.Probed, Container = "mp3", MediaKind = MediaKind.Audio, AudioCodecs = "mp3",
+                AudioBitrateKbps = 128, MaxAudioChannels = 2, ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                ProbedAt = DateTimeOffset.UtcNow,
+            };
+            var measured = Song("measured.mp3");
+            var cancelled = Song("cancelled.mp3");
+            var fresh = Song("fresh.mp3");
+            db.MediaFiles.AddRange(measured, cancelled, fresh);
+            await db.SaveChangesAsync();
+
+            var finished = DateTimeOffset.Parse("2026-06-01T01:00:00Z");
+            db.Jobs.AddRange(
+                new Job { MediaFileId = measured.Id, LibraryId = library.Id, Status = JobStatus.Cancelled, FinishedAt = finished,
+                    DetectedSilenceTrim = CandidateService.NothingToTrim },
+                // Cancelled by a person before anything was measured: says nothing about silence.
+                new Job { MediaFileId = cancelled.Id, LibraryId = library.Id, Status = JobStatus.Cancelled, FinishedAt = finished });
+            await db.SaveChangesAsync();
+        }
+
+        var results = await EvaluateAsync(libraryId: null);
+
+        Assert.False(Single(results, "measured.mp3").Eligible);
+        Assert.Contains("there was none", Single(results, "measured.mp3").Reason);
+        Assert.True(Single(results, "cancelled.mp3").Eligible);
+        Assert.True(Single(results, "fresh.mp3").Eligible);
+        Assert.Contains("Trims silence only", Single(results, "fresh.mp3").Reason);
+    }
+
+    [Fact]
     public async Task A_held_back_failed_file_names_its_latest_failed_job_to_retry()
     {
         int latestFailedId;

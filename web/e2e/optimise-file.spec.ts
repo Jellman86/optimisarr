@@ -72,6 +72,21 @@ async function mockPlan(page: Page, overrides: Overrides = {}) {
 
 const row = (page: Page, name: string) => page.locator(`[data-plan-row="${name}"]`)
 
+test('a music file that is only trimmed keeps its format in the plan', async ({ page }) => {
+  await mockPlan(page, { library: { mediaType: 'Music', trimAudioSilence: true, trimSilenceWithoutConverting: true }, plan: {
+    ...plan, kind: 'Audio', action: 'Audio', picture: null, image: null, audioTracks: null, subtitleTracks: null,
+    source: { ...source, relativePath: 'Album/01 Track.mp3', videoCodec: null, width: null, height: null, audioCodecs: 'mp3' },
+    sound: { codec: 'mp3', bitrateKbps: null, downmixToStereo: false, trimsSilence: true, trimOnly: true },
+    file: { container: 'mp3', fileName: '01 Track.mp3', renamed: false, mayBecomeMatroska: false },
+  } })
+  await page.goto('/#/inventory/optimise/7')
+  const audio = page.locator('[data-plan-row="audio"]')
+
+  await expect(audio).toContainText('Stays MP3. Only silence at the start and end is trimmed, if the job finds any.')
+  await expect(audio).not.toContainText('Converted to')
+  await expect(audio.locator('[data-plan-tag]')).toContainText('Shortens files')
+})
+
 test('a music plan says silence at the edges is trimmed when the library trims it', async ({ page }) => {
   await mockPlan(page, { library: { mediaType: 'Music', trimAudioSilence: true }, plan: {
     ...plan, kind: 'Audio', action: 'Encode', picture: null, image: null, audioTracks: null, subtitleTracks: null,

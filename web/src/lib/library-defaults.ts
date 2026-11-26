@@ -72,6 +72,7 @@ export function newLibraryDefaults(): SaveLibrary {
     trimAudioSilence: false,
     audioSilenceThresholdDb: -60,
     audioSilenceMinimumSeconds: 2,
+    trimSilenceWithoutConverting: false,
     keepAudioLanguages: null,
     keepSubtitleLanguages: null,
     reencodeLossyAudio: false,

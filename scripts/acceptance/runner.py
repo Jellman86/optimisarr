@@ -198,7 +198,7 @@ class Harness:
 
     def output(self, case):
         directory = inside(self.root / "work", self.root / "work" / str(case["mediaId"]))
-        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".webp", ".jpg", ".avif")]
+        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".flac", ".webp", ".jpg", ".avif")]
         require(len(files) == 1, f"Expected exactly one delivered candidate, found {files}")
         return inside(self.root / "work", files[0])
 
@@ -708,6 +708,90 @@ class Harness:
         before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
         require(abs(before["lufs"] - after["lufs"]) <= 1, "Trimming moved the loudness by more than 1 LUFS")
         save(self.report.root / name / "independent-trim.json", {"duration": duration, "silence": log, "source": before, "candidate": after})
+        self.replace_restore(case, candidate)
+        return {"duration": duration, "restoredOriginal": True}
+
+    # Each format the library does not convert, with the codec and library target that leave it alone.
+    TRIM_ONLY = {
+        "flac": (".flac", ["-c:a", "flac"], "aac", True),   # cover art keeps FLAC out of an AAC library
+        "mp3": (".mp3", ["-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3"], "opus", True),
+        # FFmpeg's M4A writer drops cover art beside the marker, so an M4A with art is left alone.
+        "aac": (".m4a", ["-c:a", "aac", "-b:a", "128k"], "opus", False),
+        "opus": (".opus", ["-c:a", "libopus", "-b:a", "96k"], "opus", False),
+    }
+
+    def audio_trim_only(self, fmt="mp3"):
+        # The audio_trim signal, in a format the library leaves alone: 3 s silence, 120 s music, a
+        # 2.5 s pause, 60 s music, 4 s silence. The file must keep its format and its own audio.
+        extension, codec_args, target, artwork = self.TRIM_ONLY[fmt]
+        name = f"audio-trim-only-{fmt}"
+        fixture = self.root / "fixtures" / f"{name}{extension}"
+        silence = lambda seconds: ["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={seconds}"]
+        noise = lambda seconds, seed: ["-f", "lavfi", "-i",
+            f"anoisesrc=color=white:amplitude=0.4:duration={seconds}:sample_rate=48000:seed={seed},lowpass=f=10000"]
+        inputs = silence(3) + noise(120, 42) + silence(2.5) + noise(60, 7) + silence(4)
+        maps = ["-map", "[out]"]
+        if artwork:
+            image = self.root / "fixtures" / "audio-cover.jpg"
+            self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=128x128:rate=1", "-frames:v", "1", self.tools.path(image)])
+            inputs += ["-i", self.tools.path(image)]
+            maps += ["-map", "5:v", "-c:v", "copy", "-disposition:v", "attached_pic"]
+        self.tools.encode(inputs + [
+            "-filter_complex", "[1]aformat=channel_layouts=stereo[a];[3]aformat=channel_layouts=stereo[b];[0][a][2][b][4]concat=n=5:v=0:a=1[out]",
+            *maps, *codec_args, "-metadata", "artist=Optimisarr acceptance", "-metadata", "title=Trim-only fixture",
+            self.tools.path(fixture)])
+        case = self.create_job(name, fixture, overrides={"mediaType": "Music", "audioTargetCodec": target,
+            "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
+            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0,
+            "trimAudioSilence": True, "audioSilenceThresholdDb": -60, "audioSilenceMinimumSeconds": 2,
+            "trimSilenceWithoutConverting": True})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(job["status"] == "ReadyToReplace", f"Trim-only audio failed: {job['errorMessage']}")
+        checks = {check["name"]: check for check in json.loads(job["verificationReportJson"])["checks"]}
+        for check in ("Silence trimmed", "Kept audio unchanged", "Audio codec", "Audio metadata and artwork", "Duration"):
+            require(checks.get(check, {}).get("outcome") == "Passed", f"No passing {check} check: {checks.get(check)}")
+        candidate = self.output(case)
+        require(candidate.suffix == extension, f"The trimmed file changed format: {candidate.name}")
+        source_probe, probe = self.tools.probe(case["source"]), self.tools.probe(candidate)
+        audio = lambda p: next(s for s in p["streams"] if s["codec_type"] == "audio")
+        for key in ("codec_name", "sample_rate", "channels", "bits_per_raw_sample"):
+            require(audio(probe).get(key) == audio(source_probe).get(key), f"The trimmed file changed its {key}")
+        if artwork:
+            require(any(s.get("disposition", {}).get("attached_pic") == 1 for s in probe["streams"]), "Lost embedded cover art")
+        # Ogg keeps its comments on the stream; the other containers keep them on the file.
+        tags = {key.lower(): value for key, value in {**probe["format"].get("tags", {}), **audio(probe).get("tags", {})}.items()}
+        require(tags.get("title") == "Trim-only fixture", "Lost audio metadata")
+        duration = float(probe["format"]["duration"])
+        # 2.75 s off the start and 3.75 s off the end; a copy starts up to 50 ms early on a frame.
+        planned = 183.0 + (0.05 if fmt != "flac" else 0)
+        require(abs(duration - planned) <= 0.15, f"Trimmed length {duration:.3f}s is not the planned {planned:.2f}s")
+        log = self.tools.run(self.tools.ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-i", self.tools.path(candidate),
+            "-af", "silencedetect=noise=-60dB:d=0.1", "-f", "null", "-"], include_stderr=True)
+        starts = [float(value) for value in re.findall(r"silence_start: (-?[\d.]+)", log)]
+        ends = [float(value) for value in re.findall(r"silence_end: ([\d.]+)", log)]
+        lead = planned - 183.0
+        require(any(abs(start - (120.25 + lead)) <= 0.2 for start in starts) and any(abs(end - (122.75 + lead)) <= 0.2 for end in ends),
+                "The pause inside the track was cut")
+        # Independently of the server: a copy holds the source's own packets in one unbroken run, and a
+        # lossless trim decodes to exactly the source's samples over the kept window.
+        if fmt == "flac":
+            digest = lambda path, extra: self.tools.run(self.tools.ffmpeg, ["-nostdin", "-v", "error", "-i", self.tools.path(path),
+                "-map", "0:a:0", *extra, "-c:a", "pcm_f64le", "-f", "hash", "-hash", "sha256", "-"]).strip()
+            window = re.search(r"atrim=start_sample=\d+:end_sample=\d+", job["appliedAudioFilter"] or "")
+            require(window, f"The lossless trim did not cut exact samples: {job['appliedAudioFilter']}")
+            require(digest(candidate, []) == digest(case["source"], ["-af", window.group(0)]),
+                    "The lossless trim changed the kept samples")
+        else:
+            packets = lambda path: [line.split(",")[5].strip() for line in self.tools.run(self.tools.ffmpeg, ["-nostdin", "-v", "error",
+                "-i", self.tools.path(path), "-map", "0:a:0", "-c", "copy", "-f", "framehash", "-hash", "sha256", "-"]).splitlines()
+                if line.strip() and not line.startswith("#")]
+            source_packets, output_packets = packets(case["source"]), packets(candidate)
+            require(any(source_packets[i:i + len(output_packets)] == output_packets for i in range(len(source_packets) - len(output_packets) + 1)),
+                    "The copied audio is not an unbroken run of the source's packets")
+        before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
+        require(abs(before["lufs"] - after["lufs"]) <= 0.5, "Trimming moved the loudness by more than 0.5 LUFS")
+        save(self.report.root / name / "independent-trim-only.json", {"duration": duration, "silence": log, "source": before, "candidate": after})
         self.replace_restore(case, candidate)
         return {"duration": duration, "restoredOriginal": True}
 
@@ -1338,6 +1422,8 @@ class Harness:
                 self.report.case("local-audio-artwork", lambda: self.audio("mp3", artwork=True))
                 for codec in ("opus", "aac", "mp3"):
                     self.report.case(f"local-audio-trim-{codec}", lambda c=codec: self.audio_trim(c))
+                for fmt in self.TRIM_ONLY:
+                    self.report.case(f"local-audio-trim-only-{fmt}", lambda f=fmt: self.audio_trim_only(f))
                 usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
                 if tier == "fleet" and not usable:
                     self.report.case("audio-workers", lambda: (_ for _ in ()).throw(Blocked("No audio workers paired")))

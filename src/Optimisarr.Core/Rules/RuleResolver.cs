@@ -55,6 +55,7 @@ public static class RuleResolver
             TrimAudioSilence = overrides.TrimAudioSilence ?? settings.TrimAudioSilence,
             AudioSilenceThresholdDb = overrides.AudioSilenceThresholdDb ?? settings.AudioSilenceThresholdDb,
             AudioSilenceMinimumSeconds = overrides.AudioSilenceMinimumSeconds ?? settings.AudioSilenceMinimumSeconds,
+            TrimSilenceWithoutConverting = overrides.TrimSilenceWithoutConverting ?? settings.TrimSilenceWithoutConverting,
             KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
             KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,

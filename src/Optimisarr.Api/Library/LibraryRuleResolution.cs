@@ -86,6 +86,7 @@ internal static class LibraryRuleResolution
             TrimAudioSilence = library.TrimAudioSilence,
             AudioSilenceThresholdDb = library.AudioSilenceThresholdDb,
             AudioSilenceMinimumSeconds = library.AudioSilenceMinimumSeconds,
+            TrimSilenceWithoutConverting = library.TrimSilenceWithoutConverting,
             KeepAudioLanguages = string.IsNullOrWhiteSpace(library.KeepAudioLanguages)
                 ? null
                 : TrackLanguages.ParseLanguageList(library.KeepAudioLanguages),

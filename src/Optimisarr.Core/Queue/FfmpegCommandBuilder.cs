@@ -80,6 +80,12 @@ public sealed record TranscodeSpec(
     public AudioTrimPlan? SilenceTrim { get; init; }
 
     /// <summary>
+    /// Set when a music file keeps its format and only has <see cref="SilenceTrim"/> removed. Its
+    /// <see cref="AudioEncoder"/> is then the source's own lossless codec, or null for a stream copy.
+    /// </summary>
+    public AudioTrimOnlyPlan? AudioTrimOnly { get; init; }
+
+    /// <summary>
     /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
     /// single library bitrate for every re-encoded track.
     /// </summary>
@@ -225,8 +231,23 @@ public static class FfmpegCommandBuilder
             args.Add(inputStart.ToString());
         }
 
+        var copyCut = ResolveTrimOnlyCopyCut(spec);
+        if (copyCut?.InputSeekSeconds is { } copySeek)
+        {
+            args.Add("-ss");
+            args.Add(copySeek);
+        }
+
         args.Add("-i");
         args.Add(spec.InputPath);
+
+        // A seek moves every stream of its input, and an attached picture only exists at the start,
+        // so the cover art is read again from an input that is not seeked.
+        if (copyCut is { PictureInput: 1 })
+        {
+            args.Add("-i");
+            args.Add(spec.InputPath);
+        }
 
         if (clipSeek.OutputStartSeconds is { } outputStart)
         {
@@ -236,6 +257,9 @@ public static class FfmpegCommandBuilder
 
         switch (spec.Kind)
         {
+            case MediaKind.Audio when spec.AudioTrimOnly is not null:
+                AppendTrimOnlyAudioArguments(args, spec, copyCut);
+                break;
             case MediaKind.Audio:
                 AppendAudioArguments(args, spec);
                 break;
@@ -622,8 +646,10 @@ public static class FfmpegCommandBuilder
     public static string? AudioFilterChain(TranscodeSpec spec)
     {
         var chain = ResolveAudioFilter(spec).Chain;
-        // Never a video's soundtrack, which must stay in step with its picture.
+        // Never a video's soundtrack, which must stay in step with its picture, and never a stream
+        // copy, which cuts between frames without decoding anything.
         var trim = spec is { SilenceTrim: { } plan, Kind: not MediaKind.Video, AudioSampleOnly: false, ClipSeconds: null, ClipStartSeconds: null }
+            && spec.AudioTrimOnly?.Method != AudioTrimOnlyMethod.StreamCopy
             ? plan.FilterExpression
             : null;
         return trim is null ? chain : chain is null ? trim : $"{trim},{chain}";
@@ -686,6 +712,98 @@ public static class FfmpegCommandBuilder
             args.Add("0:s?");
             args.Add("-c:s");
             args.Add("mov_text");
+        }
+    }
+
+    /// <summary>
+    /// How a stream copy cuts its window. MP3 and MP4 seek their input, which lands on a frame at or
+    /// just before the target (MP4 writes an edit list for the rest). An Ogg seek lands hundreds of
+    /// milliseconds early and the copy would keep all of it, so Ogg drops the frames before the
+    /// window on the way out instead; it has no attached picture for that to lose. Lengths are
+    /// durations from the first kept frame, since a seek restarts the output timeline at zero.
+    /// </summary>
+    private sealed record TrimOnlyCopyCut(string? InputSeekSeconds, string? OutputSeekSeconds, string? DurationSeconds, int PictureInput);
+
+    private static TrimOnlyCopyCut? ResolveTrimOnlyCopyCut(TranscodeSpec spec)
+    {
+        if (spec.Kind != MediaKind.Audio || spec.AudioTrimOnly is not { } trimOnly) return null;
+        // Never write a file that is the source over again under a trim's name.
+        if (spec.SilenceTrim is not { } trim || !trim.TrimsStart && !trim.TrimsEnd)
+            throw new InvalidOperationException("A trim-only audio job needs the silence to trim.");
+        if (trimOnly.Method != AudioTrimOnlyMethod.StreamCopy) return null;
+
+        var start = Seconds(trim.StartSample, trim.SampleRate);
+        var duration = trim.EndSample is { } end ? Seconds(end - trim.StartSample, trim.SampleRate) : null;
+        var seeksInput = Path.GetExtension(spec.OutputPath).ToLowerInvariant() is ".mp3" or ".m4a";
+        return seeksInput
+            ? new(trim.TrimsStart ? start : null, null, duration, trim.TrimsStart ? 1 : 0)
+            : new(null, trim.TrimsStart ? start : null, duration, 0);
+    }
+
+    private static string Seconds(long samples, int sampleRate) =>
+        ((double)samples / sampleRate).ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static void AppendTrimOnlyAudioArguments(List<string> args, TranscodeSpec spec, TrimOnlyCopyCut? copyCut)
+    {
+        var extension = Path.GetExtension(spec.OutputPath).ToLowerInvariant();
+        args.Add("-map_metadata");
+        args.Add("0");
+
+        // Cover art is copied as it is. Ogg and WAV cannot carry it, and M4A loses it to the marker,
+        // so such files are never trimmed without converting (see AudioTrimOnly); the map finds none.
+        if (extension is not (".opus" or ".ogg" or ".wav"))
+        {
+            args.Add("-map");
+            args.Add($"{copyCut?.PictureInput ?? 0}:v?");
+            args.Add("-c:v");
+            args.Add("copy");
+        }
+
+        args.Add("-map");
+        args.Add("0:a");
+        args.Add("-c:a");
+        args.Add(spec.AudioEncoder ?? "copy");
+        // FFmpeg's strongest FLAC setting, so a file encoded again rarely comes out larger.
+        if (spec.AudioEncoder == "flac")
+        {
+            args.Add("-compression_level");
+            args.Add("12");
+        }
+
+        // Timed lyrics in an M4A are copied; a file that has them is only trimmed at the end.
+        if (extension == ".m4a")
+        {
+            args.Add("-map");
+            args.Add($"{copyCut?.PictureInput ?? 0}:s?");
+            args.Add("-c:s");
+            args.Add("copy");
+        }
+
+        if (copyCut is null)
+        {
+            // The exact samples, as a conversion trims them.
+            AppendAudioFilter(args, spec);
+            return;
+        }
+
+        // The source's iTunes gapless figures describe the whole file, not the cut. FFmpeg writes
+        // the cut's own: a new LAME header for MP3, an edit list for MP4.
+        if (extension is ".mp3" or ".m4a")
+        {
+            args.Add("-metadata");
+            args.Add("iTunSMPB=");
+        }
+
+        if (copyCut.OutputSeekSeconds is { } outputSeek)
+        {
+            args.Add("-ss");
+            args.Add(outputSeek);
+        }
+
+        if (copyCut.DurationSeconds is { } duration)
+        {
+            args.Add("-t");
+            args.Add(duration);
         }
     }
 

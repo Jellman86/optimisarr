@@ -122,7 +122,9 @@ public sealed record LibrarySnapshot(
     // Null on an older snapshot means off with the default threshold and length.
     bool? TrimAudioSilence = null,
     double? AudioSilenceThresholdDb = null,
-    double? AudioSilenceMinimumSeconds = null);
+    double? AudioSilenceMinimumSeconds = null,
+    // Null on an older snapshot means off.
+    bool? TrimSilenceWithoutConverting = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

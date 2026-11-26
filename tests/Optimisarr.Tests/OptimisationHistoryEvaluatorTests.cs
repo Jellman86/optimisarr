@@ -39,6 +39,28 @@ public sealed class OptimisationHistoryEvaluatorTests
     }
 
     [Fact]
+    public void A_trim_only_file_already_measured_with_nothing_to_trim_is_not_offered_again()
+    {
+        var trimOnly = CandidateDecision.Eligible("Trims silence only") with { TrimsOnly = true };
+        var history = new OptimisationHistory(null, null) { LastNothingToTrimAt = Modified.AddHours(1) };
+
+        var result = OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified);
+
+        Assert.False(result.IsEligible);
+        Assert.Equal("Measured for silence to trim, and there was none", result.Reason);
+    }
+
+    [Fact]
+    public void Nothing_to_trim_says_nothing_about_a_file_that_is_converted_or_has_changed_since()
+    {
+        var history = new OptimisationHistory(null, null) { LastNothingToTrimAt = Modified.AddHours(1) };
+        var trimOnly = CandidateDecision.Eligible("Trims silence only") with { TrimsOnly = true };
+
+        Assert.True(OptimisationHistoryEvaluator.Apply(Eligible, history, Modified).IsEligible);
+        Assert.True(OptimisationHistoryEvaluator.Apply(trimOnly, history, Modified.AddHours(2)).IsEligible);
+    }
+
+    [Fact]
     public void A_stale_failure_offers_nothing_to_retry()
     {
         var history = new OptimisationHistory(LastCompletedAt: null, LastFailedAt: Modified.AddHours(-1), LastFailedJobId: 42);

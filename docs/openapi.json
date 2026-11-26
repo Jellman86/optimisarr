@@ -3307,6 +3307,12 @@
               "boolean"
             ]
           },
+          "trimSilenceWithoutConverting": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "videoAudioBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -4148,6 +4154,10 @@
             ]
           },
           "downmixToStereo": {
+            "type": "boolean"
+          },
+          "trimOnly": {
+            "default": false,
             "type": "boolean"
           },
           "trimsSilence": {
@@ -6050,6 +6060,12 @@
             ]
           },
           "trimAudioSilence": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "trimSilenceWithoutConverting": {
             "type": [
               "null",
               "boolean"

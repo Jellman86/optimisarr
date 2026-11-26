@@ -1270,6 +1270,7 @@
       trimAudioSilence: library.trimAudioSilence ?? false,
       audioSilenceThresholdDb: library.audioSilenceThresholdDb ?? -60,
       audioSilenceMinimumSeconds: library.audioSilenceMinimumSeconds ?? 2,
+      trimSilenceWithoutConverting: library.trimSilenceWithoutConverting ?? false,
       keepAudioLanguages: library.keepAudioLanguages,
       keepSubtitleLanguages: library.keepSubtitleLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
@@ -1423,6 +1424,7 @@
       // the server keeps what it has.
       audioSilenceThresholdDb: form.trimAudioSilence ? Number(form.audioSilenceThresholdDb ?? -60) : undefined,
       audioSilenceMinimumSeconds: form.trimAudioSilence ? Number(form.audioSilenceMinimumSeconds ?? 2) : undefined,
+      trimSilenceWithoutConverting: form.trimAudioSilence ? !!form.trimSilenceWithoutConverting : undefined,
       adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
       adaptiveSoundtrackQuality: showVideoOptions && soundtrackSearchAvailable && !!form.adaptiveSoundtrackQuality && !!form.soundtrackQualityGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
@@ -2292,6 +2294,9 @@
         </SettingRow>
         <SettingRow label={i18n.m.libraryEditor.silence_minimum_label} sentence={i18n.m.libraryEditor.silence_minimum_sentence} controlId="lib-silence-minimum">
           <input id="lib-silence-minimum" class="input" type="number" min="0.5" max="30" step="0.5" bind:value={form.audioSilenceMinimumSeconds} />
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.trim_only_label} sentence={i18n.m.libraryEditor.trim_only_sentence} more={i18n.m.libraryEditor.trim_only_more}>
+          <Toggle bare bind:checked={form.trimSilenceWithoutConverting} label={i18n.m.libraryEditor.trim_only_label} />
         </SettingRow>
       {/if}
       {#if !showVideoOptions || isNoEncodeProfile}

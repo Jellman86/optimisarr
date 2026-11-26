@@ -33,6 +33,9 @@ public sealed record Candidate(
 /// </summary>
 public sealed class CandidateService(OptimisarrDbContext db)
 {
+    /// <summary>What a job stores in <see cref="Job.DetectedSilenceTrim"/> when it measured no silence to trim.</summary>
+    public const string NothingToTrim = "none";
+
     private const string ReservedReason = "Reserved by an unresolved duplicate action; resolve or cancel that action before optimising.";
     public async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId, CancellationToken cancellationToken)
     {
@@ -254,10 +257,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
     private async Task<Dictionary<int, OptimisationHistory>> LoadHistoryAsync(
         int? libraryId, CancellationToken cancellationToken)
     {
+        // A trim-only job that measured no silence ends cancelled with its "none" decision kept.
         var query = db.Jobs.AsNoTracking()
             .Where(job => job.Type == JobType.Normal
                 && job.FinishedAt != null
-                && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed));
+                && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed
+                    || job.Status == JobStatus.Cancelled && job.DetectedSilenceTrim == NothingToTrim));
         if (libraryId is not null)
         {
             query = query.Where(job => job.LibraryId == libraryId);
@@ -266,7 +271,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
         // SQLite stores DateTimeOffset as text and can't aggregate it server-side, so
         // fetch the terminal jobs and reduce to the latest per file in memory.
         var rows = await query
-            .Select(job => new { job.Id, job.MediaFileId, job.Status, job.FinishedAt })
+            .Select(job => new { job.Id, job.MediaFileId, job.Status, job.FinishedAt, job.DetectedSilenceTrim })
             .ToListAsync(cancellationToken);
 
         return rows
@@ -282,6 +287,11 @@ public sealed class CandidateService(OptimisarrDbContext db)
                         .Max(row => row.FinishedAt),
                     LastFailedJobId: group
                         .Where(row => row.Status == JobStatus.Failed)
-                        .MaxBy(row => row.FinishedAt)?.Id));
+                        .MaxBy(row => row.FinishedAt)?.Id)
+                {
+                    LastNothingToTrimAt = group
+                        .Where(row => row.Status == JobStatus.Cancelled && row.DetectedSilenceTrim == NothingToTrim)
+                        .Max(row => row.FinishedAt),
+                });
     }
 }
