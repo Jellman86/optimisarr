@@ -232,7 +232,7 @@ const budgets = {
   'arbitrary font sizes (text-[…px|rem])': { budget: 0, count: countArbitraryFontSizes },
   'stroked edges (border-line)': { budget: 53, count: countStrokedEdges },
   'per-control height overrides (min-h-11)': { budget: 0, count: countMinH11Overrides },
-  'lines of page-scoped CSS (<style>)': { budget: 782, count: countStyleLines },
+  'lines of page-scoped CSS (<style>)': { budget: 776, count: countStyleLines },
 }
 
 for (const [drift, { budget, count }] of Object.entries(budgets)) {

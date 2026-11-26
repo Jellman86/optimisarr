@@ -53,7 +53,8 @@
     /** `fixed` keeps column widths stable as rows change; `auto` sizes them to their content. */
     layout?: 'fixed' | 'auto'
     /**
-     * `page`: the page scrolls and the header sticks to the top of it. `inline`: a table too wide
+     * `page`: the page scrolls and the header sticks to the top of it, or under a page's own sticky
+     * bar when the page sets `--data-table-sticky-top`. `inline`: a table too wide
      * for a phone scrolls sideways inside its surface. `contained`: a long list scrolls inside a
      * bounded surface (`--data-table-max-height`, 65vh by default), with the header stuck to it.
      */

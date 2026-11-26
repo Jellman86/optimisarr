@@ -41,6 +41,7 @@
   import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
   import SelectionToolbar from '../components/SelectionToolbar.svelte'
   import Segmented from '../components/Segmented.svelte'
+  import Chip from '../components/Chip.svelte'
   import FilterBar from '../components/FilterBar.svelte'
   import { createSelection } from '../selection.svelte'
 
@@ -126,6 +127,9 @@
   let activeTab = $state<'queue' | 'failures'>(router.path === '/queue/failures' ? 'failures' : 'queue')
 
   let selectedJobId = $state<number | null>(null)
+  // The lane breakdown starts folded to one row of counts so the list leads the page.
+  let lanesOpen = $state(false)
+  let toolbarHeight = $state(0)
   // The multi-select over the job table. The operator picks rows and acts on them in bulk; the
   // selection survives a change of filter and a change of page, so a large queue can be worked
   // through without losing the rows already picked.
@@ -757,11 +761,14 @@
 </script>
 
 <div class="queue-layout">
-  <PageHeader title={i18n.m.nav.queue} subtitle={i18n.m.queue.subtitle} />
-  <Segmented class="mb-6" label={i18n.m.queue.view_label} value={activeTab} onselect={selectTab} items={[
-    { value: 'queue', label: i18n.m.nav.queue, count: activeCount > 0 ? activeCount : undefined },
-    { value: 'failures', label: i18n.m.queue.tab_failures, count: failedCount > 0 ? failedCount : undefined },
-  ]} />
+  <PageHeader title={i18n.m.nav.queue} subtitle={i18n.m.queue.subtitle}>
+    {#snippet actions()}
+      <Segmented label={i18n.m.queue.view_label} value={activeTab} onselect={selectTab} items={[
+        { value: 'queue', label: i18n.m.nav.queue, count: activeCount > 0 ? activeCount : undefined },
+        { value: 'failures', label: i18n.m.queue.tab_failures, count: failedCount > 0 ? failedCount : undefined },
+      ]} />
+    {/snippet}
+  </PageHeader>
   {#if activeTab === 'failures'}
     <FailuresPanel />
   {:else}
@@ -801,24 +808,41 @@
 {/if}
 
     {#if queueStatus?.workloadLanes?.length && (activeCount > 0 || queuedCount > 0)}
-      <section class="queue-lanes" aria-label={i18n.m.queue.lanes_title}>
-        <div class="queue-lanes-heading"><h2>{i18n.m.queue.lanes_title}</h2><p>{i18n.m.queue.lanes_hint}</p></div>
-        <div class="queue-lane-grid">
-          {#each queueStatus.workloadLanes.filter(lane => lane.lane !== 'Finalization' || lane.active > 0 || lane.waiting > 0) as lane (lane.lane)}
-            <div class="queue-lane card" title={lane.reason ?? undefined}>
-              <div class="queue-lane-head"><span>{laneLabel(lane.lane)}</span><strong>{lane.active}<span aria-hidden="true"> / </span>{lane.capacity}</strong></div>
-              <p>{t(i18n.m.queue.lane_waiting, { count: lane.waiting })}</p>
-              {#if lane.reason && lane.waiting > 0}<small>{lane.reason}</small>{/if}
-            </div>
-          {/each}
+      {@const lanes = queueStatus.workloadLanes.filter(lane => lane.lane !== 'Finalization' || lane.active > 0 || lane.waiting > 0)}
+      {#if lanes.length > 0}
+      <!-- One row of counts, so the list stays high on the screen; the disclosure says what is
+           waiting in each lane and why, for when the counts are not enough. -->
+      <section class="mb-3" aria-label={i18n.m.queue.lanes_title}>
+        <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+          <button type="button" class="btn btn-sm btn-ghost -ml-2.5 font-semibold text-ink-2" aria-expanded={lanesOpen} aria-controls={lanesOpen ? 'queue-lane-details' : undefined} onclick={() => (lanesOpen = !lanesOpen)}><Icon name="chevron" class="h-3.5 w-3.5 transition-transform motion-reduce:transition-none {lanesOpen ? '' : '-rotate-90'}" />{i18n.m.queue.lanes_title}</button>
+          <ul class="flex min-w-0 flex-wrap items-center gap-1.5">
+            {#each lanes as lane (lane.lane)}
+              <li class="min-w-0"><Chip><span>{laneLabel(lane.lane)}</span><strong class="shrink-0 font-semibold tabular-nums text-ink">{lane.active} / {lane.capacity}</strong>{#if lane.waiting > 0}<span aria-hidden="true">·</span><span class="shrink-0 font-semibold tabular-nums text-ink">{t(i18n.m.queue.lane_waiting, { count: lane.waiting })}</span>{/if}</Chip></li>
+            {/each}
+          </ul>
         </div>
+        {#if lanesOpen}
+          <div id="queue-lane-details" class="card mt-2 grid gap-3 p-4">
+            <p class="text-caption text-ink-3">{i18n.m.queue.lanes_hint}</p>
+            <dl class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-x-6 gap-y-3">
+              {#each lanes as lane (lane.lane)}
+                <div class="min-w-0">
+                  <dt class="flex items-baseline justify-between gap-2 text-label font-semibold text-ink-2"><span class="min-w-0">{laneLabel(lane.lane)}</span><span class="flex-none tabular-nums text-ink">{lane.active} / {lane.capacity}</span></dt>
+                  <dd class="mt-0.5 text-caption text-ink-3">{t(i18n.m.queue.lane_waiting, { count: lane.waiting })}</dd>
+                  {#if lane.reason && lane.waiting > 0}<dd class="mt-1 text-caption text-ink-2 [overflow-wrap:anywhere]">{lane.reason}</dd>{/if}
+                </div>
+              {/each}
+            </dl>
+          </div>
+        {/if}
       </section>
+      {/if}
     {/if}
 
 
     {#if !loading && leadJob}
-      <section class="queue-working" aria-label={i18n.m.queue.working_now}>
-        <div class="queue-section-heading"><h2>{i18n.m.queue.working_now}</h2><span>{processingJobs.length}</span></div>
+      <section class="grid gap-2" aria-label={i18n.m.queue.working_now}>
+        <div class="flex items-baseline gap-2 text-caption"><h2 class="font-semibold text-ink-2">{i18n.m.queue.working_now}</h2><span class="text-ink-3">{processingJobs.length}</span></div>
         <WorkingJob job={leadJob} queue={queueStatus} telemetry={live[leadJob.id]} selected={selectedJobId === leadJob.id} onopen={(event) => selectRow(leadJob!.id, event)} />
         {#each processingJobs.filter(job => job.id !== leadJob?.id) as job (job.id)}
           <WorkingJob {job} queue={queueStatus} telemetry={live[job.id]} compact selected={selectedJobId === job.id} onopen={(event) => selectRow(job.id, event)} />
@@ -1112,20 +1136,21 @@
       </DetailDialog>
     {/if}
 
-    <section id="queue-list" aria-labelledby="queue-list-title">
+    <section id="queue-list" aria-labelledby="queue-list-title" style:--queue-toolbar-height={`${toolbarHeight}px`}>
       <div class="queue-section-heading">
         <h2 id="queue-list-title" class="focus-ring" tabindex="-1">{filter === 'review' ? i18n.m.queue.filter_review : i18n.m.queue.next_recent}</h2>
         <!-- The housekeeping the queue used to hide behind a toggle: it is always on show, and it
              only appears when it would do something. -->
         <div class="queue-heading-actions">
-          {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
-          {#if counts.completed > 0}<button class="btn btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
+          {#if pendingCount > 0}<button class="btn btn-sm btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
+          {#if counts.completed > 0}<button class="btn btn-sm btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
         </div>
       </div>
       {#if jobs.length > 0}
         <!-- One toolbar, two states. The filters and the batch bar share a single grid cell, so
-             picking a row replaces the filters where they stood: the table below never moves. -->
-        <div class="queue-toolbar" data-queue-toolbar>
+             picking a row replaces the filters where they stood: the table below never moves.
+             It stays in view over a long list, with the table's header held just beneath it. -->
+        <div class="queue-toolbar" data-queue-toolbar bind:offsetHeight={toolbarHeight}>
           <div class="queue-toolbar-layer" class:queue-toolbar-hidden={selection.count > 0} inert={selection.count > 0} data-queue-filters>
             <FilterBar label={i18n.m.queue.filter_label} value={filter} onselect={selectFilter} items={([
               ['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review],
@@ -1176,14 +1201,14 @@
           ondismiss={() => (batchOutcome = null)}
         />
       {/if}
-      <DataTable rowCount={pagedJobs.length} {loading} error={loadError} labelledby="queue-list-title" footer={visibleJobs.length > 0 ? queuePagination : undefined}>
+      <DataTable density="compact" rowCount={pagedJobs.length} {loading} error={loadError} labelledby="queue-list-title" footer={visibleJobs.length > 0 ? queuePagination : undefined}>
         {#snippet head()}
           <tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col" class="w-[37%] sm:w-1/4">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column hidden w-[17%] sm:table-cell">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column hidden w-[15%] sm:table-cell"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr>
         {/snippet}
         {#each pagedJobs as job (job.id)}
           <tr class:selected-row={selectedJobId === job.id}>
             <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
-            <td><button id={`queue-job-${job.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring sm:gap-3.5" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span class="min-w-0"><strong class="block text-caption font-medium text-ink group-hover:text-accent sm:text-label">{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small class="mt-1.5 block text-micro text-ink-3">{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
+            <td><button id={`queue-job-${job.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} size="xs" /><span class="min-w-0"><strong class="block text-caption font-medium text-ink group-hover:text-accent sm:text-label">{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small class="mt-1.5 block text-micro text-ink-3">{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
             <td><span class="badge whitespace-normal {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="mt-1.5 block text-micro text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
             <td class="verification-column hidden sm:table-cell">{#if job.verificationPassed !== null}<button class="group inline-flex rounded text-left cursor-pointer items-center gap-1 focus-ring" class:text-ink-2={job.verificationPassed} class:text-bad={!job.verificationPassed && !job.acceptedBelowTargetAt} class:text-warn={!!job.acceptedBelowTargetAt} onclick={(event) => selectRow(job.id, event)}>{#if job.verificationPassed}<OkMark class="h-3 w-3" />{/if}<span class="underline decoration-ink-4/75 underline-offset-[3px] group-hover:decoration-current">{job.verificationPassed ? i18n.m.queue.verify_passed : job.acceptedBelowTargetAt ? i18n.m.quarantine.accepted_below_target : i18n.m.queue.verify_failed}</span></button>{#if job.outputSizeBytes != null && job.outputSizeBytes > 0}<small class="mt-1.5 block text-micro text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
             <td class="action-column hidden sm:table-cell">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-sm btn-ghost max-w-full whitespace-normal" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-sm btn-primary max-w-full whitespace-normal" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-sm btn-ghost max-w-full whitespace-normal" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
@@ -1285,12 +1310,9 @@
   .queue-review-alert span { min-width: 0; flex: 1; display: grid; gap: .25rem; }
   .queue-review-alert strong { color: var(--ink); font-size: .8125rem; }
   .queue-review-alert small { color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
-  .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-heading-actions .btn { font-size: .75rem; }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
-  .queue-lanes { margin-bottom: 1.5rem; }.queue-lanes-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }.queue-lanes-heading h2 { font-size: .8125rem; font-weight: 600; color: var(--ink-2); }.queue-lanes-heading p { font-size: .6875rem; color: var(--ink-3); }.queue-lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .625rem; }.queue-lane { min-width: 0; padding: .875rem 1rem; transition: transform .18s ease, box-shadow .18s ease; }.queue-lane:hover { transform: translateY(-2px); box-shadow: var(--lift-2); }.queue-lane-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; color: var(--ink-2); font-size: .75rem; }.queue-lane-head strong { flex: none; font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }.queue-lane p { color: var(--ink-3); font-size: .6875rem; margin-top: .4rem; }.queue-lane small { display: block; color: var(--ink-3); font-size: .6875rem; line-height: 1.45; margin-top: .625rem; overflow-wrap: anywhere; }.queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
+  .queue-section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; margin: 1.25rem 0 .5rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
+  .queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
   .queue-execution-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }.queue-execution-path h3 { grid-column: 1/-1; margin: 0; font-size: .75rem; color: var(--ink-3); font-weight: 600; }.queue-execution-path div { min-width: 0; display: grid; gap: .25rem; font-size: .6875rem; color: var(--ink-3); }.queue-execution-path strong { color: var(--ink); font-size: .75rem; font-weight: 600; overflow-wrap: anywhere; }
-  @media(max-width: 900px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media(max-width: 420px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-lane { padding: .75rem; } }
-  @media(max-width: 340px) { .queue-lane-grid { grid-template-columns: 1fr; } }
   @media(max-width: 420px) { .queue-execution-path { grid-template-columns: 1fr; } }
   .attempt-timeline { margin-top: 1.5rem; border-top: 1px solid var(--divide-soft); padding-top: 1.25rem; }
   .attempt-timeline h3, .queue-diagnostic-action h3 { color: var(--ink); font-size: .875rem; font-weight: 650; }
@@ -1320,7 +1342,11 @@
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   /* The filters and the batch bar share one grid cell, sized to the taller of the two, so
      picking a row swaps one for the other and the table below never moves. */
-  .queue-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
+  .queue-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: .75rem; }
+  /* From tablet width up (with vertical room) it sticks at the top of the scroll container on the
+     page's own fill, and the table header stacks directly beneath it. Vertical padding keeps focus
+     rings clear of the scrollport edge and wrapped rows clear of the table header. */
+  @media(min-width: 640px) and (min-height: 540px) { #queue-list { --data-table-sticky-top: var(--queue-toolbar-height); }.queue-toolbar { position: sticky; top: 0; z-index: 20; padding-block: .5rem; background: var(--ground); }#queue-list :global(tbody :is(tr, button, a, input)) { scroll-margin-block-start: calc(var(--queue-toolbar-height) + 2.75rem); } }
   .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms; }
   .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity 180ms ease, transform 180ms ease, visibility 0s; }
   .queue-toolbar-hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-.25rem); }

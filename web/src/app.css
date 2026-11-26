@@ -831,7 +831,9 @@ p {
   /* The header row of a table inside a card: it sticks, it sits on the panel, and it is
      divided from the rows by a hairline. */
   .table-head {
-    @apply sticky top-0 z-10 text-left text-caption font-semibold text-ink-3;
+    @apply sticky z-10 text-left text-caption font-semibold text-ink-3;
+    /* A page with its own sticky bar over the list sets the offset so the header stacks under it. */
+    top: var(--data-table-sticky-top, 0px);
     background: var(--panel);
     box-shadow: inset 0 -1px 0 var(--divide);
   }

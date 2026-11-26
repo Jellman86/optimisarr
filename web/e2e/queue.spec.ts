@@ -631,9 +631,10 @@ test('strict evidence and legacy media verification show distinct phases beside 
   const lanes = page.getByRole('region', { name: 'Where work runs' })
   await expect(lanes).toContainText('Video on this server')
   await expect(lanes).toContainText('Audio & images')
-  await expect(lanes).toContainText('All video slots are busy.')
   await expect(lanes).toContainText('Replacing files')
-  await expect(lanes).toContainText('Both finalisation slots are busy.')
+  await lanes.getByRole('button', { name: 'Where work runs' }).click()
+  await expect(lanes.getByText('All video slots are busy.')).toBeVisible()
+  await expect(lanes.getByText('Both finalisation slots are busy.')).toBeVisible()
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working).toContainText('Checking the worker’s results')
   await expect(working).toContainText('This server does not repeat the media checks.')
@@ -884,7 +885,7 @@ test('a missing working poster stays settled through refreshes and recovers for 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working.locator('[data-thumbnail]')).toBeVisible()
   await expect(working.locator('img')).toHaveCount(0)
-  // The poster and the glow behind the card each ask once; neither may ask again.
+  // The poster asks once and may not ask again.
   const initialRequests = missingRequests
   fixture.jobs = [{ ...fixture.jobs[0], progress: .5 }]
   await send('jobsChanged')
@@ -897,9 +898,8 @@ test('a missing working poster stays settled through refreshes and recovers for 
   await expect(poster).toHaveAttribute('src', '/api/media/2/thumbnail')
   await expect(poster).toHaveJSProperty('naturalWidth', 192)
   await expect(poster).toHaveCSS('opacity', '1')
-  // The glow is the same artwork as ambience: hidden from assistive technology, never content.
-  await expect(working.locator('.poster-glow')).toHaveAttribute('aria-hidden', 'true')
-  await expect(working.locator('.poster-glow img')).toHaveAttribute('alt', '')
+  // The strip is a calm panel: the artwork is the poster alone, with no glow behind it.
+  await expect(working.locator('.poster-glow')).toHaveCount(0)
 })
 
 for (const width of [375, 1440]) {
@@ -1693,4 +1693,123 @@ test('the failure headline leaves the advice to the result card and says target,
   await expect(dialog).not.toContainText('lower the gate')
   await expect(dialog).not.toContainText('Retry at higher quality, or lower the target')
   await expect(dialog.locator('[data-advice="retry"]')).toBeVisible()
+})
+
+// A busy queue at a laptop size: lanes in use, one job encoding and a list of what is next and
+// what finished. The list is the page, so most of the first screen belongs to its rows.
+const busyLanes = [
+  { lane: 'Video', active: 1, capacity: 1, waiting: 2, reason: 'All video slots are busy.' },
+  { lane: 'NonVideo', active: 0, capacity: 1, waiting: 0, reason: null },
+  { lane: 'Evidence', active: 0, capacity: 2, waiting: 0, reason: null },
+  { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
+]
+function busyJobs(rows: number) {
+  const statuses = ['Queued', 'Queued', 'ReadyToReplace', 'Completed', 'Failed']
+  return [
+    { ...job(1, 'Transcoding', null), progress: .42 },
+    ...Array.from({ length: rows }, (_, index) => {
+      const status = statuses[index % statuses.length]
+      return job(10 + index, status, status === 'ReadyToReplace' || status === 'Completed' ? true : status === 'Failed' ? false : null)
+    }),
+  ]
+}
+
+test('a busy queue shows at least six whole job rows above the fold at 1440x900', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockWorkingQueue(page, { jobs: busyJobs(10), queue: { workloadLanes: busyLanes } })
+  await page.goto('/#/queue')
+  await expect(page.getByRole('region', { name: 'Working now' }).getByRole('progressbar')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Where work runs' })).toBeVisible()
+  const rows = page.locator('#queue-list tbody tr')
+  await expect(rows).toHaveCount(10)
+  const boxes = await rows.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().bottom))
+  expect(boxes.filter(bottom => bottom <= 900).length).toBeGreaterThanOrEqual(6)
+})
+
+test('lanes are one row of chips that expands to say what is waiting and why', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockWorkingQueue(page, { jobs: busyJobs(3), queue: { workloadLanes: [
+    ...busyLanes,
+    { lane: 'Finalization', active: 1, capacity: 2, waiting: 1, reason: 'Both finalisation slots are busy.' },
+  ] } })
+  await page.goto('/#/queue')
+  const lanes = page.getByRole('region', { name: 'Where work runs' })
+  const toggle = lanes.getByRole('button', { name: 'Where work runs' })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(lanes.getByText('Video on this server', { exact: true })).toBeVisible()
+  await expect(lanes.getByText('Replacing files', { exact: true })).toBeVisible()
+  await expect(lanes.getByText('All video slots are busy.')).toBeHidden()
+  expect((await lanes.boundingBox())!.height).toBeLessThanOrEqual(44)
+
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(lanes.getByText('All video slots are busy.')).toBeVisible()
+  await expect(lanes.getByText('Both finalisation slots are busy.')).toBeVisible()
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 667 })
+    await expect(lanes.getByText('All video slots are busy.')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(await lanes.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  }
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(lanes.getByText('All video slots are busy.')).toBeHidden()
+})
+
+test('the filters stay in view above the table header while a long queue scrolls', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockWorkingQueue(page, { jobs: busyJobs(40), queue: { workloadLanes: busyLanes } })
+  await page.goto('/#/queue')
+  const toolbar = page.locator('[data-queue-toolbar]')
+  const head = page.locator('#queue-list thead')
+  await expect(page.locator('#queue-list tbody tr')).toHaveCount(40)
+  await page.locator('#queue-list tbody tr').nth(30).scrollIntoViewIfNeeded()
+  await page.locator('main').evaluate(main => main.scrollBy(0, 400))
+
+  const bar = (await toolbar.boundingBox())!
+  const header = (await head.boundingBox())!
+  const scroller = (await page.locator('main').boundingBox())!
+  // Flush with the top of the scrolling area, so no row shows through above the bar.
+  expect(Math.abs(bar.y - scroller.y)).toBeLessThanOrEqual(1)
+  expect(header.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1)
+  expect(header.y).toBeLessThanOrEqual(bar.y + bar.height + 1)
+  await expect(page.getByRole('button', { name: /^All · / })).toBeInViewport()
+  expect(await toolbar.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')
+
+  // Selecting a row swaps in the batch bar where the filters stood, still in view.
+  await page.getByRole('checkbox', { name: 'Select Film 40.mkv' }).check()
+  await expect(page.locator('[data-queue-batch]')).toBeInViewport()
+
+  // On a phone or short landscape viewport the bar scrolls away with the page rather than taking
+  // a slice of a small screen.
+  await page.setViewportSize({ width: 375, height: 667 })
+  expect(await toolbar.evaluate(element => getComputedStyle(element).position)).toBe('static')
+  await page.setViewportSize({ width: 844, height: 390 })
+  expect(await toolbar.evaluate(element => getComputedStyle(element).position)).toBe('static')
+})
+
+test('at tablet width the working progress bar keeps room and a wrapped sticky toolbar never collides with the table header', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 })
+  await mockWorkingQueue(page, { jobs: busyJobs(40), queue: { workloadLanes: busyLanes }, dryRun: true })
+  await page.goto('/#/queue')
+
+  const progress = page.getByRole('region', { name: 'Working now' }).getByRole('progressbar')
+  await expect(progress).toBeVisible()
+  expect((await progress.boundingBox())!.width).toBeGreaterThanOrEqual(180)
+
+  const toolbar = page.locator('[data-queue-toolbar]')
+  const head = page.locator('#queue-list thead')
+  await page.locator('#queue-list tbody tr').nth(30).scrollIntoViewIfNeeded()
+  await page.locator('main').evaluate(main => main.scrollBy(0, 400))
+
+  const bar = (await toolbar.boundingBox())!
+  const header = (await head.boundingBox())!
+  expect(header.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1)
+
+  await page.getByRole('checkbox', { name: 'Select Film 40.mkv' }).check()
+  await expect(page.locator('[data-queue-batch]')).toBeInViewport()
+  const batchBar = (await toolbar.boundingBox())!
+  const batchHeader = (await head.boundingBox())!
+  expect(batchHeader.y).toBeGreaterThanOrEqual(batchBar.y + batchBar.height - 1)
 })

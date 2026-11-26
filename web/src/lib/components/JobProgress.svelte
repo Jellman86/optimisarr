@@ -4,7 +4,8 @@
   import { jobPercent, isJobSuspended, verificationPhase } from '../job-presentation'
   import { formatDuration } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
-  let { job, queue, telemetry, compact = false }: { job: Job; queue: QueueStatus | null; telemetry?: JobProgress; compact?: boolean } = $props()
+  // `inline` puts the figures beside the bar instead of under it, for a one-line strip.
+  let { job, queue, telemetry, compact = false, inline = false }: { job: Job; queue: QueueStatus | null; telemetry?: JobProgress; compact?: boolean; inline?: boolean } = $props()
   let percent = $derived(jobPercent(job))
   let paused = $derived(isJobSuspended(job, queue))
   let encoding = $derived(job.status === 'Transcoding' || (job.status === 'Leased' && job.remoteStage === 'Encoding'))
@@ -33,7 +34,7 @@
   function eta(seconds: number) { return seconds < 60 ? t(i18n.m.queue.eta_seconds, { seconds: Math.round(seconds) }) : t(i18n.m.queue.eta_duration, { duration: formatDuration(seconds) }) }
 </script>
 
-<div class="job-progress" class:compact class:paused>
+<div class="job-progress" class:compact class:paused class:progress-inline={inline}>
   <div class="progress-track" role="progressbar" aria-label={i18n.m.queue.col_progress} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent ?? undefined} aria-valuetext={paused ? i18n.m.queue.now_paused : percent === null ? description : undefined}>
     {#if percent !== null}<div class="progress-fill" style:width={`${percent}%`}></div>
     {:else}<div class="progress-indeterminate"></div>{/if}
@@ -54,4 +55,6 @@
   .job-progress { min-width: 0; }.progress-track { height: .375rem; }.progress-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; margin-top: .625rem; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
   strong { font-size: 1.125rem; color: var(--ink); font-weight: 600; }.remaining { margin-left: auto; } p { font-size: .75rem; color: var(--ink-3); margin-top: .375rem; overflow-wrap: anywhere; }
   .paused .progress-fill { background: var(--warn); }.paused p { color: var(--warn); }.compact strong { font-size: .8125rem; }.compact .progress-track { height: .25rem; }.compact p { font-size: .6875rem; }
+  .progress-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 1rem; }.progress-inline .progress-readout { margin-top: 0; }.progress-inline .progress-readout:empty { display: none; }.progress-inline strong { font-size: .8125rem; }.progress-inline p { grid-column: 1 / -1; margin-top: .25rem; }
+  @media(max-width: 479px) { .progress-inline { display: block; }.progress-inline .progress-readout { margin-top: .5rem; } }
 </style>
