@@ -362,8 +362,8 @@ public sealed partial class QueueDispatcher(
 
             var placements = await db.Libraries
                 .AsNoTracking()
-                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction })
-                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction), stoppingToken);
+                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction, library.AudioTargetCodec })
+                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction, library.AudioTargetCodec), stoppingToken);
             // Libraries whose jobs a worker cannot be offered until this machine has chosen a
             // per-title quality for them.
             var adaptiveLibraries = await db.Libraries
@@ -406,14 +406,16 @@ public sealed partial class QueueDispatcher(
                         ? EffectivePlacement(placement.WorkPlacement, SuperResolutionRouting.Applies(
                             superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive)
                             || VideoFieldOrder.Deinterlaces(placement.DeinterlaceVideo, job.FieldOrder)
-                            || NoiseReductionFilter.KeepsOnServer(placement.NoiseReduction, job.Kind))
+                            || NoiseReductionFilter.KeepsOnServer(placement.NoiseReduction, job.Kind)
+                            || AudioTarget.KeepsOnServer(placement.AudioTargetCodec, job.Kind))
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
                     WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
                         && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly
                         && !VideoFieldOrder.Deinterlaces(placements.GetValueOrDefault(requiredId).DeinterlaceVideo, job.FieldOrder)
-                        && !NoiseReductionFilter.KeepsOnServer(placements.GetValueOrDefault(requiredId).NoiseReduction, job.Kind)))
+                        && !NoiseReductionFilter.KeepsOnServer(placements.GetValueOrDefault(requiredId).NoiseReduction, job.Kind)
+                        && !AudioTarget.KeepsOnServer(placements.GetValueOrDefault(requiredId).AudioTargetCodec, job.Kind)))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -1243,6 +1245,9 @@ public sealed partial class QueueDispatcher(
 
             if (run.ExitCode == 0)
             {
+                if (FfmpegCommandBuilder.WritesTagsAfterEncode(spec))
+                    await WriteMp4TagsAsync(jobId, work.Value.Original.Path, spec.OutputPath, cancellationToken);
+
                 // Stamp the portable marker on an image *before* verification, so the file that is
                 // verified and replaced is the final, marked file. ffmpeg drops -metadata for
                 // stills, so this is done out-of-band with exiftool; a failure only loses marker
@@ -1503,6 +1508,26 @@ public sealed partial class QueueDispatcher(
                 MinimumImagePerceptualScore: library?.MinimumImagePerceptualScore));
 
     /// <summary>
+    /// FFmpeg writes an M4A's tags as the iTunes atoms it has, and drops the rest; the marker and the
+    /// dropped tags are added here, before verification, so the file verified is the file kept (#593).
+    /// A failure only warns: verification refuses the file if a source tag is then missing, and a
+    /// missing marker costs only its portability, as for an image.
+    /// </summary>
+    private async Task WriteMp4TagsAsync(int jobId, string sourcePath, string outputPath, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var probe = scope.ServiceProvider.GetRequiredService<IMediaProbeService>();
+        var source = await probe.ProbeAsync(sourcePath, cancellationToken);
+        var output = await probe.ProbeAsync(outputPath, cancellationToken);
+        var problem = !source.Success || !output.Success
+            ? $"the files could not be probed: {source.Error ?? output.Error}"
+            : await scope.ServiceProvider.GetRequiredService<MusicTagService>().CarryOverMp4TagsAsync(
+                sourcePath, outputPath, source.FormatTags, output.FormatTags, OptimisedMarkerValue, cancellationToken);
+        if (problem is not null)
+            logger.LogWarning("Job {JobId}: could not write the M4A's tags and marker: {Problem}", jobId, problem);
+    }
+
+    /// <summary>
     /// Why a job's own spec keeps it on this server, or null. Each of these is measured against, or
     /// checked with, something only this server has: the reference it would be judged against, or
     /// a trim's measured window and the native comparison of the trimmed file with its source.
@@ -1515,6 +1540,8 @@ public sealed partial class QueueDispatcher(
             return "This library reduces noise, which runs on this server: a worker cannot clean the reference it would judge the result against.";
         if (spec.SilenceTrim is not null || spec.AudioTrimOnly is not null)
             return "This music file has silence trimmed from its edges, which is measured and checked on this server.";
+        if (FfmpegCommandBuilder.WritesTagsAfterEncode(spec))
+            return "This music file is converted to M4A, and this server writes its tags into the file after the encode.";
         return null;
     }
 
@@ -4254,7 +4281,7 @@ public sealed partial class QueueDispatcher(
             .GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
         var libraries = await db.Libraries.AsNoTracking()
             .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo,
-                library.NoiseReduction, library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+                library.NoiseReduction, library.AudioTargetCodec, library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
@@ -4267,14 +4294,16 @@ public sealed partial class QueueDispatcher(
                     ? EffectivePlacement(library.WorkPlacement, SuperResolutionRouting.Applies(
                         superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal)
                         || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, job.FieldOrder)
-                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, job.Kind))
+                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, job.Kind)
+                        || AudioTarget.KeepsOnServer(library.AudioTargetCodec, job.Kind))
                     : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
                 && libraries.TryGetValue(requiredId, out var requiredLibrary)
                 && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly
                 && !VideoFieldOrder.Deinterlaces(requiredLibrary.DeinterlaceVideo, job.FieldOrder)
-                && !NoiseReductionFilter.KeepsOnServer(requiredLibrary.NoiseReduction, job.Kind))).ToList();
+                && !NoiseReductionFilter.KeepsOnServer(requiredLibrary.NoiseReduction, job.Kind)
+                && !AudioTarget.KeepsOnServer(requiredLibrary.AudioTargetCodec, job.Kind))).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));

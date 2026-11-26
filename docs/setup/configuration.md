@@ -333,6 +333,40 @@ For explicitly re-encoded video audio, configure the separate soundtrack report 
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
 
+### Tags and cover art in converted files
+
+A converted file keeps the source's tags and embedded cover art. Verification's **Audio metadata and
+artwork** check refuses a file that loses or changes a tag, or loses a picture.
+
+AAC files (`.m4a`) store their tags as iTunes atoms, the layout Apple Music, TagLib-based servers
+such as Navidrome, and taggers such as Picard read:
+
+- Title, artist, album, album artist, composer, date, genre, comments, lyrics, compilation, and
+  the track and disc numbers with their totals use the standard atoms (`©nam`, `©ART`, `trkn`, and
+  so on). Sort names use the sort atoms (`soaa`, `soar`, and so on).
+- MusicBrainz and AcoustID identifiers use the names Picard gives them, such as
+  `----:com.apple.iTunes:MusicBrainz Album Id`. Any other tag, such as ReplayGain or BPM, keeps its
+  own name as a `----:com.apple.iTunes:` item.
+- Cover art goes into the `covr` atom unchanged. M4A holds JPEG, PNG and BMP pictures, so a file
+  with GIF or WebP cover art fails with that reason. Choose MP3 for such a library, or replace the
+  art first.
+- An ALAC `.m4a` converted to AAC keeps every one of its own atoms byte for byte. Only the encoder
+  name (`©too`), the gapless figures (`iTunSMPB`) and the encoder settings are written again. The
+  check reads both files' atoms and refuses any other difference.
+
+FFmpeg writes the standard atoms and the cover art. Optimisarr then adds the other tags and its
+marker (`----:com.optimisarr:optimisarr`) to the file's tag list before verification. Because that
+step runs on this server, AAC music is always converted here, never on a remote worker.
+
+Opus files cannot keep cover art, so a file that has some is left alone in an Opus library.
+
+**Files converted to AAC before this was fixed** ([#593](https://github.com/Jellman86/optimisarr/issues/593)) stored their tags as
+QuickTime keys. FFmpeg reads those, but most music software shows the files as untagged, and their
+cover art was not kept. Optimisarr still recognises these files as optimised and leaves them alone.
+To fix one, tag it again with your tagger, for example with Picard's lookup. Alternatively, copy it
+with FFmpeg, which writes the standard tags back as iTunes atoms but drops MusicBrainz IDs, the
+track and disc totals and any other tags: `ffmpeg -i old.m4a -map 0 -c copy -map_metadata 0 new.m4a`.
+
 ### Trim silence at the start and end
 
 In a music library, **Configure → Audio → Trim silence at the start and end** cuts silence from the
@@ -374,7 +408,7 @@ files are encoded on this server, never on a remote worker.
 While trimming is on, **Also trim files that aren't converted** trims the files the library would
 otherwise leave alone: lossy files at or below the target bitrate, files already in the target
 codec, files too small for a conversion to save space, and lossless files a conversion cannot carry
-(for example FLAC with cover art in an AAC library). It is off by default. Each file keeps its
+(for example FLAC with cover art in an Opus library). It is off by default. Each file keeps its
 format, name, bitrate, tags and cover art:
 
 | Format | How it is trimmed |
@@ -386,8 +420,7 @@ format, name, bitrate, tags and cover art:
 Everything else is left alone, with the reason in Candidates: M4A (AAC or ALAC), Vorbis, WMA, APE,
 AIFF, raw ADTS `.aac` (which records no encoder delay and only estimates its length), Opus and WAV
 with embedded cover art, and any codec in a container it is not normally found in. M4A is left alone
-because FFmpeg writes an M4A's tags back as QuickTime keys, in place of the iTunes atoms most music
-software reads, when it keeps Optimisarr's marker.
+because it has not yet been proved that its audio and its tags come through a trim unchanged.
 
 **Tags must survive unchanged.** FFmpeg reads a file's tags into its own list and writes them again,
 and some do not come back the same. Optimisarr reads every tag itself, byte for byte, when it probes a

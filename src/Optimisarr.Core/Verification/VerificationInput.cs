@@ -145,4 +145,8 @@ public sealed record VerificationInput(
     KeptAudioEvidence? KeptAudio = null,
     // The same job's tags, source and output, read natively. Null for every other job; a trim-only
     // job always sets it.
-    TagsKeptEvidence? TagsKept = null);
+    TagsKeptEvidence? TagsKept = null,
+    // A music file written as MP4 (M4A): its tag atoms, and its source's when that is MP4 too, read
+    // natively. ffprobe reads QuickTime keys and iTunes atoms alike, while most music software reads
+    // only iTunes atoms. Null for every other job.
+    Mp4TagEvidence? Mp4Tags = null);

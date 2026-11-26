@@ -124,19 +124,26 @@ public sealed class CandidateEvaluatorTests
         Assert.Contains("Already", decision.Reason);
     }
 
-    [Theory]
-    [InlineData("aac")]
-    [InlineData("opus")]
-    public void Unsafe_audio_targets_reject_attached_cover_art_before_queueing(string targetCodec)
+    [Fact]
+    public void An_opus_target_rejects_attached_cover_art_before_queueing()
     {
-        var rules = Hevc with { TargetAudioCodec = targetCodec };
+        var rules = Hevc with { TargetAudioCodec = "opus" };
 
         var decision = CandidateEvaluator.Evaluate(
             AudioFile("flac", attachedPictureCount: 1), rules);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("cover art", decision.Reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AAC or MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The M4A's covr atom takes the source's pictures once FFmpeg writes iTunes atoms (#593).
+    [Fact]
+    public void An_aac_target_accepts_attached_cover_art()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", attachedPictureCount: 2), Hevc);
+
+        Assert.True(decision.IsEligible);
     }
 
     [Fact]
@@ -241,14 +248,15 @@ public sealed class CandidateEvaluatorTests
         var tooSmallToSave = AudioFile("mp3", sizeBytes: 3L * 1024 * 1024, audioBitrateKbps: 320, relativePath: "Music/Album/Track.mp3");
 
         Assert.True(CandidateEvaluator.Evaluate(already, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
-        Assert.All([lossyLeftAlone, artBlocksConversion, tooSmallToSave],
+        Assert.True(CandidateEvaluator.Evaluate(artBlocksConversion, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
+        Assert.All([lossyLeftAlone, tooSmallToSave],
             media => Assert.True(CandidateEvaluator.Evaluate(media, TrimsOnly).TrimsOnly));
-        // An M4A already in the target codec is not converted, and its tags keep it from a trim too.
+        // An M4A already in the target codec is not converted, and is not trimmed without converting either.
         var m4a = CandidateEvaluator.Evaluate(AudioFile("aac", audioBitrateKbps: 256, relativePath: "Music/Album/Track.m4a"), TrimsOnly);
         Assert.False(m4a.IsEligible);
-        Assert.EndsWith("Trimming M4A without converting would rewrite its tags in a form many players can't read.", m4a.Reason);
+        Assert.EndsWith("M4A files are not yet trimmed without converting: it has not been proved that their audio and tags come through a trim unchanged.", m4a.Reason);
         Assert.Equal(new Optimisarr.Core.Queue.AudioTrimOnlyPlan(Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode, "flac", "flac"),
-            CandidateEvaluator.TrimOnlyPlanFor(artBlocksConversion, TrimsOnly));
+            CandidateEvaluator.TrimOnlyPlanFor(artBlocksConversion, TrimsOnly with { TargetAudioCodec = "opus" }));
     }
 
     [Fact]

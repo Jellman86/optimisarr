@@ -1,5 +1,6 @@
 using Optimisarr.Core;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Queue;
 
@@ -282,7 +283,10 @@ public static class FfmpegCommandBuilder
             args.Add(clip.ToString());
         }
 
-        if (!string.IsNullOrWhiteSpace(optimisedMarker))
+        // FFmpeg can write a music file's tags to MP4 either as iTunes atoms, without any tag it has no
+        // atom for, or with use_metadata_tags as QuickTime keys most music software cannot read. An M4A
+        // gets the iTunes atoms here, and the marker and the other tags after the encode (#593).
+        if (!string.IsNullOrWhiteSpace(optimisedMarker) && !WritesTagsAfterEncode(spec))
         {
             args.Add("-metadata");
             args.Add($"{OptimisationMarker.MetadataKey}={optimisedMarker}");
@@ -707,6 +711,18 @@ public static class FfmpegCommandBuilder
         AppendDownmix(args, spec);
         AppendAudioFilter(args, spec);
 
+        // MP4 keeps cover art in its iTunes covr atom, which FFmpeg writes from attached pictures
+        // that are JPEG, PNG or BMP. They are copied, so the picture's bytes are the source's own.
+        if (!spec.AudioSampleOnly && WritesTagsAfterEncode(spec))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v");
+            args.Add("copy");
+            args.Add("-disposition:v");
+            args.Add("attached_pic");
+        }
+
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.
         if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
@@ -872,10 +888,13 @@ public static class FfmpegCommandBuilder
     private static int MapToRange(int quality, int bestAt100, int worstAt0) =>
         (int)Math.Round(worstAt0 + (bestAt100 - worstAt0) * (quality / 100.0));
 
-    private static bool IsMp4Family(string outputPath) =>
-        // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for
-        // the custom optimisation tag to survive.
-        Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov" or ".m4a" or ".m4b";
+    private static bool IsMp4Family(string outputPath) => Mp4TagReader.IsMp4Family(outputPath);
+
+    /// <summary>
+    /// A music file written as MP4, whose marker and the tags FFmpeg has no iTunes atom for are
+    /// written into its tag list after the encode (see <see cref="Mp4TagCarryOver"/>).
+    /// </summary>
+    public static bool WritesTagsAfterEncode(TranscodeSpec spec) => spec.Kind == MediaKind.Audio && IsMp4Family(spec.OutputPath);
 
     // The hardware family is inferred from the resolved encoder name, so quality and device
     // arguments stay correct whatever codec was selected (e.g. h264_vaapi vs hevc_vaapi).

@@ -256,5 +256,116 @@ def lost_or_changed(source_entries, output_entries):
     return sorted(key for key, values in source.items() if key not in REGENERATED and output.get(key) != values)
 
 
+def _mp4_boxes(data, start, end):
+    position = start
+    while position < end:
+        size, kind = struct.unpack(">I4s", data[position:position + 8])
+        header = 8
+        if size == 1:
+            size, header = struct.unpack(">Q", data[position + 8:position + 16])[0], 16
+        elif size == 0:
+            size = end - position
+        if size < header or position + size > end:
+            raise ValueError(f"MP4 box {kind!r} overruns its parent")
+        yield kind.decode("latin-1"), position, size, header
+        position += size
+
+
+def _mp4_meta_children(data, position, header):
+    body = position + header
+    # An ISO meta box has a version and flags before its handler; a QuickTime one does not.
+    return body if data[body + 4:body + 8] == b"hdlr" else body + 4
+
+
+def _mp4_moov(data):
+    moov = [(position, size, header) for kind, position, size, header in _mp4_boxes(data, 0, len(data)) if kind == "moov"]
+    if len(moov) != 1:
+        raise ValueError("Not exactly one moov box")
+    return moov[0]
+
+
+def mp4_tags(path):
+    """("itunes" | "quicktime-keys" | "none", items) read box by box, without FFmpeg. Each item is
+    (key, ((data type, payload), ...)); a freeform item's key is ----:mean:name."""
+    data = Path(path).read_bytes()
+    moov, size, header = _mp4_moov(data)
+    layout, items = "none", []
+
+    def meta(position, box_size, box_header):
+        nonlocal layout
+        children = list(_mp4_boxes(data, _mp4_meta_children(data, position, box_header), position + box_size))
+        handlers = [data[p + h + 8:p + h + 12] for kind, p, _, h in children if kind == "hdlr"]
+        if b"mdta" in handlers or any(kind == "keys" for kind, *_ in children):
+            layout = "quicktime-keys"
+            return
+        for kind, p, s, h in children:
+            if kind != "ilst":
+                continue
+            layout = "itunes" if layout == "none" else layout
+            for item, ip, isz, ih in _mp4_boxes(data, p + h, p + s):
+                parts, key = list(_mp4_boxes(data, ip + ih, ip + isz)), item
+                if item == "----":
+                    (_, mp, ms, mh), (_, np_, ns, nh) = parts[:2]
+                    key = f"----:{data[mp + mh + 4:mp + ms].decode()}:{data[np_ + nh + 4:np_ + ns].decode()}"
+                    parts = parts[2:]
+                values = tuple((int.from_bytes(data[dp + dh + 1:dp + dh + 4], "big"), data[dp + dh + 8:dp + ds])
+                               for kind_, dp, ds, dh in parts if kind_ == "data")
+                items.append((key, values))
+
+    for kind, position, box_size, box_header in _mp4_boxes(data, moov + header, moov + size):
+        if kind == "meta":
+            meta(position, box_size, box_header)
+        elif kind == "udta":
+            for inner, p, s, h in _mp4_boxes(data, position + box_header, position + box_size):
+                if inner == "meta":
+                    meta(p, s, h)
+    return layout, (items if layout == "itunes" else [])
+
+
+def _mp4_box(kind, body):
+    return struct.pack(">I", 8 + len(body)) + kind.encode("latin-1") + body
+
+
+def mp4_data_item(atom, data_type, payload):
+    return _mp4_box(atom, _mp4_box("data", struct.pack(">I", data_type) + b"\0\0\0\0" + payload))
+
+
+def mp4_text(atom, value):
+    return mp4_data_item(atom, 1, value.encode("utf-8"))
+
+
+def mp4_freeform(mean, name, value):
+    return _mp4_box("----", _mp4_box("mean", b"\0\0\0\0" + mean.encode()) + _mp4_box("name", b"\0\0\0\0" + name.encode())
+                    + _mp4_box("data", struct.pack(">I", 1) + b"\0\0\0\0" + value.encode("utf-8")))
+
+
+def write_mp4_items(path, items):
+    """Replaces the one iTunes tag list of an MP4 whose moov box is last, as FFmpeg writes one."""
+    path = Path(path)
+    data = path.read_bytes()
+    moov, size, header = _mp4_moov(data)
+    if moov + size != len(data):
+        raise ValueError("The moov box is not last")
+    chain = None
+    for kind, position, box_size, box_header in _mp4_boxes(data, moov + header, moov + size):
+        if kind != "udta":
+            continue
+        for inner, p, s, h in _mp4_boxes(data, position + box_header, position + box_size):
+            if inner == "meta":
+                for leaf, lp, ls, lh in _mp4_boxes(data, _mp4_meta_children(data, p, h), p + s):
+                    if leaf == "ilst":
+                        chain = [(moov, size), (position, box_size), (p, s), (lp, ls)]
+    if chain is None:
+        raise ValueError("No iTunes tag list")
+    ilst, ilst_size = chain[-1]
+    body = b"".join(items)
+    growth = len(body) - (ilst_size - 8)
+    out = bytearray(data[:ilst + 8] + body + data[ilst + ilst_size:])
+    for position, box_size in chain:
+        struct.pack_into(">I", out, position, box_size + growth)
+    _replace(path, bytes(out))
+
+
 __all__ = ["id3_text", "id3_frame", "popm", "ufid", "uslt", "write_id3", "prepend_id3", "read_id3", "frame_ids",
-           "write_flac", "read_flac", "id3_entries", "comment_entries", "lost_or_changed"]
+           "write_flac", "read_flac", "id3_entries", "comment_entries", "lost_or_changed",
+           "mp4_tags", "mp4_text", "mp4_freeform", "mp4_data_item", "write_mp4_items"]

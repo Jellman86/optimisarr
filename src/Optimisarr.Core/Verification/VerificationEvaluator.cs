@@ -1,6 +1,7 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Verification;
 
@@ -234,60 +235,75 @@ public static class VerificationEvaluator
                 $"Embedded artwork dropped from {input.OriginalAttachedPictureCount} to {input.OutputAttachedPictureCount} picture(s).");
         }
 
-        var original = NormaliseAudioTags(input.OriginalFormatTags);
-        var output = NormaliseAudioTags(input.OutputFormatTags);
-        foreach (var (key, value) in original)
+        if (input.Mp4Tags is { } mp4 && Mp4TagProblem(mp4) is { } problem)
         {
-            if (!output.TryGetValue(key, out var outputValue))
+            return Fail(name, problem);
+        }
+
+        // One name per tag, so a FLAC's MUSICBRAINZ_ALBUMID and the M4A item it becomes compare as one.
+        var original = AudioFormatTags.Normalise(input.OriginalFormatTags);
+        var output = AudioFormatTags.Normalise(input.OutputFormatTags);
+        foreach (var (key, tag) in original)
+        {
+            if (!output.TryGetValue(key, out var kept))
             {
-                return Fail(name, $"Audio metadata tag '{key}' was lost.");
+                return Fail(name, $"Audio metadata tag '{tag.Name}' was lost.");
             }
 
-            if (!string.Equals(value, outputValue, StringComparison.Ordinal))
+            if (!string.Equals(tag.Value, kept.Value, StringComparison.Ordinal))
             {
-                return Fail(name, $"Audio metadata tag '{key}' changed during conversion.");
+                return Fail(name, $"Audio metadata tag '{tag.Name}' changed during conversion.");
             }
         }
 
         return Pass(name,
-            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s).");
+            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s)"
+            + (input.Mp4Tags is null ? "." : ", stored as iTunes tags."));
     }
 
-    private static IReadOnlyDictionary<string, string> NormaliseAudioTags(
-        IReadOnlyDictionary<string, string>? tags)
+    /// <summary>
+    /// Why an M4A's tags fail, or null. ffprobe reads QuickTime keys as readily as iTunes atoms, so
+    /// the file's own atoms are read: they must be iTunes atoms, and an M4A source's items must all be
+    /// there unchanged, apart from those written again for the new file.
+    /// </summary>
+    private static string? Mp4TagProblem(Mp4TagEvidence evidence)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (tags is null)
+        if (evidence.Output?.Tags is not { } output)
+            return $"The new file's tags could not be read: {evidence.Output?.Problem ?? "not measured"}.";
+        if (output.Layout == Mp4TagLayout.QuickTimeKeys)
+            return "The new file's tags are stored as QuickTime keys, which many music players can't read, instead of iTunes tags.";
+        if (evidence.Source is not { } sourceRead) return null;
+        if (sourceRead.Tags is not { } source)
+            return $"The original's tags could not be read: {sourceRead.Problem}.";
+        if (source.Layout != Mp4TagLayout.Itunes) return null;
+
+        var sourceItems = source.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
+        var outputItems = output.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
+        var sourceKeys = sourceItems.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var outputKeys = outputItems.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var lost = sourceKeys.Where(key => !outputKeys.Contains(key)).ToList();
+        var gained = outputKeys.Where(key => !sourceKeys.Contains(key)).ToList();
+        var changed = sourceKeys.Where(key => outputKeys.Contains(key)
+            && !SameItems(sourceItems.Where(item => item.Key == key), outputItems.Where(item => item.Key == key))).ToList();
+        if (lost.Count == 0 && gained.Count == 0 && changed.Count == 0) return null;
+        var parts = new List<string>();
+        if (lost.Count > 0) parts.Add($"lost {Names(lost)}");
+        if (changed.Count > 0) parts.Add($"changed {Names(changed)}");
+        if (gained.Count > 0) parts.Add($"gained {Names(gained)}");
+        return $"The iTunes tags {string.Join(" and ", parts)}.";
+
+        static string Names(List<string> keys) =>
+            string.Join(", ", keys.Take(8).Select(key => key.Length > 40 ? key[..40] + "…" : key)) + (keys.Count > 8 ? $" and {keys.Count - 8} more" : "");
+    }
+
+    private static bool SameItems(IEnumerable<Mp4TagItem> source, IEnumerable<Mp4TagItem> output)
+    {
+        var remaining = output.ToList();
+        foreach (var item in source)
         {
-            return result;
+            if (!remaining.Remove(item)) return false;
         }
-
-        foreach (var (rawKey, rawValue) in tags)
-        {
-            var key = rawKey.Trim().ToLowerInvariant() switch
-            {
-                "albumartist" => "album_artist",
-                "year" => "date",
-                var other => other
-            };
-
-            // Technical container fields are regenerated legitimately and are not music tags.
-            // iTunSMPB is iTunes' encoder delay and length, and TLEN an MP3's length in milliseconds,
-            // true only of the file they were written for.
-            if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
-                or "compatible_brands" or "handler_name" or "duration" or "language"
-                or "optimisarr" or "itunsmpb" or "tlen")
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(rawValue))
-            {
-                result[key] = rawValue.Trim();
-            }
-        }
-
-        return result;
+        return remaining.Count == 0;
     }
 
     private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)

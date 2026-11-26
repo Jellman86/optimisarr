@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Queue;
 
 /// <summary>The ffmpeg encoder and output container for a target audio codec.</summary>
@@ -10,10 +12,8 @@ public sealed record AudioCodecSpec(string Encoder, string Container);
 public static class AudioTarget
 {
     /// <summary>The default target codec (ffprobe name) when a library sets no override.</summary>
-    // AAC in M4A is the conservative music default for art-free sources: it is broadly playable,
-    // efficient, supports retained channel layouts, and can carry timed-text lyrics. The shipped
-    // FFmpeg cannot reliably transfer attached pictures into M4A, so those candidates fail closed
-    // with guidance to select MP3 instead.
+    // AAC in M4A is the conservative music default: it is broadly playable, efficient, supports
+    // retained channel layouts, keeps cover art in its covr atom, and can carry timed-text lyrics.
     public const string DefaultCodec = "aac";
 
     public const int DefaultBitrateKbps = 128;
@@ -43,6 +43,14 @@ public static class AudioTarget
             ["aac"] = new("aac", "m4a"),
             ["mp3"] = new("libmp3lame", "mp3")
         };
+
+    /// <summary>
+    /// Whether a music library's conversions run on this server only: an M4A's marker, and the tags
+    /// FFmpeg has no iTunes atom for, are written into the file after FFmpeg finishes (#593), which a
+    /// worker lease, carrying only FFmpeg arguments, cannot do.
+    /// </summary>
+    public static bool KeepsOnServer(string? targetAudioCodec, MediaKind kind) =>
+        kind == MediaKind.Audio && Targets.TryGetValue(targetAudioCodec ?? DefaultCodec, out var target) && target.Container == "m4a";
 
     /// <summary>The target codecs an operator may choose (ffprobe names).</summary>
     public static IReadOnlyCollection<string> SupportedCodecs => (IReadOnlyCollection<string>)Targets.Keys;

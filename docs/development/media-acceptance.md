@@ -613,9 +613,15 @@ copy path, not a new general PCM-equality production gate or a certification of 
 ## Focused standalone audio matrix
 
 Use `--regression audio` on a fresh isolated instance. It tests local AAC, Opus,
-MP3 and MP3 cover preservation. `--tier fleet --worker-command …` or
-`--worker-image …` repeats all three codecs on every paired worker, plus stereo
-downmixing and MP3 cover retention. Every successful case independently decodes
+MP3, and MP3 and AAC cover preservation. Three AAC cases read the M4A's tag atoms with the
+harness's own box reader, not FFmpeg, which reads QuickTime keys as readily as iTunes atoms (#593):
+a tagged FLAC with cover art must come out with iTunes atoms for its standard tags, track and disc
+totals, sort name, MusicBrainz IDs, ReplayGain and BPM, its cover in `covr` byte for byte, and the
+marker; an iTunes-tagged ALAC file must keep every atom byte for byte apart from `©too` and
+`iTunSMPB`; and an ALAC file tagged with QuickTime keys must come out with iTunes atoms.
+`--tier fleet --worker-command …` or `--worker-image …` repeats all three codecs on every paired
+worker, plus stereo downmixing and MP3 cover retention. AAC always runs on the server, because the
+server writes the M4A's remaining tags after the encode, so the worker AAC cases expect the server. Every successful case independently decodes
 the whole candidate, checks codec/channels/artist/title, EBU R128 loudness and true
 peak, requires correct worker attribution and strict worker verification, then
 replaces and rolls back to the exact original hash. Missing encoders are reported

@@ -371,6 +371,15 @@ public sealed class VerificationService(
                         await musicTags.ReadAsync(outputPath, cancellationToken))
                     : new TagsKeptEvidence(null, null)
                 : null;
+            // ffprobe reads QuickTime keys as readily as iTunes atoms, so an M4A's own atoms are read.
+            // The source is the original, not a reference clip, whose tags FFmpeg wrote.
+            var mp4TagEvidence = reference.Kind == MediaKind.Audio && Optimisarr.Core.Library.Mp4TagReader.IsMp4Family(outputPath)
+                ? musicTags is null
+                    ? new Mp4TagEvidence(null, null)
+                    : new Mp4TagEvidence(
+                        Optimisarr.Core.Library.Mp4TagReader.IsMp4Family(original.Path) ? await musicTags.ReadMp4Async(original.Path, cancellationToken) : null,
+                        await musicTags.ReadMp4Async(outputPath, cancellationToken))
+                : null;
 
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
@@ -445,6 +454,7 @@ public sealed class VerificationService(
                 OutputEdgeSilence: outputEdgeSilence,
                 KeptAudio: keptAudioEvidence,
                 TagsKept: tagsKeptEvidence,
+                Mp4Tags: mp4TagEvidence,
                 RequirePixelShapeRetained: reference.PixelShapeMustMatch,
                 OriginalPixelAspect: originalProbe.PixelAspect,
                 OutputPixelAspect: outputProbe.PixelAspect,

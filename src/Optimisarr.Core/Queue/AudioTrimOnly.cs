@@ -56,10 +56,10 @@ public static class AudioTrimOnly
     {
         var extension = Path.GetExtension(relativePath).ToLowerInvariant();
         var normalised = codec?.Trim().ToLowerInvariant();
-        // FFmpeg writes an M4A's tags back as QuickTime keys when it keeps Optimisarr's marker
-        // (use_metadata_tags), in place of the iTunes atoms most music software reads.
+        // A converted M4A keeps its iTunes atoms (#593), but neither a stream-copied AAC cut, with its
+        // edit list and priming, nor the native comparison of MP4 tags has been measured for a trim.
         if (extension is ".m4a")
-            return new(null, "Trimming M4A without converting would rewrite its tags in a form many players can't read.");
+            return new(null, "M4A files are not yet trimmed without converting: it has not been proved that their audio and tags come through a trim unchanged.");
         var plan = (normalised, extension) switch
         {
             ("flac", ".flac") => Lossless("flac"),
