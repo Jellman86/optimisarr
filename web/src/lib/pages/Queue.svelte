@@ -1346,7 +1346,7 @@
   /* From tablet width up (with vertical room) it sticks at the top of the scroll container on the
      page's own fill, and the table header stacks directly beneath it. Vertical padding keeps focus
      rings clear of the scrollport edge and wrapped rows clear of the table header. */
-  @media(min-width: 640px) and (min-height: 540px) { #queue-list { --data-table-sticky-top: var(--queue-toolbar-height); }.queue-toolbar { position: sticky; top: 0; z-index: 20; padding-block: .5rem; background: var(--ground); }#queue-list :global(tbody :is(tr, button, a, input)) { scroll-margin-block-start: calc(var(--queue-toolbar-height) + 2.75rem); } }
+  @media(min-width: 640px) and (min-height: 540px) { #queue-list { --data-table-sticky-top: var(--queue-toolbar-height); }.queue-toolbar { position: sticky; top: 0; z-index: 20; background: var(--ground); }[data-queue-filters] { padding-block: .375rem; }#queue-list :global(tbody :is(tr, button, a, input)) { scroll-margin-block-start: calc(var(--queue-toolbar-height) + 2.75rem); } }
   .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms; }
   .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity 180ms ease, transform 180ms ease, visibility 0s; }
   .queue-toolbar-hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-.25rem); }
