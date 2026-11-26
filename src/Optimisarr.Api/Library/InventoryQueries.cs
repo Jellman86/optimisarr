@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
@@ -30,8 +31,9 @@ public enum InventorySort
 /// an earlier failure is what holds the file back.</summary>
 public sealed record InventoryRow(MediaFileDto File, bool? Eligible, string? Reason, int? RetryJobId = null);
 
-/// <summary>Per-filter tallies so the UI can label its chips without fetching every row.</summary>
-public sealed record InventoryCounts(int All, int Eligible, int Skipped, int Unprobed);
+/// <summary>Per-filter tallies so the UI can label its chips without fetching every row. Interlaced
+/// counts the interlaced files in the library and search scope, whichever verdict filter is chosen.</summary>
+public sealed record InventoryCounts(int All, int Eligible, int Skipped, int Unprobed, int Interlaced);
 
 /// <summary>A page of inventory rows, the filtered total, and the per-filter tallies.</summary>
 public sealed record InventoryPage(IReadOnlyList<InventoryRow> Items, int Total, InventoryCounts Counts);
@@ -51,11 +53,13 @@ public sealed class InventoryQueries(OptimisarrDbContext db, CandidateService ca
         int page,
         int pageSize,
         InventorySort sort,
+        bool interlacedOnly,
         CancellationToken cancellationToken)
     {
-        // Every file in scope (all detail fields), and the verdicts for the probed ones.
+        // Every file in scope (all detail fields), and the verdicts for the probed ones. The interlaced
+        // filter narrows the scope in the database, so the verdict tallies then describe those files.
         var files = (await MediaQueries.QueryAsync(
-                db, new MediaQuery { LibraryId = libraryId, Search = search }, cancellationToken))
+                db, new MediaQuery { LibraryId = libraryId, Search = search, InterlacedOnly = interlacedOnly }, cancellationToken))
             .Items;
         var verdicts = (await candidates.EvaluateAsync(libraryId, cancellationToken))
             .ToDictionary(candidate => candidate.MediaFileId);
@@ -70,7 +74,8 @@ public sealed class InventoryQueries(OptimisarrDbContext db, CandidateService ca
             All: rows.Count,
             Eligible: rows.Count(row => row.Eligible == true),
             Skipped: rows.Count(row => row.Eligible == false),
-            Unprobed: rows.Count(row => row.Eligible is null));
+            Unprobed: rows.Count(row => row.Eligible is null),
+            Interlaced: rows.Count(row => VideoFieldOrder.IsInterlaced(row.File.FieldOrder)));
 
         var selected = Order(rows.Where(row => Matches(row, filter)), sort).ToList();
 

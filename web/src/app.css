@@ -762,6 +762,24 @@ p {
     @apply font-semibold text-ink;
     background: var(--accent-soft);
   }
+  /* An on/off filter that narrows whichever pill is chosen, such as "Interlaced". It is a raised
+     key rather than quiet text, and while on it is the segmented control's raised fill with a
+     check, never the chosen pill's tint, so turning it on never reads as a second chosen pill. */
+  .filter-toggle {
+    @apply inline-flex min-h-(--control-md) items-center gap-1.5 rounded-full px-3 text-label font-medium whitespace-nowrap text-ink-2 transition-shadow focus-ring;
+    background: var(--raised);
+    box-shadow: var(--lift-1);
+  }
+  .filter-toggle:hover {
+    @apply text-ink;
+    background: linear-gradient(var(--lit), var(--lit)), var(--raised);
+  }
+  .filter-toggle[aria-pressed='true'],
+  .filter-toggle[aria-pressed='true']:hover {
+    @apply font-semibold text-ink;
+    background: var(--control-on);
+    box-shadow: var(--lift-2);
+  }
 
   /* Fields are a solid fill with a hairline edge; focus adds the accent halo. One height
      everywhere: a field is where a form is filled in, so it is always the form size. */
@@ -1307,6 +1325,7 @@ p {
     .btn,
     .segment,
     .filter-pill,
+    .filter-toggle,
     .table-sort {
       min-height: var(--control-lg);
     }

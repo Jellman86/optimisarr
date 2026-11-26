@@ -85,6 +85,32 @@ public sealed class MediaQueriesTests : IDisposable
         Assert.Equal(25, page3.Total);
     }
 
+    [Fact]
+    public async Task QueryAsync_can_list_only_interlaced_files_and_reports_their_field_order()
+    {
+        int libraryId = await SeedAsync(
+            ("a.mkv", MediaFileStatus.Probed),
+            ("b.mkv", MediaFileStatus.Probed),
+            ("c.mkv", MediaFileStatus.Probed),
+            ("d.mkv", MediaFileStatus.Discovered));
+        await using (var write = new OptimisarrDbContext(_options))
+        {
+            (await write.MediaFiles.SingleAsync(file => file.RelativePath == "a.mkv")).FieldOrder = "tt";
+            (await write.MediaFiles.SingleAsync(file => file.RelativePath == "b.mkv")).FieldOrder = "progressive";
+            (await write.MediaFiles.SingleAsync(file => file.RelativePath == "c.mkv")).FieldOrder = "bb";
+            await write.SaveChangesAsync();
+        }
+
+        await using var db = new OptimisarrDbContext(_options);
+        var interlaced = await MediaQueries.QueryAsync(
+            db, new MediaQuery { LibraryId = libraryId, InterlacedOnly = true }, default);
+        var everything = await MediaQueries.QueryAsync(db, new MediaQuery { LibraryId = libraryId }, default);
+
+        Assert.Equal(2, interlaced.Total);
+        Assert.Equal([("a.mkv", "tt"), ("c.mkv", "bb")], interlaced.Items.Select(item => (item.RelativePath, item.FieldOrder)));
+        Assert.Equal([null, "progressive"], everything.Items.Where(item => item.RelativePath is "b.mkv" or "d.mkv").Select(item => item.FieldOrder).Order());
+    }
+
     private async Task<int> SeedAsync(params (string Path, MediaFileStatus Status)[] files)
     {
         await using var db = new OptimisarrDbContext(_options);

@@ -176,3 +176,14 @@ export function languageList(languages: string, unknown: string): string {
     .map((language) => (language.toLowerCase() === 'und' ? unknown : language))
     .join(', ')
 }
+
+// ffprobe's "tt" and "bb" plainly mean top or bottom field first. "tb" and "bt" are documented as
+// coded one way and shown the other, but FFmpeg itself tags many top-field-first encodes "tb"
+// (see VideoFieldOrder), so for those the code is reported without words that could be wrong.
+// Progressive, "unknown" and a file probed before field order was recorded are not reported as
+// interlaced, which matches the server's own test (VideoFieldOrder.IsInterlaced).
+const FIELD_SHOWN_FIRST = new Map<string, 'top' | 'bottom' | 'unstated'>([['tt', 'top'], ['bb', 'bottom'], ['tb', 'unstated'], ['bt', 'unstated']])
+
+export function interlacedFieldOrder(fieldOrder: string | null | undefined): 'top' | 'bottom' | 'unstated' | null {
+  return (fieldOrder && FIELD_SHOWN_FIRST.get(fieldOrder)) || null
+}

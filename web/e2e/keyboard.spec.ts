@@ -66,7 +66,7 @@ async function mockApp(page: Page) {
     if (path === '/api/exclusions') return json(route, [])
     if (path === '/api/inventory') return json(route, {
       items: fixtures.files.map(file => ({ file, eligible: true, reason: 'Eligible for optimisation.' })),
-      total: fixtures.files.length, counts: { all: fixtures.files.length, eligible: fixtures.files.length, skipped: 0, unprobed: 0 },
+      total: fixtures.files.length, counts: { all: fixtures.files.length, eligible: fixtures.files.length, skipped: 0, unprobed: 0, interlaced: 0 },
     })
     if (/^\/api\/media\/\d+\/plan$/.test(path)) return json(route, fixtures.plan)
     if (path === '/api/settings/dry-run-unlock') return json(route, fixtures.unlockEffects)

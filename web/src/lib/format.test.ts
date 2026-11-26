@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { containerLabel, formatAbsoluteDateTime, formatDateTime, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
+import { containerLabel, formatAbsoluteDateTime, formatDateTime, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, interlacedFieldOrder, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
 
 const now = new Date('2026-09-25T07:00:00Z')
 
@@ -184,4 +184,12 @@ test('containers read as the file type a person knows, not the ffprobe demuxer l
 test('untagged track languages read as unknown', () => {
   assert.equal(languageList('und', 'unknown language'), 'unknown language')
   assert.equal(languageList('eng, und,jpn', 'unknown language'), 'eng, unknown language, jpn')
+})
+
+test('only an interlaced field order is reported, by the field shown first', () => {
+  assert.equal(interlacedFieldOrder('tt'), 'top')
+  assert.equal(interlacedFieldOrder('bt'), 'unstated')
+  assert.equal(interlacedFieldOrder('bb'), 'bottom')
+  assert.equal(interlacedFieldOrder('tb'), 'unstated')
+  for (const order of ['progressive', 'unknown', '', null, undefined]) assert.equal(interlacedFieldOrder(order), null)
 })

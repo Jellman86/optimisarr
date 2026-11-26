@@ -246,7 +246,7 @@ async function routeInventory(page: Page, requests: unknown[], overrides: { tota
       return json(route, {
         items,
         total,
-        counts: { all: total, eligible: total, skipped: 0, unprobed: 0 },
+        counts: { all: total, eligible: total, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     if (path === '/api/media/batch/exclude') {
@@ -363,7 +363,7 @@ test('the inventory drops the selection when the filter or the library changes',
       return json(route, {
         items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv'), inventoryRow(3, 'c.mkv')],
         total: 3,
-        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0 },
+        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
@@ -409,7 +409,7 @@ test('picking and clearing rows asks the server for nothing', async ({ page }) =
       return json(route, {
         items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv'), inventoryRow(3, 'c.mkv')],
         total: 3,
-        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0 },
+        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
@@ -444,7 +444,7 @@ test('a batch that fails says so and keeps the rows picked', async ({ page }) =>
       return json(route, {
         items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv')],
         total: 2,
-        counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0 },
+        counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     if (path === '/api/media/batch/exclude') {
