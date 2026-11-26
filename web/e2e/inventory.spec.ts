@@ -474,8 +474,13 @@ for (const width of [1440, 375]) {
     const toggle = page.getByRole('button', { name: 'Interlaced (1)', exact: true })
     await expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await expect(toggle).toBeInViewport()
+    // An independent on/off filter, not one of the verdict pills: it sits outside their group and
+    // carries a check only while on.
+    await expect(page.getByRole('group', { name: 'Filter files' }).getByRole('button', { name: /Interlaced/ })).toHaveCount(0)
+    await expect(toggle.locator('svg')).toHaveCount(0)
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(toggle.locator('svg')).toHaveCount(1)
     await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
     await expect(page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ })).toBeVisible()
     expect(requests.at(-1)?.get('interlaced')).toBe('true')
@@ -507,3 +512,36 @@ for (const width of [1440, 375]) {
     expect(requests.at(-1)?.has('interlaced')).toBe(false)
   })
 }
+
+test('an information tip inside a dialog opens beside its button on a desktop, and as a sheet on a phone', async ({ page }) => {
+  await mockInventory(page)
+  for (const { width, height } of [{ width: 1440, height: 900 }, { width: 375, height: 700 }]) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/#/inventory')
+    await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Arrival 2016 1080p HEVC' })
+    const button = dialog.getByRole('button', { name: 'About the field order' })
+    await button.click()
+    const tip = dialog.getByRole('tooltip')
+    await expect(tip).toBeVisible()
+    const glyph = (await button.locator('svg').boundingBox())!
+    const box = (await tip.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    expect(box.y + box.height).toBeLessThanOrEqual(height)
+    if (width > 639) {
+      // Just under the glyph, and starting where the glyph is rather than across the screen.
+      expect(Math.abs(box.y - (glyph.y + glyph.height))).toBeLessThanOrEqual(24)
+      expect(box.x).toBeLessThanOrEqual(glyph.x + glyph.width)
+      expect(box.x + box.width).toBeGreaterThanOrEqual(glyph.x)
+    } else {
+      // A phone keeps the full-width sheet along the bottom of the screen.
+      expect(box.x).toBe(16)
+      expect(box.width).toBe(width - 32)
+      expect(height - (box.y + box.height)).toBeLessThanOrEqual(24)
+    }
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+  }
+})

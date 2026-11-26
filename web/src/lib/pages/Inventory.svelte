@@ -335,7 +335,7 @@
     <div class="flex min-w-0 flex-wrap items-center gap-1">
       <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
       <span class="mx-1 hidden h-5 w-px self-center bg-(--divide-soft) sm:block" aria-hidden="true"></span>
-      <button type="button" class="filter-pill" class:filter-pill-on={interlaced} aria-pressed={interlaced} onclick={toggleInterlaced} data-inventory-interlaced>{t(i18n.m.inventory.filter_interlaced, { count: counts.interlaced.toLocaleString() })}</button>
+      <button type="button" class="filter-toggle" aria-pressed={interlaced} onclick={toggleInterlaced} data-inventory-interlaced>{#if interlaced}<Icon name="check" class="-ml-0.5 h-3.5 w-3.5" />{/if}{t(i18n.m.inventory.filter_interlaced, { count: counts.interlaced.toLocaleString() })}</button>
     </div>
     <form role="search" class="relative w-full min-w-0 sm:w-72" onsubmit={submitSearch}>
       <label class="sr-only" for="inventory-search">{i18n.m.inventory.search_label}</label>

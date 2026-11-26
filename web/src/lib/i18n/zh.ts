@@ -708,7 +708,7 @@ export const zh: Messages = {
     filter_unprobed: "未探测（{count}）",
     filter_interlaced: "隔行扫描（{count}）",
     empty_interlaced: "没有符合这些筛选条件的隔行扫描文件。",
-    empty_interlaced_hint: "在 Optimisarr 记录场序之前探测的文件，需要先“重新探测”才能显示在这里。",
+    empty_interlaced_hint: '在记录场序之前探测的文件需要重新探测才能显示在这里。',
     clear_interlaced: "清除隔行扫描筛选",
     tag_interlaced: "隔行扫描",
     field_order_label: "关于场序",
