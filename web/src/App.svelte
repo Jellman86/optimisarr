@@ -23,6 +23,17 @@
   import Setup from './lib/pages/Setup.svelte'
   import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
+  import ShortcutsDialog from './lib/components/ShortcutsDialog.svelte'
+  import QuickJumpDialog from './lib/components/QuickJumpDialog.svelte'
+  import {
+    capturesKeys,
+    createGoChord,
+    hasCommandModifier,
+    hasOpenModalDialog,
+    moveTableRowFocus,
+    openFocusedRow,
+    toggleFocusedRowSelection,
+  } from './lib/keyboard'
   import { APP_TITLE, pageTitle } from './lib/route-meta'
 
   // Map the active route to its page component.
@@ -51,6 +62,7 @@
   let pageKey = $derived.by(() => {
     const path = router.path
     if (path.startsWith('/settings') || path.startsWith('/tools')) return '/settings'
+    if (path === '/queue' || path === '/queue/failures') return '/queue'
     if (path === '/quarantine' || path.startsWith('/quarantine/')) return '/quarantine'
     const libraryEditor = path.match(/^\/libraries\/(?:new|\d+\/configure)(?:\/|$)/)
     if (libraryEditor) return libraryEditor[0].replace(/\/$/, '')
@@ -100,6 +112,111 @@
       const heading = main.querySelector<HTMLElement>('[data-page-heading]') ?? main.querySelector<HTMLElement>('h1[tabindex]')
       heading?.focus({ preventScroll: true })
     })
+  })
+
+  // Keyboard shortcuts belong to the signed-in application only. Each one moves, finds, selects
+  // or opens something to look at; none of them changes anything, so none needs confirming.
+  // An open dialog is never interrupted: its own work comes first.
+  let shortcutsOpen = $state(false)
+  let jumpOpen = $state(false)
+
+  async function openQuickJump() {
+    // Let the sheet close (and hand focus back) before the palette takes focus for itself.
+    if (shortcutsOpen) {
+      shortcutsOpen = false
+      await tick()
+    }
+    jumpOpen = true
+  }
+
+  function jumpTo(path: string) {
+    jumpOpen = false
+    layout.closeMobile()
+    router.go(path)
+  }
+
+  function focusPageSearch(main: HTMLElement): boolean {
+    const field = main.querySelector<HTMLInputElement>('input[type="search"]:not([disabled])')
+    if (!field) return false
+    field.focus()
+    field.select()
+    return true
+  }
+
+  $effect(() => {
+    const main = mainEl
+    if (!main) return
+    const chord = createGoChord((path) => {
+      router.go(path)
+      layout.closeMobile()
+    })
+
+    const keydown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.defaultPrevented) return
+
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+        chord.cancel()
+        if (jumpOpen) {
+          event.preventDefault()
+          jumpOpen = false
+        } else if (shortcutsOpen || !hasOpenModalDialog()) {
+          event.preventDefault()
+          void openQuickJump()
+        }
+        return
+      }
+
+      if (event.key === '?' && !hasCommandModifier(event)) {
+        if (capturesKeys(event.target)) return
+        chord.cancel()
+        if (shortcutsOpen) {
+          event.preventDefault()
+          shortcutsOpen = false
+        } else if (!hasOpenModalDialog()) {
+          event.preventDefault()
+          shortcutsOpen = true
+        }
+        return
+      }
+
+      if (hasOpenModalDialog()) return chord.cancel()
+      if (event.key === 'Escape' && layout.mobileOpen) {
+        chord.cancel()
+        layout.closeMobile()
+        return
+      }
+      if (layout.mobileOpen || hasCommandModifier(event) || capturesKeys(event.target)) return chord.cancel()
+
+      // A page that reads letter keys itself (the quality check picks a sample by letter) keeps
+      // them; search focus and the shortcut sheet still work there.
+      const pageOwnsLetters = main.querySelector('[data-keyboard-owner]') !== null
+      const chordResult = pageOwnsLetters ? 'ignored' : chord.handle(event)
+      if (chordResult === 'armed' || chordResult === 'navigated') return event.preventDefault()
+      if (chordResult === 'cancelled') return
+
+      if (event.key === '/') {
+        if (focusPageSearch(main)) event.preventDefault()
+        return
+      }
+      if (pageOwnsLetters) return
+
+      const list = main.querySelector('[data-keyboard-list]')
+      const handled =
+        event.key === 'j' ? moveTableRowFocus(list, 'next')
+        : event.key === 'k' ? moveTableRowFocus(list, 'prev')
+        : event.key === 'x' ? toggleFocusedRowSelection(list)
+        : event.key === 'Enter' ? openFocusedRow(list, event.target)
+        : false
+      if (handled) event.preventDefault()
+    }
+
+    window.addEventListener('keydown', keydown)
+    return () => {
+      window.removeEventListener('keydown', keydown)
+      chord.dispose()
+      shortcutsOpen = false
+      jumpOpen = false
+    }
   })
 
   let tokenInput = $state('')
@@ -208,7 +325,7 @@
     ></button>
   {/if}
 
-  <Sidebar />
+  <Sidebar onOpenShortcuts={() => (shortcutsOpen = true)} />
 
   <!-- min-w-0 is essential: without it this flex child sizes to its widest content
        (tables, grids) and pushes the page off-screen to the right on small viewports. -->
@@ -252,4 +369,6 @@
     </main>
   </div>
   </div>
+  {#if shortcutsOpen}<ShortcutsDialog onclose={() => (shortcutsOpen = false)} />{/if}
+  {#if jumpOpen}<QuickJumpDialog onclose={() => (jumpOpen = false)} onnavigate={jumpTo} />{/if}
 {/if}

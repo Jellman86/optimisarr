@@ -34,7 +34,7 @@ export function settingsRoomFromPath(path: string): SettingsRoomKey | null {
   return found ? found[0] : null
 }
 
-function settingsRoomTitle(room: SettingsRoomKey, m: Messages): string {
+export function settingsRoomTitle(room: SettingsRoomKey, m: Messages): string {
   const titles: Record<SettingsRoomKey, string> = {
     encoding: m.settings.room_encoding,
     superResolution: m.settings.room_super_resolution,

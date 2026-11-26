@@ -11,6 +11,7 @@
   import { formatDuration } from '../format'
   import { actualPixelsZoom, nextUnratedName, sampleForKey, settingChange, type CalibrationSetting } from '../calibration-presentation'
   import { ruleProfileLabel } from '../rule-profile-label'
+  import { capturesKeys, hasOpenModalDialog } from '../keyboard'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
@@ -582,19 +583,16 @@
   }
 
   // Switching by key keeps the eyes on the picture, including in full screen where the sample
-  // deck is out of view. Keys typed into a form field stay with that field.
+  // deck is out of view. Keys typed into a form field or behind an open modal stay out of reach.
+  let ownsSampleKeys = $derived(session !== null && session.status !== 'Preparing' && session.status !== 'Failed')
+
   function switchSampleByKey(event: KeyboardEvent) {
-    if (!session || session.status === 'Preparing' || session.status === 'Failed') return
-    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || typingInto(event.target)) return
+    if (!ownsSampleKeys) return
+    if (event.isComposing || event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || hasOpenModalDialog() || capturesKeys(event.target)) return
     const name = sampleForKey(event.key, variants.map((variant) => variant.name))
     if (!name) return
     event.preventDefault()
     void chooseVariant(name)
-  }
-
-  function typingInto(target: EventTarget | null): boolean {
-    return target instanceof HTMLElement && (target.isContentEditable
-      || target.matches('textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="button"])'))
   }
 
   function ratingLabel(rating: CalibrationClassification): string {
@@ -653,7 +651,7 @@
 
 <svelte:window onkeydown={switchSampleByKey} />
 
-<div class="quality-lab min-h-full" bind:this={focusRoot}>
+<div class="quality-lab min-h-full" bind:this={focusRoot} data-keyboard-owner={ownsSampleKeys ? '' : undefined}>
   <!-- One name for the feature: the button that navigates here says "Personal quality check",
        so the page it lands on says the same. A separate eyebrow would only repeat it. -->
   <PageHeader

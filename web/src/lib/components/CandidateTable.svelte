@@ -141,7 +141,7 @@
   {/if}
 {/if}
 
-<DataTable rowCount={pagedVisible.length} label={i18n.m.libraries.tab_candidates} layout="auto" scroll="inline" density="compact" footer={offered.length > 0 ? range : undefined}>
+<DataTable data-keyboard-list rowCount={pagedVisible.length} label={i18n.m.libraries.tab_candidates} layout="auto" scroll="inline" density="compact" footer={offered.length > 0 ? range : undefined}>
   {#snippet head()}
     <tr>
       <th scope="col" class="selection-column">
