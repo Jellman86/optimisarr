@@ -179,21 +179,25 @@ async function measure(page: Page): Promise<Layout> {
     // Text and numeric inputs are intentionally capped for readable line length. Toggle rows
     // and section dividers are not: the switch should align with its enclosing card's right edge.
     const narrowRows: string[] = []
-    for (const id of ['global-replacement', 'global-notifications', 'global-media-servers', 'global-download-managers']) {
+    for (const id of ['global-workload', 'global-replacement', 'global-notifications', 'global-media-servers', 'global-download-managers']) {
       const section = main.querySelector<HTMLElement>(`#${id}`)
       if (!section) continue
       for (const input of section.querySelectorAll<HTMLInputElement>('label input[type="checkbox"]')) {
         const label = input.closest<HTMLElement>('label')
         if (!label || !visible(label)) continue
-        const parent = id === 'global-replacement'
-          ? section.querySelector<HTMLElement>(':scope > div:last-child')
-          : label.closest<HTMLElement>('.rounded-lg.border')
+        // A switch in a setting row sits at the end of that row's control column, which follows
+        // its words; a switch in a connection form sits at the end of the form's well.
+        const row = label.closest<HTMLElement>('[data-setting-row]')
+        const parent = row
+          ? row.querySelector<HTMLElement>('.setting-control')
+          : label.closest<HTMLElement>('.surface-sunken')
         if (!parent) continue
         const box = parent.getBoundingClientRect()
-        if (box.width < 700) continue
+        if (!row && box.width < 700) continue
         const expectedRight = box.right - Number.parseFloat(getComputedStyle(parent).paddingRight || '0')
         const gap = expectedRight - label.getBoundingClientRect().right
-        if (gap > 24) narrowRows.push(`${id}: ${label.textContent?.trim().replace(/\s+/g, ' ').slice(0, 60)} (${Math.round(gap)}px unused)`)
+        const name = (label.textContent?.trim() || input.getAttribute('aria-label') || '').replace(/\s+/g, ' ').slice(0, 60)
+        if (gap > 24) narrowRows.push(`${id}: ${name} (${Math.round(gap)}px unused)`)
       }
     }
     return {
@@ -382,16 +386,25 @@ test('detail surfaces fit the viewport and leave the page scrollable', async ({ 
   }
 })
 
-test('interactive cards retain their hover lift and keyboard focus', async ({ page }) => {
+test('settings list rows light up on hover and keep a visible focus ring inside their card', async ({ page }) => {
   await mockApp(page)
   await page.goto('/#/settings')
-  const card = page.locator('.card-interactive').first()
-  await expect(card).toBeVisible()
-  const before = await card.evaluate(element => getComputedStyle(element).boxShadow)
-  await card.hover()
-  await expect.poll(() => card.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe(before)
-  await card.focus()
-  await expect(card).toBeFocused()
+  const row = page.locator('[data-settings-room]').first()
+  await expect(row).toBeVisible()
+  const before = await row.evaluate(element => getComputedStyle(element).backgroundColor)
+  await row.hover()
+  await expect.poll(() => row.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(before)
+  await page.mouse.move(0, 0)
+  await page.keyboard.press('Tab')
+  await row.focus()
+  await expect(row).toBeFocused()
+  // The card clips its rows, so the ring is drawn inside the row's edge rather than outside it.
+  const outline = await row.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { style: style.outlineStyle, offset: parseFloat(style.outlineOffset) }
+  })
+  expect(outline.style).toBe('solid')
+  expect(outline.offset).toBeLessThan(0)
 })
 
 for (const probeViewport of [{ name: 'desktop', width: 1440, height: 900, theme: 'dark' }, { name: 'phone', width: 390, height: 844, theme: 'light' }]) {

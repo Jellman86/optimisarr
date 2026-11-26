@@ -490,19 +490,6 @@ p {
     box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
 
-  /* A card you can open. The lift on hover is the whole affordance. */
-  .card-interactive {
-    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
-  }
-  .card-interactive:hover {
-    box-shadow: var(--lift-3);
-    transform: translateY(-1px);
-  }
-  .card-interactive:active {
-    transform: translateY(0);
-    box-shadow: var(--lift-1);
-  }
-
   /* A recessed well, for content that sits *in* a surface rather than on it. */
   .surface-sunken {
     @apply rounded-xl;
@@ -1009,16 +996,13 @@ p {
    the state without the throb. */
 @media (prefers-reduced-motion: reduce) {
   .choice,
-  .card-interactive,
   .switch-track,
   .switch-knob,
   .data-table td {
     transition: none;
   }
   .choice:hover,
-  .card-interactive:hover,
-  .choice:active,
-  .card-interactive:active {
+  .choice:active {
     transform: none;
   }
   .animate-pulse,

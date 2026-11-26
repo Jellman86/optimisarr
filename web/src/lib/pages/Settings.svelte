@@ -33,7 +33,6 @@
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
   import SettingRow from '../components/SettingRow.svelte'
-  import InfoTip from '../components/InfoTip.svelte'
   import Icon from '../components/Icon.svelte'
   import OkMark from '../components/OkMark.svelte'
   import Banner from '../components/Banner.svelte'
@@ -43,8 +42,8 @@
   import WorkersPanel from '../components/WorkersPanel.svelte'
   import DiagnosticCapturePanel from '../components/DiagnosticCapturePanel.svelte'
 
-  // Settings is a set of rooms rather than a strip of tabs. The landing page is a grid of
-  // cards, one per room, and each card reports what that room is currently set to — so
+  // Settings is a set of rooms rather than a strip of tabs. The landing page is a grouped list,
+  // one row per room, and each row reports what that room is currently set to — so
   // "is Plex still connected?" and "is anything reclaimable?" are answered without opening
   // anything. Opening a room gives that section the page to itself.
   //
@@ -84,6 +83,7 @@
     if (room === lastShownRoom) return
     const previousRoom = lastShownRoom
     lastShownRoom = room
+    message = null
     const hasAnchor = room === 'system' && router.path.includes('#diagnostic-capture')
     if (room && !hasAnchor) document.querySelector('main')?.scrollTo({ top: 0 })
     void tick().then(() => {
@@ -91,9 +91,9 @@
       if (room) {
         document.getElementById('room-heading')?.focus({ preventScroll: true })
       } else {
-        const card = previousRoom ? document.getElementById(`settings-room-${previousRoom}`) : null
-        const target = card ?? document.querySelector<HTMLElement>('main [data-page-heading]')
-        target?.focus({ preventScroll: true })
+        const row = previousRoom ? document.getElementById(`settings-room-${previousRoom}`) : null
+        if (row) row.focus()
+        else document.querySelector<HTMLElement>('main [data-page-heading]')?.focus({ preventScroll: true })
       }
     })
   })
@@ -571,7 +571,7 @@ let settings = $state<Settings>({
   let savedMinFreeDiskGiB = $state('10')
   let minFreeDiskGiB = $state('10')
 
-  /** Which settings belong to which room, so a card can count its own unsaved edits. */
+  /** Which settings belong to which room, so a row can count its own unsaved edits. */
   const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
     encoding: ['maxConcurrentJobs', 'workloadConcurrencyMode', 'nonVideoSlots', 'evidenceValidationSlots', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
     superResolution: ['superResolution'],
@@ -603,7 +603,8 @@ let settings = $state<Settings>({
       if (!sameValue(settings[key], savedSettings[key])) out.add(key)
     }
     // Free disk is edited in GiB and stored in bytes, so it is compared in the unit it is typed in.
-    if (minFreeDiskGiB !== savedMinFreeDiskGiB) out.add('minFreeDiskBytes')
+    // A number input yields a numeric value once edited, so normalise to string before comparing.
+    if (String(minFreeDiskGiB ?? '') !== savedMinFreeDiskGiB) out.add('minFreeDiskBytes')
     return out
   })
 
@@ -651,7 +652,7 @@ let settings = $state<Settings>({
     error = null
   }
 
-  /** What each card says about its own section without being opened. */
+  /** What each row says about its own section without being opened. */
   let rooms = $derived([
     {
       key: 'encoding' as RoomKey,
@@ -731,7 +732,20 @@ let settings = $state<Settings>({
     { id: 'connections', title: i18n.m.settings.group_connections, rooms: rooms.filter(r => r.key !== 'encoding' && r.key !== 'files') },
   ])
 
-  let currentRoom = $derived(openRoom ? rooms.find((r) => r.key === openRoom) ?? null : null)
+  let currentRoom = $derived.by(() => {
+    if (!openRoom) return null
+    const listed = rooms.find((r) => r.key === openRoom)
+    if (listed) return listed
+    if (openRoom === 'workers') {
+      return {
+        key: 'workers' as RoomKey,
+        title: i18n.m.settings.room_workers,
+        description: i18n.m.settings.room_workers_desc,
+        state: i18n.m.settings.room_workers_state,
+      }
+    }
+    return null
+  })
 
   let loading = $state(true)
   let saving = $state(false)
@@ -983,9 +997,24 @@ let settings = $state<Settings>({
   {/if}
 {/snippet}
 
-<div class="settings-layout">
+<div class="settings-layout w-full min-w-0">
 {#if !embeddedRoom}
-<PageHeader title={i18n.m.nav.settings} subtitle={i18n.m.settings.subtitle} />
+  {#if !openRoom}
+    <PageHeader title={i18n.m.nav.settings} subtitle={i18n.m.settings.subtitle} />
+  {:else}
+    <!-- Inside a room the room is the page: one heading, with the way back above it. -->
+    <PageHeader title={currentRoom?.title ?? i18n.m.nav.settings} subtitle={currentRoom?.description ?? ''} headingProps={{ id: 'room-heading' }}>
+      {#snippet eyebrow()}
+        <nav class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+          <button type="button" class="focus-ring hit-target-square inline-flex items-center gap-1 rounded px-1 hover:text-accent" onclick={closeRoom}>
+            <Icon name="arrow-left" class="h-3.5 w-3.5" />{i18n.m.settings.all_settings}
+          </button>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page" class="break-words text-ink">{currentRoom?.title ?? i18n.m.nav.settings}</span>
+        </nav>
+      {/snippet}
+    </PageHeader>
+  {/if}
 {/if}
 
 {#if error}
@@ -996,58 +1025,53 @@ let settings = $state<Settings>({
   <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else}
   {#if !openRoom}
-    <div class="settings-overview">
+    <!-- Each room is one row of a grouped list: what it is, and what it is set to now, in body
+         text so the state reads at a glance. The row is the whole target. -->
+    <div class="settings-overview grid gap-6">
       {#each roomGroups as group (group.id)}
         <section aria-labelledby={`settings-${group.id}-heading`}>
-          <h2 id={`settings-${group.id}-heading`} class="settings-group-title">{group.title}</h2>
-          <div class="settings-room-grid">
-            {#each group.rooms as room (room.key)}
-              <button
-                type="button"
-                id={`settings-room-${room.key}`}
-                class="settings-room card card-interactive focus-ring"
-                onclick={() => openRoomAt(room.key)}
-              >
-                <span class="settings-room-symbols" aria-hidden="true">
-                  <span class="settings-symbol-tile"><Icon name={ROOM_ICONS[room.key]} class="h-[18px] w-[18px]" /></span>
-                  <Icon name="arrow-up-right" class="h-4 w-4 text-ink-4" />
-                </span>
-                <span class="flex items-start justify-between gap-3">
-                  <span class="settings-room-title">{room.title}</span>
-                  {#if roomChangedCount(room.key) > 0}
-                    <span class="badge tone-accent tabular-nums" data-room-changes title={i18n.m.settings.unsaved_here}>
-                      {roomChangedCount(room.key)}
+          <h2 id={`settings-${group.id}-heading`} class="mb-2 ml-4 text-label font-semibold text-ink-3">{group.title}</h2>
+          <div class="card @container overflow-hidden" data-settings-group={group.id}>
+            <ul class="divide-y divide-line-soft">
+              {#each group.rooms as room (room.key)}
+                <li class="group">
+                  <button
+                    type="button"
+                    id={`settings-room-${room.key}`}
+                    class="focus-ring-inset flex min-h-(--control-lg) w-full items-start gap-3 px-4 py-3.5 text-left transition-colors duration-120 hover:bg-lit group-first:rounded-t-panel group-last:rounded-b-panel motion-reduce:transition-none sm:px-6 @2xl:items-center"
+                    data-settings-room={room.key}
+                    onclick={() => openRoomAt(room.key)}
+                  >
+                    <span class="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-raised text-ink-2 @2xl:mt-0" aria-hidden="true">
+                      <Icon name={ROOM_ICONS[room.key]} class="h-4 w-4" />
                     </span>
-                  {/if}
-                </span>
-                <span class="settings-room-description">{room.description}</span>
-                <span class="settings-room-state">{room.state}</span>
-              </button>
-            {/each}
+                    <span class="flex min-w-0 flex-1 flex-col gap-1.5 @2xl:flex-row @2xl:items-center @2xl:gap-8">
+                      <span class="block min-w-0 @2xl:w-1/2 @2xl:max-w-prose @2xl:flex-none">
+                        <span class="flex flex-wrap items-center gap-2">
+                          <span class="text-body font-semibold text-ink">{room.title}</span>
+                          {#if roomChangedCount(room.key) > 0}
+                            <span class="badge tone-accent tabular-nums" data-room-changes title={i18n.m.settings.unsaved_here}>
+                              {roomChangedCount(room.key)}
+                            </span>
+                            <span class="sr-only">{i18n.m.settings.unsaved_here}</span>
+                          {/if}
+                        </span>
+                        <span class="mt-0.5 block text-caption text-ink-3">{room.description}</span>
+                      </span>
+                      <span class="block min-w-0 flex-1 text-body text-ink-2 [overflow-wrap:anywhere] @2xl:max-w-prose" data-room-state>{room.state}</span>
+                    </span>
+                    <Icon name="chevron" class="mt-2 ml-auto h-4 w-4 flex-none -rotate-90 text-ink-4 @2xl:mt-0" />
+                  </button>
+                </li>
+              {/each}
+            </ul>
           </div>
         </section>
       {/each}
     </div>
-  {:else if !embeddedRoom}
-    <div class="settings-room-heading">
-      <button type="button" class="btn btn-ghost -ml-2 mb-5 px-2 text-xs" onclick={closeRoom}>
-        <Icon name="arrow-left" /> {i18n.m.settings.all_settings}
-      </button>
-      <div class="flex items-start gap-3.5">
-        <span class="settings-heading-icon" aria-hidden="true"><Icon name={ROOM_ICONS[openRoom]} class="h-5 w-5" /></span>
-        <div class="min-w-0">
-          <h2 id="room-heading" tabindex="-1" class="text-xl font-semibold tracking-tight text-ink outline-none">
-            {currentRoom?.title ?? i18n.m.nav.settings}
-          </h2>
-          {#if currentRoom?.description}
-            <p class="mt-1 max-w-2xl text-sm leading-relaxed text-ink-3">{currentRoom.description}</p>
-          {/if}
-        </div>
-      </div>
-    </div>
   {/if}
 
-  <div class="settings-detail" class:settings-detail-open={openRoom !== null}>
+  <div class="settings-detail {openRoom !== null ? 'settings-detail-open grid w-full grid-cols-1 gap-5' : ''}">
 
   {#if openRoom === 'encoding'}
   <div class="min-w-0 space-y-5">
@@ -1062,9 +1086,9 @@ let settings = $state<Settings>({
         {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
       </SettingRow>
 
-      <details class="workload-details">
-        <summary class="focus-ring">{i18n.m.settings.workload_advanced}</summary>
-        <p class="workload-intro">{i18n.m.settings.workload_intro}</p>
+      <details class="workload-details hairline-t py-2">
+        <summary class="focus-ring -ml-2 w-fit cursor-pointer rounded-md p-2 text-label font-semibold text-accent transition-colors hover:bg-lit">{i18n.m.settings.workload_advanced}</summary>
+        <p class="mt-2 mb-4 text-caption leading-relaxed text-ink-3">{i18n.m.settings.workload_intro}</p>
         <SettingRow label={i18n.m.settings.workload_mode} sentence={i18n.m.settings.workload_mode_hint} controlId="workload-mode" tip={i18n.m.settings.workload_mode_tip} changed={isChanged('workloadConcurrencyMode')}>
           <select id="workload-mode" class="input" bind:value={settings.workloadConcurrencyMode}>
             <option value="Automatic">{i18n.m.settings.workload_automatic}</option>
@@ -1082,10 +1106,10 @@ let settings = $state<Settings>({
             {@render wasChanged('evidenceValidationSlots', String(savedSettings?.evidenceValidationSlots ?? ''))}
           </SettingRow>
         {/if}
-        <div class="workload-preview" aria-live="polite">
-          <span>{i18n.m.settings.workload_effective}</span>
-          <strong>{tr(i18n.m.settings.workload_preview, { video: Math.max(1, Number(settings.maxConcurrentJobs) || 1), nonvideo: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticNonVideoSlots : Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)), evidence: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticEvidenceValidationSlots : Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)) })}</strong>
-          <small>{i18n.m.settings.workload_preview_note}</small>
+        <div class="surface-sunken mt-4 grid gap-1.5 p-4" aria-live="polite" data-workload-preview>
+          <span class="text-caption text-ink-3">{i18n.m.settings.workload_effective}</span>
+          <strong class="text-body font-semibold text-ink">{tr(i18n.m.settings.workload_preview, { video: Math.max(1, Number(settings.maxConcurrentJobs) || 1), nonvideo: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticNonVideoSlots : Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)), evidence: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticEvidenceValidationSlots : Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)) })}</strong>
+          <small class="text-caption text-ink-3">{i18n.m.settings.workload_preview_note}</small>
         </div>
       </details>
 
@@ -1113,28 +1137,23 @@ let settings = $state<Settings>({
         {@render wasChanged('libraryScanIntervalHours', String(savedSettings?.libraryScanIntervalHours ?? ''))}
       </SettingRow>
 
-    </div>
+      <SettingRow label={i18n.m.settings.hardware_decode} sentence={i18n.m.settings.hardware_decode_hint} changed={isChanged('hardwareDecode')}>
+        <Toggle bind:checked={settings.hardwareDecode} label={i18n.m.settings.hardware_decode} bare />
+        {@render wasChanged('hardwareDecode', savedSettings?.hardwareDecode ? i18n.m.settings.enabled : i18n.m.common.off)}
+      </SettingRow>
 
-    <div class="settings-video-fields">
-      <Toggle
-        bind:checked={settings.hardwareDecode}
-        label={i18n.m.settings.hardware_decode}
-        hint={i18n.m.settings.hardware_decode_hint}
-      />
-      <div>
-        <label class="label" for="hdr-tone-map-mode">
-          {i18n.m.settings.hdr_tone_map_mode}
-          <InfoTip text={i18n.m.settings.hdr_tone_map_mode_tip} />
-        </label>
+      <SettingRow label={i18n.m.settings.hdr_tone_map_mode} sentence={i18n.m.settings.hdr_tone_map_mode_tip} controlId="hdr-tone-map-mode" changed={isChanged('hdrToneMapMode')}>
         <select id="hdr-tone-map-mode" class="input" bind:value={settings.hdrToneMapMode}>
           <option value="Software">{i18n.m.settings.hdr_tone_map_software}</option>
           <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
         </select>
-      </div>
-      <p class="text-xs text-ink-3">
-        {i18n.m.settings.auto_run_before}<button class="text-accent hover:underline" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
-      </p>
+        {@render wasChanged('hdrToneMapMode', savedSettings?.hdrToneMapMode === 'Hardware' ? i18n.m.settings.hdr_tone_map_hardware : i18n.m.settings.hdr_tone_map_software)}
+      </SettingRow>
     </div>
+
+    <p class="hairline-t mt-4 pt-4 text-caption text-ink-3">
+      {i18n.m.settings.auto_run_before}<button type="button" class="focus-ring rounded text-accent hover:underline" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
+    </p>
   </ConfigSection>
   </div>
   {/if}
@@ -1221,7 +1240,7 @@ let settings = $state<Settings>({
         {@render wasSrChanged('realEsrganModelsPath', String(savedSettings?.superResolution.realEsrganModelsPath ?? ''))}
       </SettingRow>
 
-      <div class="settings-video-fields">
+      <div class="hairline-t pt-4">
         <button type="button" class="btn btn-ghost" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
       </div>
       {/if}
@@ -1235,7 +1254,7 @@ let settings = $state<Settings>({
     title={i18n.m.settings.sr_status_title}
     description={i18n.m.settings.sr_status_desc}
   >
-    <div class="mb-3">
+    <div class="mb-4 max-w-sm">
       <label class="label" for="sr-status-engine">{i18n.m.settings.sr_status_engine}</label>
       <select id="sr-status-engine" class="input" value={statusEngine} onchange={event => checkEngine(event.currentTarget.value as SuperResolutionEngine)}>
         <option value="realcugan">Real-CUGAN</option>
@@ -1243,14 +1262,14 @@ let settings = $state<Settings>({
       </select>
     </div>
     {#if engineLoading || (!engineStatus && !engineError)}
-      <div class="card p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
+      <div class="surface-sunken p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else}
       <div class="space-y-3">
         {#if engineError}
           <Banner kind="error">{engineError}</Banner>
         {/if}
         {#if engineStatus}
-          <div class="card p-5 space-y-3 text-sm">
+          <div class="surface-sunken space-y-3 p-4 text-sm" data-engine-status>
             <p>
               <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
               {engineStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
@@ -1315,96 +1334,83 @@ let settings = $state<Settings>({
     description={i18n.m.settings.replacement_desc}
   >
     <div>
-      <Toggle
-        bind:checked={settings.dryRunMode}
-        label={i18n.m.settings.dry_run}
-        hint={i18n.m.settings.dry_run_hint}
-      />
-    </div>
-    {#if settings.remoteWorkersAvailable}
-      <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
-      <div class="mt-5 border-t border-line pt-5">
-        <Toggle
-          bind:checked={settings.remoteWorkersEnabled}
-          label={i18n.m.settings.remote_workers}
-          hint={i18n.m.settings.remote_workers_hint}
-        />
+      <SettingRow label={i18n.m.settings.dry_run} sentence={i18n.m.settings.dry_run_hint} changed={isChanged('dryRunMode')}>
+        <Toggle bind:checked={settings.dryRunMode} label={i18n.m.settings.dry_run} bare />
+        {@render wasChanged('dryRunMode', savedSettings?.dryRunMode ? i18n.m.settings.enabled : i18n.m.common.off)}
+      </SettingRow>
+      {#if settings.remoteWorkersAvailable}
+        <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
+        <SettingRow label={i18n.m.settings.remote_workers} sentence={i18n.m.settings.remote_workers_hint} changed={isChanged('remoteWorkersEnabled')}>
+          <Toggle bind:checked={settings.remoteWorkersEnabled} label={i18n.m.settings.remote_workers} bare />
+          {@render wasChanged('remoteWorkersEnabled', savedSettings?.remoteWorkersEnabled ? i18n.m.settings.enabled : i18n.m.common.off)}
+        </SettingRow>
         {#if settings.remoteWorkersEnabled}
-          <div class="mt-5 border-t border-line pt-5">
-            <Toggle
-              bind:checked={settings.workerVerificationRequired}
-              label={i18n.m.settings.worker_verification}
-              hint={i18n.m.settings.worker_verification_hint}
-            />
-          </div>
+          <SettingRow label={i18n.m.settings.worker_verification} sentence={i18n.m.settings.worker_verification_hint} changed={isChanged('workerVerificationRequired')}>
+            <Toggle bind:checked={settings.workerVerificationRequired} label={i18n.m.settings.worker_verification} bare />
+            {@render wasChanged('workerVerificationRequired', savedSettings?.workerVerificationRequired ? i18n.m.settings.enabled : i18n.m.common.off)}
+          </SettingRow>
         {/if}
-      </div>
-    {/if}
-    <div class="mt-5 border-t border-line pt-5">
-      <Toggle
-        bind:checked={settings.replacementAllowCrossFilesystem}
-        label={i18n.m.settings.cross_fs}
-        hint={i18n.m.settings.cross_fs_hint}
-      />
-    </div>
-    <div class="mt-5 border-t border-line pt-5">
-      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'bg-accent-soft' : ''}">
-        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
+      {/if}
+      <SettingRow label={i18n.m.settings.cross_fs} sentence={i18n.m.settings.cross_fs_hint} changed={isChanged('replacementAllowCrossFilesystem')}>
+        <Toggle bind:checked={settings.replacementAllowCrossFilesystem} label={i18n.m.settings.cross_fs} bare />
+        {@render wasChanged('replacementAllowCrossFilesystem', savedSettings?.replacementAllowCrossFilesystem ? i18n.m.settings.enabled : i18n.m.common.off)}
+      </SettingRow>
+      <SettingRow label={i18n.m.settings.free_disk} sentence={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} controlId="free-disk" changed={isChanged('minFreeDiskBytes')}>
         <div class="flex min-w-0 items-center gap-2">
           <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
           <span class="flex-none text-sm text-ink-3">{i18n.m.settings.gib}</span>
         </div>
         {@render wasChanged('minFreeDiskBytes', savedMinFreeDiskGiB)}
-      </div>
-    </div>
-    <div class="mt-5 border-t border-line pt-5">
-      <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
-      <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
-        <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="flex-none text-sm text-ink-3">{i18n.m.settings.days}</span>
-      </div>
-
-      <div class="mt-3 rounded-lg border border-line bg-sunken p-3" aria-live="polite">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-xs font-medium text-ink-3">{i18n.m.settings.cleanup_reclaimable}</p>
-            {#if cleanupLoading}
-              <p class="mt-1 text-sm text-ink-3">{i18n.m.settings.cleanup_calculating}</p>
-            {:else if cleanupPreview}
-              <p class="mt-0.5 text-xl font-semibold tabular-nums text-ink">{formatSize(cleanupPreview.totalBytes)}</p>
-              <p class="mt-1 text-xs text-ink-3">
-                {tr(i18n.m.settings.cleanup_breakdown, {
-                  failedCount: cleanupPreview.failedOutputCount,
-                  failedSpace: formatSize(cleanupPreview.failedOutputBytes),
-                  quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
-                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
-                })}
-              </p>
-            {/if}
-          </div>
-          <button
-            class="btn btn-danger"
-            onclick={cleanUpNow}
-            disabled={cleanupLoading || cleaning || !cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()}
-          >
-            {cleaning ? i18n.m.settings.cleanup_running : i18n.m.settings.cleanup_now}
-          </button>
+      </SettingRow>
+      <SettingRow label={i18n.m.settings.cleanup_retention} sentence={i18n.m.settings.cleanup_retention_tip} controlId="cleanup-retention" changed={isChanged('replacementQuarantineRetentionDays')}>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
+          <span class="flex-none text-sm text-ink-3">{i18n.m.settings.days}</span>
         </div>
+        {@render wasChanged('replacementQuarantineRetentionDays', String(savedSettings?.replacementQuarantineRetentionDays ?? ''))}
+      </SettingRow>
+    </div>
 
-        {#if cleanupPreview?.retentionDays === 0}
-          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_indefinite}</p>
-        {:else if cleanupPreview && cleanupPreview.totalCount === 0}
-          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_none}</p>
-        {/if}
-        {#if cleanupPolicyHasUnsavedChanges()}
-          <p class="mt-2 text-xs text-warn">{i18n.m.settings.cleanup_save_first}</p>
-        {/if}
-        {#if cleanupPreview?.dryRunMode}
-          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_dry_run}</p>
-        {/if}
-        {#if cleanupError}<p class="mt-2 text-xs text-bad">{cleanupError}</p>{/if}
-        {#if cleanupMessage}<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-2"><OkMark class="h-3 w-3" />{cleanupMessage}</p>{/if}
+    <div class="surface-sunken mt-4 p-4" aria-live="polite" data-cleanup-preview>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-xs font-medium text-ink-3">{i18n.m.settings.cleanup_reclaimable}</p>
+          {#if cleanupLoading}
+            <p class="mt-1 text-sm text-ink-3">{i18n.m.settings.cleanup_calculating}</p>
+          {:else if cleanupPreview}
+            <p class="mt-0.5 text-xl font-semibold tabular-nums text-ink">{formatSize(cleanupPreview.totalBytes)}</p>
+            <p class="mt-1 text-xs text-ink-3">
+              {tr(i18n.m.settings.cleanup_breakdown, {
+                failedCount: cleanupPreview.failedOutputCount,
+                failedSpace: formatSize(cleanupPreview.failedOutputBytes),
+                quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
+                quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
+              })}
+            </p>
+          {/if}
+        </div>
+        <button
+          class="btn btn-danger"
+          onclick={cleanUpNow}
+          disabled={cleanupLoading || cleaning || !cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()}
+        >
+          {cleaning ? i18n.m.settings.cleanup_running : i18n.m.settings.cleanup_now}
+        </button>
       </div>
+
+      {#if cleanupPreview?.retentionDays === 0}
+        <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_indefinite}</p>
+      {:else if cleanupPreview && cleanupPreview.totalCount === 0}
+        <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_none}</p>
+      {/if}
+      {#if cleanupPolicyHasUnsavedChanges()}
+        <p class="mt-2 text-xs text-warn">{i18n.m.settings.cleanup_save_first}</p>
+      {/if}
+      {#if cleanupPreview?.dryRunMode}
+        <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_dry_run}</p>
+      {/if}
+      {#if cleanupError}<p class="mt-2 text-xs text-bad">{cleanupError}</p>{/if}
+      {#if cleanupMessage}<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-2"><OkMark class="h-3 w-3" />{cleanupMessage}</p>{/if}
     </div>
   </ConfigSection>
 
@@ -1451,7 +1457,7 @@ let settings = $state<Settings>({
         <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-line p-4">
+      <div class="surface-sunken p-4">
         <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
@@ -1502,11 +1508,11 @@ let settings = $state<Settings>({
               <p class="mt-1 font-mono text-lg tracking-widest text-accent">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
-              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line">
+              <ul class="mt-2 divide-y divide-line-soft overflow-hidden rounded-xl bg-panel">
                 {#each plexServers as server}
                   <li>
                     <button
-                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-lit"
+                      class="focus-ring-inset flex min-h-(--control-lg) w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-lit"
                       onclick={() => selectPlexServer(server)}
                     >
                       <span class="min-w-0">
@@ -1613,7 +1619,7 @@ let settings = $state<Settings>({
         <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-line p-4">
+      <div class="surface-sunken p-4">
         <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
@@ -1706,7 +1712,7 @@ let settings = $state<Settings>({
       <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.targets_empty}</p>
     {/if}
 
-    <div class="rounded-lg border border-line p-4">
+    <div class="surface-sunken p-4">
       <h3 class="mb-3 text-sm font-semibold text-ink-2">
         {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>
@@ -1845,10 +1851,7 @@ let settings = $state<Settings>({
   </div>
 
   {#if changedCount > 0 || message}
-    <div
-      class="settings-savebar sticky bottom-0 z-10 mt-6 flex flex-wrap items-center gap-3 p-4"
-      data-settings-actions
-    >
+    <div class="card mt-6 flex flex-wrap items-center gap-3 p-4 {changedCount > 0 ? 'sticky-actions' : ''}" data-settings-actions>
       {#if changedCount > 0}
         <span class="text-sm font-semibold text-ink">
           {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
@@ -1869,59 +1872,3 @@ let settings = $state<Settings>({
 {/if}
 
 </div>
-
-<style>
-  .settings-layout { width: 100%; min-width: 0; }
-  .settings-overview { display: grid; gap: 1.75rem; }
-  .settings-group-title {
-    margin-bottom: .625rem; margin-left: 1rem; color: var(--ink-3); font-size: .8125rem; font-weight: 600;
-  }
-  /* The page uses the full width like every other page, so the overview adds columns as the
-     screen widens instead of stretching two cards across it. */
-  /* auto-fit, not auto-fill: a two-room group spreads across the row instead of leaving an empty slot. */
-  .settings-room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
-  .settings-room {
-    display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
-    padding: 1.375rem; text-align: left;
-  }
-  .settings-room-symbols { display: flex; align-items: center; justify-content: space-between; margin-bottom: .65rem; }
-  .settings-room-title { color: var(--ink); font-size: .9375rem; font-weight: 600; letter-spacing: -.015em; }
-  .settings-room-description { color: var(--ink-3); font-size: .8125rem; line-height: 1.55; }
-  .settings-room-state { margin-top: auto; padding-top: .875rem; color: var(--ink-2); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
-  .settings-room-heading { margin-bottom: 1.75rem; }
-  .settings-heading-icon {
-    display: flex; flex: none; align-items: center; justify-content: center;
-    width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent-on); background: var(--accent-fill);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), var(--lift-1);
-  }
-  /* A symbol on a filled rounded tile, the way System Settings marks each pane. */
-  .settings-symbol-tile {
-    display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: .5rem;
-    color: var(--accent-on); background: var(--accent-fill); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), var(--lift-1);
-  }
-  .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
-  .settings-video-fields {
-    display: grid; gap: 1.5rem;
-    margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--divide);
-  }
-  .workload-details { border-top: 1px solid var(--divide-soft); margin-top: 1rem; padding-top: 1rem; }
-  .workload-details summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: .8125rem; font-weight: 600; border-radius: .375rem; padding: .5rem; margin-left: -.5rem; }
-  .workload-details summary:hover { background: var(--lit); }
-  .workload-intro { color: var(--ink-3); font-size: .75rem; line-height: 1.6; margin: .5rem 0 1rem; }
-  .workload-preview { display: grid; gap: .35rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }
-  .workload-preview span, .workload-preview small { color: var(--ink-3); font-size: .75rem; }
-  .workload-preview strong { color: var(--ink); font-size: .875rem; font-weight: 600; }
-  .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 40rem) minmax(10rem, 24rem); justify-content: start; gap: 2rem; align-items: center; }
-  /* A toggle spreads its label and switch across its row; keep it to the same span as the rows
-     above so the switch lines up with their controls instead of the page's far edge. */
-  .settings-video-fields > :global(label) { max-width: 66rem; }
-  .settings-savebar {
-    border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
-  }
-  @media (max-width: 639px) {
-    .settings-room-grid, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-    .settings-room { min-height: 10rem; padding: 1.125rem; }
-    .settings-room-heading { margin-bottom: 1.25rem; }
-  }
-  @media (prefers-reduced-motion: reduce) { .settings-room { transition: none; } }
-</style>
