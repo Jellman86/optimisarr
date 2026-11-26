@@ -560,6 +560,12 @@ language: {
     saved_per_day_average: "{size} al día de media",
     chart_today: 'Hoy',
     originals_now: 'Originales {original} · ahora {optimised}',
+    in_flight_quality_mode: 'Modo de calidad',
+    fleet_col_machine: 'Equipo',
+    fleet_col_load: 'Carga',
+    fleet_col_free_space: 'Espacio libre',
+    saved_per_day_step_hint: 'Usa las flechas izquierda y derecha para inspeccionar cada día.',
+    saved_per_day_peak: 'Máximo {date}: {size}',
   },
   schedule: {
     error_load: 'No se pudo cargar el horario',

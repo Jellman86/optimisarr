@@ -557,6 +557,12 @@ export const ja: Messages = {
     saved_per_day_average: "1 日平均 {size}",
     chart_today: '今日',
     originals_now: '元のサイズ {original} · 現在 {optimised}',
+    in_flight_quality_mode: '品質モード',
+    fleet_col_machine: 'マシン',
+    fleet_col_load: '負荷',
+    fleet_col_free_space: '空き容量',
+    saved_per_day_step_hint: '左右の矢印キーで日ごとの詳細を確認できます。',
+    saved_per_day_peak: '最大 {date}: {size}',
   },
   schedule: {
     error_load: "スケジュールを読み込めません",

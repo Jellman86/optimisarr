@@ -557,6 +557,12 @@ export const ru: Messages = {
     saved_per_day_average: "в среднем {size} в день",
     chart_today: 'Сегодня',
     originals_now: 'Оригиналы {original} · сейчас {optimised}',
+    in_flight_quality_mode: 'Режим качества',
+    fleet_col_machine: 'Узел',
+    fleet_col_load: 'Нагрузка',
+    fleet_col_free_space: 'Свободно',
+    saved_per_day_step_hint: 'Используйте стрелки влево и вправо для просмотра отдельных дней.',
+    saved_per_day_peak: 'Пик {date}: {size}',
   },
   schedule: {
     error_load: "Не удалось загрузить расписание",

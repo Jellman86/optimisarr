@@ -557,6 +557,12 @@ dashboard: {
     saved_per_day_average: "{size} al giorno in media",
     chart_today: 'Oggi',
     originals_now: 'Originali {original} · ora {optimised}',
+    in_flight_quality_mode: 'Modalità qualità',
+    fleet_col_machine: 'Macchina',
+    fleet_col_load: 'Carico',
+    fleet_col_free_space: 'Spazio libero',
+    saved_per_day_step_hint: 'Usa le frecce sinistra e destra per ispezionare i singoli giorni.',
+    saved_per_day_peak: 'Picco {date}: {size}',
 },
 schedule: {
   error_load: 'Impossibile caricare la pianificazione',

@@ -54,3 +54,31 @@ export function jobStep(job: JobState): number | null {
     default: return null
   }
 }
+
+// The rate controls EncoderQualityPolicy names per encoder family. They are codes, not words, so
+// they are always shown in capitals however a fixture or an older server spelled them.
+const ENCODER_QUALITY_CONTROLS = new Set(['ICQ', 'CQ', 'QP', 'VT-Q', 'CRF'])
+
+export function encoderQualityControl(mode: string | null | undefined): string | null {
+  const code = mode?.toUpperCase() ?? null
+  return code != null && ENCODER_QUALITY_CONTROLS.has(code) ? code : null
+}
+
+// A per-title mode (Adaptive VMAF, fixed VMAF) still lands on the CRF scale, so CRF is the honest
+// fallback; a hardware control is named as itself so "CRF 24" never sits beside an ICQ encode.
+export function qualityChipLabel(mode: string | null | undefined, value: number): string {
+  if (mode?.toLowerCase() === 'bitrate') return String(value)
+  return `${encoderQualityControl(mode) ?? 'CRF'} ${value}`
+}
+
+// Blue is for what moves or can be pressed. A suspended local encode is held (amber), a failure is
+// its own tone, and queued or finished work is a calm fact.
+export function jobStageTone(
+  job: JobState,
+  queue: { runningEncodesSuspended: boolean; manualPauseMode: string } | null = null,
+): 'live' | 'paused' | 'failed' | 'waiting' {
+  if (job.status === 'Failed') return 'failed'
+  if (isJobSuspended(job, queue)) return 'paused'
+  if (job.finalizing === true || ['Probing', 'Transcoding', 'Verifying', 'Leased'].includes(job.status)) return 'live'
+  return 'waiting'
+}

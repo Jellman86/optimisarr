@@ -654,6 +654,12 @@ export const en = {
     saved_per_day_average: "{size} a day on average",
     chart_today: 'Today',
     originals_now: 'Originals {original} · now {optimised}',
+    in_flight_quality_mode: 'Quality mode',
+    fleet_col_machine: 'Machine',
+    fleet_col_load: 'Load',
+    fleet_col_free_space: 'Free space',
+    saved_per_day_step_hint: 'Use Left and Right arrow keys to inspect individual days.',
+    saved_per_day_peak: 'Peak {date}: {size}',
   },
   schedule: {
     error_load: 'Unable to load schedule',
