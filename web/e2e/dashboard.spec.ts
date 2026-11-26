@@ -523,18 +523,58 @@ test('remote work animates the slices; reduced motion holds a twisted still', as
 
 async function mockJobsHub(page: Page) {
   let notify = () => {}
+  let handshake = () => {}
+  const ready = new Promise<void>(resolve => { handshake = resolve })
   await page.route('**/hubs/jobs/negotiate?*', route => json(route, {
     negotiateVersion: 1, connectionId: 'brand-test', connectionToken: 'brand-test',
     availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
   }))
   await page.routeWebSocket('**/hubs/jobs?*', socket => {
     socket.onMessage(message => {
-      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+      if (!String(message).includes('"protocol"')) return
+      socket.send('{}\u001e')
+      handshake()
     })
     notify = () => socket.send(JSON.stringify({ type: 1, target: 'jobsChanged', arguments: [] }) + '\u001e')
   })
-  return () => notify()
+  // Events sent before the handshake completes are dropped, so a test can wait for `ready`.
+  return Object.assign(() => notify(), { ready })
 }
+
+test('a job event refreshes the dashboard list before its next poll', async ({ page }) => {
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const list = page.locator('main').getByRole('region', { name: 'In flight' })
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
+  await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
+
+  fixture.jobs = [liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'New feature.mkv' })]
+  notify()
+  await expect(list.getByText('New feature', { exact: true })).toBeVisible()
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toHaveCount(0)
+})
+
+test('a burst of job events folds into one follow-up dashboard refresh', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  const held: Route[] = []
+  await page.route('**/api/results/daily*', route => { held.push(route) })
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  await expect.poll(() => held.length).toBe(1)
+  await notify.ready
+
+  for (let event = 0; event < 4; event++) notify()
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(1)
+
+  await json(held[0], [])
+  await expect.poll(() => held.length).toBe(2)
+  await json(held[1], [])
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(2)
+})
 
 test('job events change the cube state while suspended work keeps moving illumination', async ({ page }) => {
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }

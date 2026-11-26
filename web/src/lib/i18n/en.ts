@@ -197,6 +197,7 @@ export const en = {
     distance_note: "Each channel shows its largest sample distance. Smaller distances mean closer audio. These values are not a listening score or a pass threshold.",
   },
   common: {
+    live_updates_paused: 'Live updates are reconnecting. Until then, this page refreshes every few seconds.',
     loading: 'Loading Optimisarr...',
     loading_short: 'Loading…',
     checking: 'Checking...',

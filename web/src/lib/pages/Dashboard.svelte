@@ -13,6 +13,7 @@
   } from '../api'
   import { dashboardStateFor } from '../dashboard-state'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { activity } from '../stores/activity.svelte'
   import Banner from '../components/Banner.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import FleetPanel from '../components/FleetPanel.svelte'
@@ -33,6 +34,9 @@
   let results = $state<OptimisationResult[] | null>(null)
   let dailySavings = $state<DailySaving[] | null>(null)
   let error = $state<string | null>(null)
+  let loadRequest = 0
+  let refreshing = false
+  let refreshPending = false
 
   // Reset flow for the lifetime savings tally: a two-step inline confirm so the headline
   // figure is never wiped on a stray click.
@@ -40,13 +44,30 @@
   let resetting = $state(false)
 
   $effect(() => {
-    void load()
-    // Queue, fleet and quarantine figures all change as work runs; refresh periodically.
-    const timer = setInterval(load, 15000)
-    return () => clearInterval(timer)
+    let disposed = false
+    // Job events are not throttled server-side. Fold a burst into one follow-up read so the
+    // page never stacks overlapping nine-request loads.
+    async function refresh() {
+      if (refreshing) { refreshPending = true; return }
+      refreshing = true
+      try {
+        do { refreshPending = false; await load() } while (refreshPending && !disposed)
+      } finally { refreshing = false }
+    }
+    void refresh()
+    const unsubscribe = activity.subscribe({ onChanged: () => void refresh() })
+    // Fleet and storage figures can also change outside job events.
+    const timer = setInterval(() => { if (!document.hidden) void refresh() }, 15000)
+    return () => {
+      disposed = true
+      loadRequest++
+      unsubscribe()
+      clearInterval(timer)
+    }
   })
 
   async function load() {
+    const request = ++loadRequest
     try {
       // These five answer the page. A failure in any of them is a real error worth a banner,
       // because the status bar would otherwise sit there stating a stale state confidently.
@@ -57,6 +78,7 @@
         api.queueStatus(),
         api.liveJobs(),
       ])
+      if (request !== loadRequest) return
       health = healthResult
       tools = toolsResult
       stats = statsResult
@@ -72,23 +94,29 @@
         api.results(12),
         api.dailySavings(30),
       ])
+      if (request !== loadRequest) return
       failures = failuresResult.status === 'fulfilled' ? failuresResult.value : []
       if (resultsResult.status === 'fulfilled') results = resultsResult.value
       if (dailyResult.status === 'fulfilled') dailySavings = dailyResult.value
-      await loadFleet()
+      await loadFleet(request)
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.dashboard.error_load
+      if (request === loadRequest) error = err instanceof Error ? err.message : i18n.m.dashboard.error_load
     }
   }
 
   // Saved choices and explicit deployment overrides can disable workers. Ask settings before
   // listing the fleet so a disabled service does not turn a valid local dashboard into an error.
-  async function loadFleet() {
+  async function loadFleet(request: number) {
     try {
       const settings = await api.settings()
-      workersAvailable = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
-      workers = workersAvailable ? await api.workers() : []
+      if (request !== loadRequest) return
+      const available = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      const fleet = available ? await api.workers() : []
+      if (request !== loadRequest) return
+      workersAvailable = available
+      workers = fleet
     } catch {
+      if (request !== loadRequest) return
       workersAvailable = false
       workers = []
     }

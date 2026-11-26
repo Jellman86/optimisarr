@@ -95,8 +95,20 @@
       </table>
     </div>
   {:else if loading}
-    <div class={['data-table-state', !bare && 'card']} role="status">
-      {#if loadingState}{@render loadingState()}{:else}{i18n.m.common.loading_short}{/if}
+    <div class={[loadingState ? 'data-table-state' : 'data-table-skeleton', density === 'compact' && 'data-table-compact', !bare && 'card']} role="status">
+      {#if loadingState}
+        {@render loadingState()}
+      {:else}
+        <span class="sr-only">{i18n.m.common.loading_short}</span>
+        <div aria-hidden="true">
+          {#each [1, 2, 3, 4, 5, 6] as row (row)}
+            <div class="data-table-skeleton-row">
+              <span class="h-3 w-1/2 rounded bg-line"></span>
+              <span class="h-3 w-1/5 rounded bg-line"></span>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {:else if error}
     {#if errorState}<div class={['data-table-state', !bare && 'card']}>{@render errorState(error)}</div>{/if}

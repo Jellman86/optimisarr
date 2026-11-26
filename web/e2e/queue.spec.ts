@@ -697,10 +697,52 @@ async function queueHub(page: Page) {
     })
   })
   return async (target: string, value?: unknown) => {
-    await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(2)
+    await expect.poll(() => sockets.length).toBe(1)
     sockets.forEach(socket => socket.send(JSON.stringify({ type: 1, target, arguments: value === undefined ? [] : [value] }) + '\u001e'))
   }
 }
+
+test('the queue keeps its rows when live updates fail and refreshes while reconnecting', async ({ page }) => {
+  await page.clock.install()
+  const fixture = { jobs: [job(1, 'Queued', null)] }
+  await mockWorkingQueue(page, fixture)
+  await queueHub(page)
+  let hubAvailable = false
+  // Registered after the mocked hub, so falling back reaches it rather than a real server.
+  await page.route('**/hubs/jobs/negotiate?*', route => hubAvailable
+    ? route.fallback()
+    : route.fulfill({ status: 503 }))
+  await page.goto('/#/queue')
+
+  const notice = page.getByRole('status').filter({ hasText: 'Live updates are reconnecting. Until then, this page refreshes every few seconds.' })
+  await expect(notice).toBeVisible()
+  await expect(page.getByRole('button', { name: /Film 1\.mkv/ })).toBeVisible()
+
+  fixture.jobs = [job(2, 'Queued', null)]
+  await page.clock.fastForward(10_001)
+  await expect(page.getByRole('button', { name: /Film 2\.mkv/ })).toBeVisible()
+
+  hubAvailable = true
+  fixture.jobs = [job(3, 'Queued', null)]
+  await page.clock.fastForward(15_001)
+  await expect(notice).toBeHidden()
+  await expect(page.getByRole('button', { name: /Film 3\.mkv/ })).toBeVisible()
+})
+
+test('the queue reserves row space until its initial results arrive', async ({ page }) => {
+  const fixture = { jobs: [job(1, 'Queued', null)] }
+  await mockWorkingQueue(page, fixture)
+  let held: Route | undefined
+  await page.route('**/api/jobs', route => { held = route })
+  await page.goto('/#/queue')
+
+  await expect(page.locator('.data-table-skeleton-row')).toHaveCount(6)
+  await expect(page.getByRole('table', { name: 'Queue' })).toHaveCount(0)
+  await expect.poll(() => Boolean(held)).toBe(true)
+  await json(held!, fixture.jobs)
+  await expect(page.locator('.data-table-skeleton-row')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Film 1\.mkv/ })).toBeVisible()
+})
 
 test('a queue refresh cannot rewind telemetry received while the request was in flight', async ({ page }) => {
   const fixture = { jobs: [{ ...job(1, 'Transcoding', null), progress: .3 }] }

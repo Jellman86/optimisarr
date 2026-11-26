@@ -195,6 +195,7 @@ export const zh: Messages = {
     distance_note: "每个声道显示片段中的最大距离。距离越小表示音频越接近。这不是听感评分，也不是合格阈值。",
   },
   common: {
+    live_updates_paused: '实时更新正在重新连接。在此之前，此页面每隔几秒刷新一次。',
     loading: "正在加载 Optimisarr...",
     loading_short: "加载中…",
     checking: "检查...",

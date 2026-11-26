@@ -195,6 +195,7 @@ export const fr: Messages = {
     distance_note: "Chaque canal affiche la plus grande distance des extraits. Une distance plus faible indique un son plus proche. Ce n’est ni une note d’écoute ni un seuil de validation.",
   },
   common: {
+    live_updates_paused: 'Les mises à jour en direct se reconnectent. En attendant, cette page s’actualise régulièrement.',
     loading: 'Optimisarr en cours de chargement...',
     loading_short: 'Chargement…',
     checking: 'Vérification en cours...',

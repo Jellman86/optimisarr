@@ -197,6 +197,7 @@ export const de: Messages = {
     distance_note: "Pro Kanal wird der größte Abstand der Ausschnitte angezeigt. Kleinere Abstände bedeuten ähnlicheres Audio. Dies ist keine Hörbewertung oder Bestehensgrenze.",
   },
   common: {
+    live_updates_paused: 'Live-Updates werden neu verbunden. Bis dahin wird diese Seite alle paar Sekunden aktualisiert.',
     loading: 'Optimisarr wird geladen …',
     loading_short: 'Wird geladen …',
     checking: 'Wird geprüft …',
