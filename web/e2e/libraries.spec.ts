@@ -326,13 +326,20 @@ test('the library list leads with the count, one Scan button, and the rest in a 
   await expect(card.getByText('access ok')).toHaveCount(0)
 
   // One default Scan button on the card; the secondary and destructive ones are one click away.
-  await expect(card.getByRole('button')).toHaveCount(2)
+  // The only other button explains the skipped files behind the count.
+  await expect(card.getByRole('button')).toHaveCount(3)
+  await expect(card.getByRole('button', { name: /^About: / })).toHaveAccessibleDescription(/skipped: already optimal, excluded, or not yet eligible/)
   await expect(card.getByRole('button', { name: 'Scan' })).toBeVisible()
   await expect(card.getByRole('button', { name: 'Delete' })).toHaveCount(0)
 
   await card.getByRole('button', { name: 'More actions for Films' }).click()
   const menu = page.getByRole('menu', { name: 'More actions for Films' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['Enqueue', 'Configure', 'Delete'])
+  await expect(menu.getByRole('menuitem')).toHaveText([/^\s*Enqueue\b/, 'Configure', 'Delete'])
+  // What Enqueue does is on screen under its name, not in a hover-only title.
+  const enqueue = menu.getByRole('menuitem', { name: 'Enqueue', exact: true })
+  await expect(enqueue).toHaveAccessibleDescription("Queue this library's eligible files")
+  await expect(enqueue.getByText("Queue this library's eligible files")).toBeVisible()
+  await expect(enqueue).not.toHaveAttribute('title')
   await menu.getByRole('menuitem', { name: 'Configure' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
 })
@@ -470,6 +477,19 @@ test('Edit on a summary line opens the page with every control for it, and the s
   await expect(page.locator('[data-summary-unsaved]')).toHaveText('Includes changes you have not saved yet.')
   // The counts describe the saved rules, so they step aside while something is unsaved.
   await expect(page.locator('[data-summary-line="files"] [data-summary-detail]')).toHaveCount(0)
+})
+
+test('unsaved edits disable Scan and the overview says so beside it, not in a hover title', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  await page.getByRole('checkbox', { name: 'Remove black bars', exact: true }).check()
+  await pageTab(page, 'Overview').click()
+  const scan = page.getByRole('button', { name: 'Scan', exact: true })
+  await expect(scan).toBeDisabled()
+  await expect(scan).not.toHaveAttribute('title')
+  await expect(page.locator('[data-scan-unsaved]')).toHaveText('Save changes first')
+  await expect(scan).toHaveAccessibleDescription('Save changes first')
+  await expect(page.locator('[data-duplicates-unsaved]')).toHaveText('Save changes first')
 })
 
 test('a film library has an overview and five pages, a music library has no Video page and a photo library has Images', async ({ page }) => {

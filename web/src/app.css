@@ -883,7 +883,7 @@ p {
     overflow-wrap: anywhere;
   }
   .status-strip-action {
-    @apply ml-auto gap-3;
+    @apply ml-auto gap-4;
   }
   .status-strip-action button {
     @apply min-w-0 max-w-full;
@@ -978,6 +978,11 @@ p {
     /* A failed pause opens the strip; closed again, its alert stays for a reader but leaves the line. */
     .status-strip-collapsible:not(.status-strip-open) :is(.status-strip-fact, .status-strip-action-label, .status-strip-error) {
       @apply sr-only;
+    }
+    /* Closed, the pause control keeps its symbol alone; its explanation waits in the open strip and
+       still describes the control for a screen reader. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action-help {
+      display: none;
     }
     .status-strip-collapsible:not(.status-strip-open) .status-strip-action {
       @apply ml-0 flex-none;
@@ -1094,9 +1099,11 @@ p {
   .data-table .selection-column .checkbox {
     @apply block;
   }
-  /* A sortable header is a button inside a `th[aria-sort]`; the arrow follows the attribute. */
+  /* A sortable header is a button inside a `th[aria-sort]`; the arrow follows the attribute. A
+     header breaks between its words only, so a long translation widens its column rather than
+     standing letter over letter. */
   .table-sort {
-    @apply -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 text-left font-semibold [overflow-wrap:anywhere] focus-ring;
+    @apply -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 text-left font-semibold [overflow-wrap:break-word] focus-ring;
     color: inherit;
   }
   .table-sort:hover {

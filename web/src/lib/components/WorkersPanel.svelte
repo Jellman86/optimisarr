@@ -9,6 +9,7 @@
   import Chip from './Chip.svelte'
   import ConfigSection from './ConfigSection.svelte'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import InfoTip from './InfoTip.svelte'
 
   let workers = $state<Worker[]>([])
   let pairing = $state<WorkerPairingCode | null>(null)
@@ -359,16 +360,17 @@
                   </span>
                 {/if}
                 {#if worker.gpuBusyFraction != null}
-                  <!-- Titled, not footnoted: a hardware encode on Apple silicon runs on a media
+                  <!-- Explained, not footnoted: a hardware encode on Apple silicon runs on a media
                        engine that is not the GPU's shader cores and is not measurable, so this
                        reads low while the Mac is flat out. Better to say so than to let someone
                        conclude the accelerator is idle. -->
-                  <span class="flex items-center gap-1.5" title={i18n.m.workers.gpu_hint}>
+                  <span class="flex items-center gap-1.5">
                     <span class="text-ink-3">{i18n.m.workers.gpu_label}</span>
                     <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
                       <span class="block h-full rounded-full bg-ink-3" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
                     </span>
                     <span class="font-mono tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
+                    <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.workers.gpu_label })} text={i18n.m.workers.gpu_hint} />
                   </span>
                 {/if}
               </div>

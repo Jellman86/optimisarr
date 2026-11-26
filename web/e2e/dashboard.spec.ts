@@ -1457,3 +1457,16 @@ test('the saved-per-day chart steps through days from the keyboard and reads its
   await expect(readout).toHaveText('Last 5 days: 1.8 GB saved')
   await expect(chart.locator('.saved-day-selected')).toHaveCount(0)
 })
+
+test('the sidebar toggle names what pressing it will do', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const collapse = page.getByRole('button', { name: 'Collapse sidebar', exact: true })
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  await collapse.click()
+  const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true })
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
+  await expand.click()
+  await expect(collapse).toBeVisible()
+})

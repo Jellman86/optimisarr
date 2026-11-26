@@ -187,7 +187,7 @@
         </div>
         <div class="status-strip-fact"><span class="label mb-0">Slots</span><span class="text-sm font-semibold tabular-nums text-ink">{status.jobs.length} / {status.concurrency}</span></div>
         <div class="status-strip-fact"><span class="label mb-0">CPU</span><span class="text-sm font-semibold tabular-nums text-ink">{cpu != null ? `${cpu}%` : '—'}</span></div>
-        <div class="status-strip-fact" title={status.metrics?.gpuEngine ? `${status.metrics.gpuEngine} engine` : 'No GPU reading'}><span class="label mb-0">GPU</span><span class="text-sm font-semibold tabular-nums text-ink">{gpu != null ? `${gpu}%` : '—'}</span></div>
+        <div class="status-strip-fact"><span class="label mb-0">GPU</span><span class="text-sm font-semibold tabular-nums text-ink">{gpu != null ? `${gpu}%` : '—'}</span>{#if status.metrics?.gpuEngine}<span class="text-xs text-ink-3" data-gpu-engine>{status.metrics.gpuEngine} engine</span>{/if}</div>
         <div class="status-strip-fact status-strip-optional"><span class="label mb-0">Free in {status.storage.kind === 'RAM' ? 'RAM' : status.storage.kind.toLowerCase()}</span><span class="text-sm font-semibold tabular-nums text-ink">{formatSize(status.storage.freeBytes)}</span></div>
       </section>
 
@@ -281,7 +281,7 @@
                   <span class="inline-flex items-center gap-1.5 text-micro font-medium text-accent"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>{STAGES[step].active}</span>
                   <Chip mono>{job.encoder}</Chip>
                   {#if job.hardwareDecoder}<Chip tone="ok">GPU decode · <span class="font-mono">{job.hardwareDecoder}</span></Chip>{:else}<Chip tone="muted">Software decode</Chip>{/if}
-                  {#if job.startedAt}<span class="ml-auto text-micro tabular-nums text-ink-3" title="Time on this worker">{sinceLabel(job.startedAt, now)}</span>{/if}
+                  {#if job.startedAt}<span class="ml-auto text-micro tabular-nums text-ink-3">{sinceLabel(job.startedAt, now)} on this worker</span>{/if}
                 </div>
                 <h2 class="job-title">{job.title}</h2>
                 <div class="progress-track" role="progressbar" aria-label={`Progress for ${job.title}`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress != null ? Math.floor(progress) : undefined} aria-valuetext={progress == null ? STAGES[step].doing : undefined}>

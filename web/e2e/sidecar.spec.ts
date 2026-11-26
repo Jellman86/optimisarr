@@ -33,6 +33,8 @@ test('sidecar shows focused RAM and GPU status without server navigation', async
   await expect(page.getByText('Ready for work')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Worker state' })).toContainText('37%')
   await expect(page.getByRole('region', { name: 'Worker state' })).toContainText('62%')
+  // Which engine the GPU figure reads is on screen, not in a hover title.
+  await expect(page.locator('[data-gpu-engine]')).toHaveText('Video engine')
   await page.setViewportSize({ width: 375, height: 812 })
   await noHorizontalScroll(page)
 })

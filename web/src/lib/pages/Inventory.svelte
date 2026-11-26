@@ -316,7 +316,9 @@
   ])
 </script>
 
-<div class="inventory-layout">
+<!-- A container, so the table drops its Format column by the room it has rather than by the
+     window: beside an open sidebar a tablet leaves it phone-width. -->
+<div class="@container inventory-layout">
   <PageHeader title={i18n.m.nav.inventory} subtitle={i18n.m.inventory.subtitle} actionsAlign="end">
     {#snippet actions()}
       <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
@@ -366,8 +368,8 @@
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
         <th scope="col" class="data-table-primary" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
         <th scope="col" aria-sort={sortState('size')} class="w-[13%]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
-        <th scope="col" class="hidden w-[21%] sm:table-cell">{i18n.m.inventory.col_format}</th>
-        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[19%]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
+        <th scope="col" class="hidden w-[21%] sm:@min-[36rem]:table-cell">{i18n.m.inventory.col_format}</th>
+        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[max(19%,7.5rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
       </tr>
     {/snippet}
     {#each rows as row (row.file.id)}{@const file = row.file}
@@ -378,8 +380,8 @@
           <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}</span></span>
         </button></td>
         <td class="whitespace-nowrap tabular-nums max-sm:text-caption">{formatSize(file.sizeBytes)}</td>
-        <td class="hidden sm:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
-        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
+        <td class="hidden sm:@min-[36rem]:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
+        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}<span class="min-w-0">{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span></span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
       </tr>
     {/each}
     {#snippet empty()}<Icon name="film" class="h-7 w-7 text-ink-4" /><p>{search ? t(i18n.m.inventory.empty_search, { query: search }) : counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>{#if search}<button type="button" class="btn" onclick={clearSearch}>{i18n.m.inventory.clear_search}</button>{/if}{/snippet}
@@ -432,6 +434,6 @@
 <style>
   .inventory-library { min-width: 12rem; }
   .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
-  .inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }
+  .inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; min-width: 0; max-width: 100%; overflow-wrap: break-word; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }
   @media (max-width: 639px) { .inventory-library { width: 100%; }.inventory-verdict { gap: .375rem; } }
 </style>

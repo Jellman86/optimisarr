@@ -114,7 +114,7 @@ test('the queue no longer hides its management behind a toggle', async ({ page }
   await page.goto('/#/queue')
 
   await expect(page.getByRole('button', { name: 'Manage queue' })).toHaveCount(0)
-  const clearErrors = page.getByRole('button', { name: 'Clear errored (1)' })
+  const clearErrors = page.getByRole('button', { name: 'Clear errored (1)', exact: true })
   await expect(clearErrors).toBeVisible()
 
   // The action sits at the right end of the filter row, not in a row of its own.
@@ -140,14 +140,14 @@ test('the clear-errors count is what the clear removes: failed and cancelled job
   await mockQueue(page, [job(1, 'Failed'), job(2, 'Cancelled'), job(3, 'Cancelled'), held])
   await page.goto('/#/queue')
 
-  await expect(page.getByRole('button', { name: 'Clear errored (3)' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear errored (3)', exact: true })).toBeVisible()
 })
 
 test('a queue with only cancelled jobs can still clear them', async ({ page }) => {
   await mockQueue(page, [job(1, 'Cancelled'), job(2, 'Queued')])
   await page.goto('/#/queue')
 
-  await expect(page.getByRole('button', { name: 'Clear errored (1)' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear errored (1)', exact: true })).toBeVisible()
 })
 
 test('the selection is dropped when the tab changes, and a batch keeps only the rows it refused', async ({ page }) => {

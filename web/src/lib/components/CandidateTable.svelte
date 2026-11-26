@@ -133,7 +133,7 @@
       onclear={() => selection.clear()}
     >
       {#snippet actions()}
-        <button class="btn btn-ghost" onclick={() => (confirmOpen = true)} disabled={busy} title={i18n.m.shared.batch_exclude_title}>
+        <button class="btn btn-ghost" onclick={() => (confirmOpen = true)} disabled={busy}>
           {i18n.m.shared.batch_exclude}
         </button>
       {/snippet}

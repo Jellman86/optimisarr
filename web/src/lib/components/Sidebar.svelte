@@ -131,7 +131,8 @@
         class="nav-button relative"
         class:nav-button-active={isActive(item.path)}
         class:nav-button-inactive={!isActive(item.path)}
-        title={railCollapsed ? item.label : ''}
+        aria-label={railCollapsed ? (showActivity ? `${item.label} · ${activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}` : item.label) : undefined}
+        title={railCollapsed ? item.label : undefined}
         onclick={() => {
           router.go(item.path)
           layout.closeMobile()
@@ -153,6 +154,7 @@
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
+              <span class="sr-only">{activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}:</span>
               <span class="text-micro font-semibold tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}
@@ -187,7 +189,7 @@
         <Icon name="keyboard" class="h-5 w-5" />
       </button>
     {/if}
-    <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>
+    <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={collapsed ? i18n.m.nav.expand_sidebar : i18n.m.nav.collapse_sidebar} aria-label={collapsed ? i18n.m.nav.expand_sidebar : i18n.m.nav.collapse_sidebar} aria-expanded={!collapsed}>
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
       </svg>

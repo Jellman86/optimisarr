@@ -9,6 +9,7 @@
   import DataTable from '../components/DataTable.svelte'
   import Segmented from '../components/Segmented.svelte'
   import Icon from '../components/Icon.svelte'
+  import InfoTip from '../components/InfoTip.svelte'
   import SizeChange from '../components/SizeChange.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
@@ -243,9 +244,9 @@
         <h1 class="page-title break-words outline-none" tabindex="-1" data-page-heading bind:this={heading}>{selected ? fileName(selected.finalPath) : i18n.m.quarantine.review_title}</h1>
         {#if selected}
           <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-3">
-            <span class="badge {selected.status === 'Replaced' ? 'tone-ok' : 'tone-neutral'}">{selected.status === 'Replaced' ? i18n.m.quarantine.status_replaced : selected.status === 'Purged' ? i18n.m.quarantine.status_purged : i18n.m.quarantine.status_rolled_back}</span>
+            <span class="inline-flex items-center gap-4"><span class="badge {selected.status === 'Replaced' ? 'tone-ok' : 'tone-neutral'}">{selected.status === 'Replaced' ? i18n.m.quarantine.status_replaced : selected.status === 'Purged' ? i18n.m.quarantine.status_purged : i18n.m.quarantine.status_rolled_back}</span>{#if selected.status === 'Purged'}<InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.quarantine.status_purged })} text={i18n.m.quarantine.status_purged_title} />{/if}</span>
             <time datetime={selected.replacedAt} title={formatAbsoluteDateTime(selected.replacedAt, i18n.locale)}>{formatDateTime(selected.replacedAt, new Date(), i18n.locale)}</time>
-            {#if selected.crossFilesystem}<span class="badge tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>{/if}
+            {#if selected.crossFilesystem}<span class="inline-flex items-center gap-4"><span class="badge tone-warn">{i18n.m.quarantine.copied}</span><InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.quarantine.copied })} text={i18n.m.quarantine.copied_title} /></span>{/if}
           </div>
         {/if}
       </div>
@@ -403,12 +404,12 @@
           {#if r.status === 'Replaced'}
             <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
           {:else if r.status === 'Purged'}
-            <span class="badge tone-muted" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
+            <span class="badge tone-muted">{i18n.m.quarantine.status_purged}</span>
           {:else}
             <span class="badge tone-muted">{i18n.m.quarantine.status_rolled_back}</span>
           {/if}
           {#if r.crossFilesystem}
-            <span class="badge tone-warn sm:ml-1" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
+            <span class="badge tone-warn sm:ml-1">{i18n.m.quarantine.copied}</span>
           {/if}
         </td>
         <!-- On a phone the whole of the artwork, name and path opens the review, as a row does in Queue. -->

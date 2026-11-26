@@ -9,6 +9,7 @@
   import FilesChoice from '../components/FilesChoice.svelte'
   import Icon from '../components/Icon.svelte'
   import OkMark from '../components/OkMark.svelte'
+  import InfoTip from '../components/InfoTip.svelte'
   import SettingRow, { type SettingOrigin, type SettingTag } from '../components/SettingRow.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Banner from '../components/Banner.svelte'
@@ -1647,7 +1648,8 @@
     {#snippet actions()}
       <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
       {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
-        <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
+        {#if isDirty}<span id="scan-unsaved" class="text-xs text-ink-3" data-scan-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
+        <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} aria-describedby={isDirty ? 'scan-unsaved' : undefined}>
           <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
           {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
         </button>
@@ -2572,7 +2574,10 @@
   {#if editingId !== null && editingId > 0}
     <section class="card flex flex-wrap items-center gap-4 p-5 sm:p-6">
       <div class="min-w-0 max-w-[72ch] flex-[1_1_16rem] text-sm"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
-      <button type="button" class="btn" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {#if isDirty}<span id="duplicates-unsaved" class="text-xs text-ink-3" data-duplicates-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
+        <button type="button" class="btn" disabled={isDirty || saving} aria-describedby={isDirty ? 'duplicates-unsaved' : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+      </div>
     </section>
   {/if}
 {/snippet}
@@ -2767,7 +2772,7 @@
             label={t(i18n.m.libraries.more_actions, { name: library.name })}
             disabled={busy}
             items={[
-              { label: i18n.m.libraries.enqueue, icon: 'plus', title: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
+              { label: i18n.m.libraries.enqueue, icon: 'plus', description: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
               { label: i18n.m.libraries.configure, icon: 'sliders', onSelect: () => router.go(`/libraries/${library.id}/configure`) },
               { label: i18n.m.libraries.delete, icon: 'trash', danger: true, onSelect: () => remove(library) },
             ]}
@@ -2783,14 +2788,20 @@
           {#if summary}
             <!-- A fact, not a link, so it stays in ink: work waiting reads heavier than none. -->
             {#if summary.eligible > 0}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-ink" data-library-ready title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <Icon name="plus" class="h-3.5 w-3.5 text-ink-3" />
-                {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+              <span class="ml-auto inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink" data-library-ready>
+                  <Icon name="plus" class="h-3.5 w-3.5 text-ink-3" />
+                  {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+                </span>
+                {#if summary.skipped > 0}<InfoTip label={t(i18n.m.common.about_information, { label: t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() }) })} text={t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() })} />{/if}
               </span>
             {:else}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-ink-2" data-library-optimal title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <OkMark class="h-3 w-3" />
-                {i18n.m.libraries.all_optimal}
+              <span class="ml-auto inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-1.5 text-xs text-ink-2" data-library-optimal>
+                  <OkMark class="h-3 w-3" />
+                  {i18n.m.libraries.all_optimal}
+                </span>
+                {#if summary.skipped > 0}<InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.all_optimal })} text={t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() })} />{/if}
               </span>
             {/if}
           {/if}

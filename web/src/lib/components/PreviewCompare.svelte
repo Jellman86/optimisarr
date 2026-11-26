@@ -155,7 +155,7 @@
       <button class="btn btn-sm btn-ghost btn-icon flex-shrink-0" onclick={() => (minimized = false)} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
         <Icon name="chevron" class="h-4 w-4 rotate-180" />
       </button>
-      <button class="btn btn-sm btn-ghost btn-icon flex-shrink-0 text-bad" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
+      <button class="btn btn-sm btn-ghost btn-icon flex-shrink-0 text-bad" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.discard_preview}>
         <Icon name="x" class="h-4 w-4" />
       </button>
     </div>
@@ -177,10 +177,10 @@
         <p class="line-clamp-2 break-all font-mono text-xs text-ink-3" title={relativePath}>{relativePath}</p>
       </div>
       <div class="flex flex-shrink-0 items-center gap-1">
-        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise}>
+        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise_preview}>
           <Icon name="minus" class="h-4 w-4" />
         </button>
-        <button class="btn btn-ghost px-2" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
+        <button class="btn btn-ghost px-2" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.discard_preview}>
           <Icon name="x" class="h-4 w-4" />
         </button>
       </div>

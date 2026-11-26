@@ -10,7 +10,8 @@
     onSelect: () => void
     danger?: boolean
     disabled?: boolean
-    title?: string
+    /** What choosing it does, shown under the label so it reads the same on touch as on hover. */
+    description?: string
   }
 
   let {
@@ -23,6 +24,7 @@
   let root: HTMLDivElement | undefined = $state()
   let trigger: HTMLButtonElement | undefined = $state()
   let itemButtons: HTMLButtonElement[] = $state([])
+  const menuId = $props.id()
 
   function close(restoreFocus = false) {
     open = false
@@ -92,7 +94,7 @@
       role="menu"
       tabindex="-1"
       aria-label={label}
-      class="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-line bg-panel p-1 shadow-lg"
+      class="absolute right-0 z-20 mt-1 min-w-44 max-w-72 rounded-lg border border-line bg-panel p-1 shadow-lg"
       onkeydown={onMenuKeydown}
     >
       {#each items as item, index (item.label)}
@@ -103,15 +105,23 @@
  ? 'text-bad hover:bg-bad-soft'
  : 'text-ink-2 hover:bg-raised'}"
           disabled={item.disabled}
-          title={item.title}
+          aria-labelledby={item.description ? `${menuId}-${index}-label` : undefined}
+          aria-describedby={item.description ? `${menuId}-${index}-description` : undefined}
           bind:this={itemButtons[index]}
           onclick={() => {
             close()
             item.onSelect()
           }}
         >
-          {#if item.icon}<Icon name={item.icon} class="h-4 w-4" />{/if}
-          {item.label}
+          {#if item.icon}<Icon name={item.icon} class="h-4 w-4 {item.description ? 'self-start mt-0.5' : ''}" />{/if}
+          {#if item.description}
+            <span class="flex min-w-0 flex-col gap-0.5">
+              <span id={`${menuId}-${index}-label`}>{item.label}</span>
+              <span id={`${menuId}-${index}-description`} class="text-xs text-ink-3">{item.description}</span>
+            </span>
+          {:else}
+            {item.label}
+          {/if}
         </button>
       {/each}
     </div>

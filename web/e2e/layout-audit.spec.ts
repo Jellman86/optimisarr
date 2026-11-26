@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { mockApp } from './helpers/audit-app'
+import { measure, type Layout } from './helpers/layout-measure'
 
 // A route inventory, rather than a handful of screenshots. These fixtures are fabricated;
 // the audit never needs a running Optimisarr server or a user's library.
@@ -41,78 +42,6 @@ const viewports = [
   { name: 'small phone light', width: 320, height: 720, theme: 'light' },
   { name: 'large text', width: 1440, height: 900, theme: 'light', fontScale: 2 },
 ] as const
-
-type Layout = {
-  documentOverflow: number
-  mainOverflow: number
-  escapedCards: string[]
-  clippedCards: string[]
-  narrowRows: string[]
-}
-
-async function measure(page: Page): Promise<Layout> {
-  return page.locator('main').evaluate(main => {
-    // Fractional grid rounding can leave 1–3px in scrollWidth without clipping a pixel.
-    const epsilon = 4
-    const mainBox = main.getBoundingClientRect()
-    const cards = [...new Set(main.querySelectorAll<HTMLElement>('.card, [data-config-section]'))]
-    const visible = (element: HTMLElement) => {
-      const box = element.getBoundingClientRect()
-      return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden'
-    }
-    const escapedCards = cards.filter(visible).filter(card => {
-      const box = card.getBoundingClientRect()
-      return box.left < mainBox.left - epsilon || box.right > mainBox.right + epsilon
-    }).map(card => card.id || card.className.split(' ').slice(0, 3).join('.'))
-    const clippedCards = cards.filter(visible).filter(card => {
-      const overflow = getComputedStyle(card).overflowX
-      return !['auto', 'scroll'].includes(overflow) && card.scrollWidth > card.clientWidth + epsilon
-    }).flatMap(card => {
-      const box = card.getBoundingClientRect()
-      const offenders = [...card.querySelectorAll<HTMLElement>('*')].filter(visible).filter(child => {
-        const childBox = child.getBoundingClientRect()
-        return childBox.right > box.right + epsilon || childBox.left < box.left - epsilon
-      }).slice(0, 3).map(child => child.id || `${child.tagName.toLowerCase()}.${child.className.toString().split(' ').slice(0, 2).join('.')}`)
-      // scrollWidth can include browser-specific fractional text/paint extents. A child
-      // actually crossing the card edge distinguishes clipping from those false positives.
-      return offenders.length
-        ? [`${card.id || card.className.split(' ').slice(0, 3).join('.')} (+${card.scrollWidth - card.clientWidth}px; ${offenders.join(', ')})`]
-        : []
-    })
-
-    // Text and numeric inputs are intentionally capped for readable line length. Toggle rows
-    // and section dividers are not: the switch should align with its enclosing card's right edge.
-    const narrowRows: string[] = []
-    for (const id of ['global-workload', 'global-replacement', 'global-notifications', 'global-media-servers', 'global-download-managers']) {
-      const section = main.querySelector<HTMLElement>(`#${id}`)
-      if (!section) continue
-      for (const input of section.querySelectorAll<HTMLInputElement>('label input[type="checkbox"]')) {
-        const label = input.closest<HTMLElement>('label')
-        if (!label || !visible(label)) continue
-        // A switch in a setting row sits at the end of that row's control column, which follows
-        // its words; a switch in a connection form sits at the end of the form's well.
-        const row = label.closest<HTMLElement>('[data-setting-row]')
-        const parent = row
-          ? row.querySelector<HTMLElement>('.setting-control')
-          : label.closest<HTMLElement>('.surface-sunken')
-        if (!parent) continue
-        const box = parent.getBoundingClientRect()
-        if (!row && box.width < 700) continue
-        const expectedRight = box.right - Number.parseFloat(getComputedStyle(parent).paddingRight || '0')
-        const gap = expectedRight - label.getBoundingClientRect().right
-        const name = (label.textContent?.trim() || input.getAttribute('aria-label') || '').replace(/\s+/g, ' ').slice(0, 60)
-        if (gap > 24) narrowRows.push(`${id}: ${name} (${Math.round(gap)}px unused)`)
-      }
-    }
-    return {
-      documentOverflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
-      mainOverflow: Math.max(0, main.scrollWidth - main.clientWidth),
-      escapedCards,
-      clippedCards,
-      narrowRows,
-    }
-  })
-}
 
 async function waitForAuditedContent(page: Page, name: string) {
   const selector: Record<string, string> = {
