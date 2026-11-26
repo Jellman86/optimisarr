@@ -459,6 +459,7 @@ export const ja: Messages = {
     settings_tools: "設定とツール",
     // Status bar
     state: "状態",
+    state_details: "状態の詳細",
     state_reason: "理由",
     state_encoding: "エンコード中",
     state_workers: "ワーカーでエンコード中",

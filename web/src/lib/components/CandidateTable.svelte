@@ -153,7 +153,7 @@
         />
       </th>
       <th scope="col">{i18n.m.shared.col_status}</th>
-      <th scope="col">{i18n.m.shared.col_file}</th>
+      <th scope="col" class="data-table-primary">{i18n.m.shared.col_file}</th>
       <th scope="col" class="hidden sm:table-cell">{i18n.m.shared.col_size}</th>
       <th scope="col" class="hidden md:table-cell">{i18n.m.shared.col_codec}</th>
       <!-- The rule profile is constant within one library, so the column is redundant when scoped. -->
@@ -178,10 +178,10 @@
           <span class="badge tone-muted">{i18n.m.shared.skipped}</span>
         {/if}
       </td>
-      <td>
+      <td class="data-table-primary">
         <div class="flex items-center gap-3">
           <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
-          <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
+          <span class="min-w-0 truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
             {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
               <span class="badge mr-1 tone-muted">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
             {/if}{candidate.relativePath}
@@ -197,7 +197,9 @@
       {#if !scoped}
         <td class="hidden text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
       {/if}
-      <td class="text-xs text-ink-3">{candidate.reason}</td>
+      <!-- On a phone the reason wraps inside its share of the second line, beside the status and
+           Preview, instead of pushing Preview onto a third. -->
+      <td class="text-xs text-ink-3 max-sm:flex-1 max-sm:basis-0">{candidate.reason}</td>
       <td class="text-right">
         {#if candidate.eligible}
           <button class="btn btn-sm" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>

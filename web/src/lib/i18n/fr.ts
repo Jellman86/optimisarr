@@ -460,6 +460,7 @@ language: {
     settings_tools: 'Paramètres & outils',
     // Status bar
     state: "État",
+    state_details: "Détails de l’état",
     state_reason: "Raison",
     state_encoding: "Encodage",
     state_workers: "Encodage sur les workers",

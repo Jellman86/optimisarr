@@ -556,6 +556,7 @@ export const en = {
     settings_tools: 'Settings & tools',
     // Status bar
     state: "State",
+    state_details: "Status details",
     state_reason: "Reason",
     state_encoding: "Encoding",
     state_workers: "Encoding on workers",

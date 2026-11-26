@@ -8,7 +8,9 @@
   // dashboard's recent results all read the same way. It owns the surface, the sticky header,
   // the row dividers, hover and selected fills, density, and what shows when there are no rows.
   // The page owns its columns: it renders the header cells and rows, and chooses widths and
-  // which columns give way on a phone with utilities on its own cells.
+  // which columns give way on a phone with utilities on its own cells. On a phone each row reads
+  // as two lines: the page marks the cell that names the row `data-table-primary` (on its `<td>`
+  // and its `<th>`), which takes the first line, and the cells it leaves visible follow on the second.
   //
   // A sortable column marks its header `<th aria-sort={state}>` and puts its label in a
   // `<button class="table-sort">`; the arrow follows `aria-sort`, so sorting needs nothing here.

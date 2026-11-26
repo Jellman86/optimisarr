@@ -459,6 +459,7 @@ dashboard: {
   settings_tools: 'Impostazioni e strumenti',
     // Status bar
     state: "Stato",
+    state_details: "Dettagli dello stato",
     state_reason: "Motivo",
     state_encoding: "Codifica",
     state_workers: "Codifica sui worker",

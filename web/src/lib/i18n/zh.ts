@@ -459,6 +459,7 @@ export const zh: Messages = {
     settings_tools: "设置和工具",
     // Status bar
     state: "状态",
+    state_details: "状态详情",
     state_reason: "原因",
     state_encoding: "正在编码",
     state_workers: "在工作节点上编码",

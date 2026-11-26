@@ -40,7 +40,7 @@
   <span
     id={tooltipId}
     role="tooltip"
-    class="tooltip pointer-events-none fixed inset-x-4 bottom-4 z-50 max-h-[calc(100dvh-2rem)] w-auto max-w-none overflow-y-auto overscroll-contain break-words opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 sm:inset-x-auto sm:right-4 sm:w-80"
+    class="tooltip pointer-events-none fixed inset-x-4 bottom-safe-4 z-50 max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-bottom,0px))] w-auto max-w-none overflow-y-auto overscroll-contain break-words opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 sm:inset-x-auto sm:right-4 sm:w-80"
   >
     {text}
   </span>
