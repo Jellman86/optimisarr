@@ -15,6 +15,7 @@
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
 
@@ -652,30 +653,27 @@
 
 <svelte:window onkeydown={switchSampleByKey} />
 
-<svelte:head>
-  <title>{i18n.m.calibration.eyebrow} · Optimisarr</title>
-</svelte:head>
-
 <div class="quality-lab min-h-full" bind:this={focusRoot}>
-  <header class="mb-5 flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
-    <div>
-      <button class="btn btn-ghost -ml-3 mb-2" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
+  <!-- One name for the feature: the button that navigates here says "Personal quality check",
+       so the page it lands on says the same. A separate eyebrow would only repeat it. -->
+  <PageHeader
+    title={i18n.m.calibration.eyebrow}
+    subtitle={`${library?.name ? `${library.name} · ` : ''}${i18n.m.calibration.lab_intro}`}
+    actionsAlign="end"
+    actions={session?.status === 'Comparing' ? sortedProgress : undefined}
+  >
+    {#snippet eyebrow()}
+      <button class="btn btn-ghost -ml-3" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
         <Icon name="arrow-left" class="h-4 w-4" />
         {i18n.m.calibration.back_to_library}
       </button>
-      <!-- One name for the feature: the button that navigates here says "Personal quality check",
-           so the page it lands on says the same. A separate eyebrow would only repeat it. -->
-      <h1 class="text-2xl font-bold tracking-tight text-ink sm:text-3xl">{i18n.m.calibration.eyebrow}</h1>
-      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-2">
-        {library?.name ? `${library.name} · ` : ''}{i18n.m.calibration.lab_intro}
-      </p>
+    {/snippet}
+  </PageHeader>
+  {#snippet sortedProgress()}
+    <div class="rounded-full border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink-2 shadow-sm" aria-live="polite">
+      {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
     </div>
-    {#if session?.status === 'Comparing'}
-      <div class="rounded-full border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink-2 shadow-sm" aria-live="polite">
-        {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
-      </div>
-    {/if}
-  </header>
+  {/snippet}
 
   {#if !loading && library}
     <!-- Narrow screens name only the current step; the others stay as numbered markers. -->

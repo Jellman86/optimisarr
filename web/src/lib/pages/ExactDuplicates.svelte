@@ -4,6 +4,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { formatSize } from '../format'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
   import ExactCopyGroup from '../components/ExactCopyGroup.svelte'
   import { router } from '../stores/ui.svelte'
@@ -207,13 +208,17 @@
 </script>
 
 <div class="duplicate-view">
-  <nav class="flex flex-wrap items-center gap-2 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-    {#if routeLibraryId !== null}
-      <a class="focus-ring hover:text-accent" href="#/libraries">{i18n.m.nav.libraries}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
-      <a class="focus-ring hover:text-accent" href={`#/libraries/${routeLibraryId}/configure`}>{libraries.find(l => l.id === routeLibraryId)?.name ?? i18n.m.inventory.library_label}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
-    {:else}<a class="focus-ring hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />{/if}<span aria-current="page">{i18n.m.duplicates.title}</span>
-  </nav>
-  <header><h1 class="page-title">{i18n.m.duplicates.title}</h1><p class="page-subtitle">{i18n.m.duplicates.subtitle}</p></header>
+  <!-- The view's grid gap already separates the header from the content; mb-1 tops it up to 24px. -->
+  <PageHeader class="mb-1" title={i18n.m.duplicates.title} subtitle={i18n.m.duplicates.subtitle}>
+    {#snippet eyebrow()}
+      <nav class="flex flex-wrap items-center gap-2 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+        {#if routeLibraryId !== null}
+          <a class="focus-ring hover:text-accent" href="#/libraries">{i18n.m.nav.libraries}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
+          <a class="focus-ring hover:text-accent" href={`#/libraries/${routeLibraryId}/configure`}>{libraries.find(l => l.id === routeLibraryId)?.name ?? i18n.m.inventory.library_label}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
+        {:else}<a class="focus-ring hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />{/if}<span aria-current="page">{i18n.m.duplicates.title}</span>
+      </nav>
+    {/snippet}
+  </PageHeader>
   <section class="card p-5 sm:p-6" aria-label={i18n.m.duplicates.title}>
     <div class="duplicate-controls">
       <div class="min-w-0 flex-1"><label class="label" for="duplicate-library">{i18n.m.inventory.library_label}</label><select class="input" id="duplicate-library" value={libraryId ?? ''} onchange={select} disabled={acting}><option value="">{i18n.m.duplicates.choose}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>

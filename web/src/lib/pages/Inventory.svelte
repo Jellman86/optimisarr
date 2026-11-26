@@ -4,6 +4,7 @@
   import { formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import DataTable from '../components/DataTable.svelte'
@@ -261,10 +262,11 @@
 </script>
 
 <div class="inventory-layout">
-  <header class="inventory-heading">
-    <div><h1 class="page-title">{i18n.m.nav.inventory}</h1><p class="page-subtitle">{i18n.m.inventory.subtitle}</p></div>
-    <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
-  </header>
+  <PageHeader title={i18n.m.nav.inventory} subtitle={i18n.m.inventory.subtitle} actionsAlign="end">
+    {#snippet actions()}
+      <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
+    {/snippet}
+  </PageHeader>
   {#if libraryError}<Banner kind="error" class="mb-4">{libraryError}</Banner>{/if}
   {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => loadInventory(selectedLibrary, show, page)}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
@@ -367,9 +369,8 @@
 </ConfirmDialog>
 
 <style>
-  .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
-  .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }
+  .inventory-library { min-width: 12rem; }
   .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
   .inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }
-  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-verdict { font-size: .6875rem; gap: .375rem; } }
+  @media (max-width: 639px) { .inventory-library { width: 100%; }.inventory-verdict { font-size: .6875rem; gap: .375rem; } }
 </style>

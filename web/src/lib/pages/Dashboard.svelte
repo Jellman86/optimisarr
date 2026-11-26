@@ -14,6 +14,7 @@
   import { dashboardStateFor } from '../dashboard-state'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import FleetPanel from '../components/FleetPanel.svelte'
   import InFlightPanel from '../components/InFlightPanel.svelte'
   import NeedsYouPanel from '../components/NeedsYouPanel.svelte'
@@ -127,10 +128,7 @@
   )
 </script>
 
-<header class="mb-6">
-  <h1 class="page-title">{i18n.m.nav.dashboard}</h1>
-  <p class="page-subtitle">{i18n.m.dashboard.subtitle}</p>
-</header>
+<PageHeader title={i18n.m.nav.dashboard} subtitle={i18n.m.dashboard.subtitle} />
 
 {#if error}
   <Banner kind="error" class="mb-6">{error}</Banner>

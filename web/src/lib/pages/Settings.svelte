@@ -29,6 +29,7 @@
   import { brand } from '../stores/brand.svelte'
   import { parseBrandStyle } from '../brand-style'
   import { router } from '../stores/ui.svelte'
+  import { SETTINGS_ROOM_PATHS, settingsRoomFromPath, type SettingsRoomKey } from '../route-meta'
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
   import SettingRow from '../components/SettingRow.svelte'
@@ -36,6 +37,7 @@
   import Icon from '../components/Icon.svelte'
   import OkMark from '../components/OkMark.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
   import WorkersPanel from '../components/WorkersPanel.svelte'
@@ -49,31 +51,11 @@
   // A tab strip could not do the reporting, and its numbered sections implied a sequence
   // that never existed: nobody configures their encoder before their notifications because
   // it happens to be numbered lower.
-  type RoomKey = 'encoding' | 'superResolution' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
+  type RoomKey = SettingsRoomKey
 
   const ROOM_ICONS: Record<RoomKey, string> = {
     encoding: 'gpu', superResolution: 'film', files: 'shield-check', servers: 'tv', downloads: 'download',
     notifications: 'bell', workers: 'server', system: 'sliders',
-  }
-
-  const ROOM_PATHS: Record<RoomKey, string> = {
-    encoding: 'encoding',
-    superResolution: 'super-resolution',
-    files: 'files',
-    servers: 'media-servers',
-    downloads: 'download-managers',
-    notifications: 'notifications',
-    workers: 'workers',
-    system: 'system',
-  }
-
-  function roomFromPath(path: string): RoomKey | null {
-    // The old /tools route, and anything linking to it, lands in the room that absorbed it.
-    if (path.startsWith('/tools')) return 'system'
-    const tail = path.split('#')[0].replace(/^\/settings\/?/, '')
-    if (!tail) return null
-    const match = (Object.entries(ROOM_PATHS) as [RoomKey, string][]).find(([, slug]) => slug === tail)
-    return match ? match[0] : null
   }
 
   // Setup shows one room's forms inside its own page, without the Settings frame around them.
@@ -85,27 +67,42 @@
     embeddedDraft?: boolean
   } = $props()
 
-  let openRoom = $derived(embeddedRoom ?? roomFromPath(router.path))
+  let openRoom = $derived(embeddedRoom ?? settingsRoomFromPath(router.path))
 
-  let focusAfterNavigation = $state<string | null>(null)
+  // Entering or leaving a room stays inside the same Settings mount so unsaved edits survive.
+  // Track transitions here (skipping initial mount, which App owns) so click, sidebar, and
+  // browser Back/Forward navigation all move focus and scroll cleanly.
+  let lastShownRoom: RoomKey | null | undefined = undefined
 
   $effect(() => {
     const room = openRoom
-    const target = focusAfterNavigation
-    if (!target || (target === 'room-heading' ? !room : room !== null)) return
+    if (embeddedRoom) return
+    if (lastShownRoom === undefined) {
+      lastShownRoom = room
+      return
+    }
+    if (room === lastShownRoom) return
+    const previousRoom = lastShownRoom
+    lastShownRoom = room
+    const hasAnchor = room === 'system' && router.path.includes('#diagnostic-capture')
+    if (room && !hasAnchor) document.querySelector('main')?.scrollTo({ top: 0 })
     void tick().then(() => {
-      document.getElementById(target)?.focus()
-      focusAfterNavigation = null
+      if (room !== openRoom) return
+      if (room) {
+        document.getElementById('room-heading')?.focus({ preventScroll: true })
+      } else {
+        const card = previousRoom ? document.getElementById(`settings-room-${previousRoom}`) : null
+        const target = card ?? document.querySelector<HTMLElement>('main [data-page-heading]')
+        target?.focus({ preventScroll: true })
+      }
     })
   })
 
   function openRoomAt(key: RoomKey) {
-    focusAfterNavigation = 'room-heading'
-    router.go(`/settings/${ROOM_PATHS[key]}`)
+    router.go(`/settings/${SETTINGS_ROOM_PATHS[key]}`)
   }
 
   function closeRoom() {
-    focusAfterNavigation = openRoom ? `settings-room-${openRoom}` : null
     router.go('/settings')
   }
 
@@ -763,7 +760,7 @@ let settings = $state<Settings>({
   function confirmLeavingUnsaved(): boolean {
     if (changedCount === 0) return true
     const destination = window.location.hash.replace(/^#/, '')
-    if (destination.startsWith('/settings')) return true
+    if (/^\/(?:settings|tools)(?:\/|$|[?#])/.test(destination)) return true
     return confirm(i18n.m.settings.confirm_discard)
   }
 
@@ -988,12 +985,7 @@ let settings = $state<Settings>({
 
 <div class="settings-layout">
 {#if !embeddedRoom}
-<header class="settings-page-header">
-  <div class="min-w-0">
-    <h1 class="page-title">{i18n.m.nav.settings}</h1>
-    <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
-  </div>
-</header>
+<PageHeader title={i18n.m.nav.settings} subtitle={i18n.m.settings.subtitle} />
 {/if}
 
 {#if error}
@@ -1880,7 +1872,6 @@ let settings = $state<Settings>({
 
 <style>
   .settings-layout { width: 100%; min-width: 0; }
-  .settings-page-header { margin-bottom: 2rem; }
   .settings-overview { display: grid; gap: 1.75rem; }
   .settings-group-title {
     margin-bottom: .625rem; margin-left: 1rem; color: var(--ink-3); font-size: .8125rem; font-weight: 600;
@@ -1928,7 +1919,6 @@ let settings = $state<Settings>({
     border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
   @media (max-width: 639px) {
-    .settings-page-header { margin-bottom: 1.5rem; }
     .settings-room-grid, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
     .settings-room { min-height: 10rem; padding: 1.125rem; }
     .settings-room-heading { margin-bottom: 1.25rem; }

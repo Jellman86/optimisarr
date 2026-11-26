@@ -4,6 +4,7 @@
   import { counts } from '../stores/counts.svelte'
   import { api } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { showsActiveWork } from '../route-meta'
   import BrandMark from './BrandMark.svelte'
   import Icon from './Icon.svelte'
   import LanguageSelect from './LanguageSelect.svelte'
@@ -70,6 +71,10 @@
     return () => mq.removeEventListener('change', update)
   })
   let railCollapsed = $derived(collapsed && !isMobile)
+
+  // Dashboard and Queue already show the work in progress on the page itself; a second copy
+  // in the rail would only repeat it beside the original.
+  let pageShowsActiveWork = $derived(showsActiveWork(router.path))
 
   function isActive(path: string) {
     return path === '/' ? router.path === '/' : router.path.startsWith(path)
@@ -162,7 +167,7 @@
 
   <!-- Whatever is left between the navigation and the foot belongs to the work in progress. -->
   <div class="min-h-0 flex-1"></div>
-  <NowEncoding collapsed={railCollapsed} />
+  {#if !pageShowsActiveWork}<NowEncoding collapsed={railCollapsed} />{/if}
 
   </div>
   </div>

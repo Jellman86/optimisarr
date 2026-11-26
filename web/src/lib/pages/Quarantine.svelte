@@ -5,6 +5,7 @@
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import DataTable from '../components/DataTable.svelte'
   import Segmented from '../components/Segmented.svelte'
   import Icon from '../components/Icon.svelte'
@@ -70,7 +71,9 @@
       } else if (restore) {
         if (tableScrollEl) tableScrollEl.scrollTop = listScrollTop
         document.querySelector('main')?.scrollTo({ top: mainScrollTop })
-        document.getElementById(`replacement-${returnId}`)?.focus({ preventScroll: true })
+        const target = (returnId !== null ? document.getElementById(`replacement-${returnId}`) : null)
+          ?? document.querySelector<HTMLElement>('main [data-page-heading]')
+        target?.focus({ preventScroll: true })
       }
     })
   })
@@ -237,7 +240,7 @@
     <header class="card relative flex items-center gap-5 overflow-hidden p-5 sm:p-6">
       {#if selected}<PosterGlow mediaFileId={selected.mediaFileId} /><div class="relative"><Thumbnail mediaFileId={selected.mediaFileId} size="lg" /></div>{/if}
       <div class="relative min-w-0 flex-1">
-        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={heading}>{selected ? fileName(selected.finalPath) : i18n.m.quarantine.review_title}</h1>
+        <h1 class="page-title break-words outline-none" tabindex="-1" data-page-heading bind:this={heading}>{selected ? fileName(selected.finalPath) : i18n.m.quarantine.review_title}</h1>
         {#if selected}
           <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-3">
             <span class="badge {selected.status === 'Replaced' ? 'tone-ok' : 'tone-neutral'}">{selected.status === 'Replaced' ? i18n.m.quarantine.status_replaced : selected.status === 'Purged' ? i18n.m.quarantine.status_purged : i18n.m.quarantine.status_rolled_back}</span>
@@ -302,13 +305,14 @@
     <a class="btn" href="#/quarantine"><Icon name="arrow-left" />{i18n.m.nav.quarantine}</a>
   </div>
 {:else}
-<header class="mb-6">
-  <h1 class="page-title">{i18n.m.nav.quarantine}</h1>
-  <p class="text-sm text-ink-3">
-    {i18n.m.quarantine.subtitle_1}<strong>{i18n.m.quarantine.approve_word}</strong>{i18n.m.quarantine.subtitle_2}<strong>{i18n.m.quarantine.reject_word}</strong>{i18n.m.quarantine.subtitle_3}
-    {#if activeCount > 0}<span class="text-ink-3">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
-  </p>
-</header>
+<PageHeader title={i18n.m.nav.quarantine}>
+  {#snippet description()}
+    <p class="page-subtitle">
+      {i18n.m.quarantine.subtitle_1}<strong>{i18n.m.quarantine.approve_word}</strong>{i18n.m.quarantine.subtitle_2}<strong>{i18n.m.quarantine.reject_word}</strong>{i18n.m.quarantine.subtitle_3}
+      {#if activeCount > 0}<span class="text-ink-3">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
+    </p>
+  {/snippet}
+</PageHeader>
 
 {#if loadError}<Banner kind="error" class="mb-4">{loadError}<button class="btn ml-3" onclick={load}>{i18n.m.setup.retry}</button></Banner>{/if}
 

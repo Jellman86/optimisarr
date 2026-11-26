@@ -10,6 +10,7 @@
   import { codecName, summariseLibrary, vmafLevelName } from '../library-summary'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
@@ -136,15 +137,15 @@
   const kept = (tracks: MediaPlanTrack[] | null) => (tracks ?? []).filter((track) => track.kept)
 </script>
 
-<header class="mb-6">
-  <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-    <a class="focus-ring hit-target-square rounded px-1 hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a>
-    <span aria-hidden="true">/</span>
-    <span aria-current="page" class="break-words text-ink">{title || i18n.m.onePlan.title}</span>
-  </nav>
-  <h1 class="page-title">{i18n.m.onePlan.title}</h1>
-  <p class="page-subtitle">{t(i18n.m.onePlan.subtitle, { library: libraryName })}</p>
-</header>
+<PageHeader title={i18n.m.onePlan.title} subtitle={t(i18n.m.onePlan.subtitle, { library: libraryName })}>
+  {#snippet eyebrow()}
+    <nav class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+      <a class="focus-ring hit-target-square rounded px-1 hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page" class="break-words text-ink">{title || i18n.m.onePlan.title}</span>
+    </nav>
+  {/snippet}
+</PageHeader>
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => load(mediaFileId)}>{i18n.m.setup.retry}</button></Banner>

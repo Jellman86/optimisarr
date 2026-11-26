@@ -10,6 +10,7 @@
   import SettingRow, { type SettingOrigin, type SettingTag } from '../components/SettingRow.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
   import Chip from '../components/Chip.svelte'
@@ -1591,45 +1592,42 @@
 </script>
 
 {#if editingId === null}
-  <header class="mb-6 flex items-start justify-between gap-4">
-    <div>
-      <h1 class="page-title">{i18n.m.nav.libraries}</h1>
-      <p class="page-subtitle">{i18n.m.libraries.subtitle}</p>
-    </div>
-    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
-      <Icon name="plus" class="h-4 w-4" />
-      {i18n.m.libraries.add_library}
-    </button>
-  </header>
+  <PageHeader title={i18n.m.nav.libraries} subtitle={i18n.m.libraries.subtitle}>
+    {#snippet actions()}
+      <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
+        <Icon name="plus" class="h-4 w-4" />
+        {i18n.m.libraries.add_library}
+      </button>
+    {/snippet}
+  </PageHeader>
 {:else}
-  <header class="mb-6">
-    <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-      <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
-      <span aria-hidden="true">/</span>
-      {#if page !== 'overview' || activeTab !== 'rules'}
-        <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+  <PageHeader title={editorTitle} bind:headingEl={workflowHeading} headingProps={{ 'data-workflow-heading': true }}>
+    {#snippet eyebrow()}
+      <nav class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+        <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
         <span aria-hidden="true">/</span>
-      {/if}
-      <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
-    </nav>
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
-        <p class="page-subtitle break-words" data-library-facts>
-          {form.path}{#if savedLibrary}{' · '}{plural(savedLibrary.fileCount, i18n.m.libraryEditor.files_count_one, i18n.m.libraryEditor.files_count_other, savedLibrary.fileCount.toLocaleString())}{#if summaries[savedLibrary.id]}{' · '}{t(i18n.m.libraryEditor.can_optimise, { count: summaries[savedLibrary.id].eligible.toLocaleString() })}{/if}{/if}
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
-        {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
-          <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
-            <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
-            {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
-          </button>
+        {#if page !== 'overview' || activeTab !== 'rules'}
+          <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+          <span aria-hidden="true">/</span>
         {/if}
-      </div>
-    </div>
-  </header>
+        <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
+      </nav>
+    {/snippet}
+    {#snippet description()}
+      <p class="page-subtitle break-words" data-library-facts>
+        {form.path}{#if savedLibrary}{' · '}{plural(savedLibrary.fileCount, i18n.m.libraryEditor.files_count_one, i18n.m.libraryEditor.files_count_other, savedLibrary.fileCount.toLocaleString())}{#if summaries[savedLibrary.id]}{' · '}{t(i18n.m.libraryEditor.can_optimise, { count: summaries[savedLibrary.id].eligible.toLocaleString() })}{/if}{/if}
+      </p>
+    {/snippet}
+    {#snippet actions()}
+      <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
+      {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
+        <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
+          <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
+          {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
+        </button>
+      {/if}
+    {/snippet}
+  </PageHeader>
 {/if}
 
 {#if error}
