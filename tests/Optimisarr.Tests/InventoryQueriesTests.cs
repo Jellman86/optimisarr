@@ -39,16 +39,16 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var all = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, default);
+        var all = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, default);
         Assert.Equal(3, all.Total);
         Assert.Equal(new InventoryCounts(All: 3, Eligible: 1, Skipped: 1, Unprobed: 1), all.Counts);
 
-        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, default);
+        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.Default, default);
         var only = Assert.Single(eligible.Items);
         Assert.Equal("a-eligible.mkv", only.File.RelativePath);
         Assert.True(only.Eligible);
 
-        var unprobed = await inventory.QueryAsync(null, InventoryFilter.Unprobed, null, 1, 0, default);
+        var unprobed = await inventory.QueryAsync(null, InventoryFilter.Unprobed, null, 1, 0, InventorySort.Default, default);
         Assert.Null(Assert.Single(unprobed.Items).Eligible);
     }
 
@@ -70,7 +70,7 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var page = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, page: 1, pageSize: 5, default);
+        var page = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, page: 1, pageSize: 5, InventorySort.Default, default);
 
         Assert.Equal(7, page.Total);                       // filtered total, not the page size
         Assert.Equal(5, page.Items.Count);
@@ -78,12 +78,175 @@ public sealed class InventoryQueriesTests : IDisposable
         Assert.Equal(7, page.Counts.Eligible);
     }
 
-    private static MediaFile Probed(int libraryId, string relativePath, string videoCodec) => new()
+    [Theory]
+    [InlineData(InventorySort.NameAscending, new[] { "a-eligible.mkv", "B-skipped.mkv", "c-unprobed.mkv", "d-eligible.mkv" })]
+    [InlineData(InventorySort.NameDescending, new[] { "d-eligible.mkv", "c-unprobed.mkv", "B-skipped.mkv", "a-eligible.mkv" })]
+    [InlineData(InventorySort.SizeAscending, new[] { "B-skipped.mkv", "c-unprobed.mkv", "a-eligible.mkv", "d-eligible.mkv" })]
+    [InlineData(InventorySort.SizeDescending, new[] { "d-eligible.mkv", "a-eligible.mkv", "c-unprobed.mkv", "B-skipped.mkv" })]
+    [InlineData(InventorySort.VerdictAscending, new[] { "a-eligible.mkv", "d-eligible.mkv", "c-unprobed.mkv", "B-skipped.mkv" })]
+    [InlineData(InventorySort.VerdictDescending, new[] { "B-skipped.mkv", "c-unprobed.mkv", "a-eligible.mkv", "d-eligible.mkv" })]
+    public async Task QueryAsync_orders_rows_by_the_requested_sort_with_path_tie_breaks(InventorySort sort, string[] expected)
+    {
+        await SeedSortableLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, sort, default);
+
+        Assert.Equal(expected, page.Items.Select(row => row.File.RelativePath));
+    }
+
+    [Fact]
+    public async Task QueryAsync_without_a_sort_keeps_the_path_order()
+    {
+        await SeedSortableLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, default);
+
+        // SQLite's default collation is binary, so the unsorted path order puts "B" before "a".
+        Assert.Equal(["B-skipped.mkv", "a-eligible.mkv", "c-unprobed.mkv", "d-eligible.mkv"],
+            page.Items.Select(row => row.File.RelativePath));
+    }
+
+    [Fact]
+    public async Task QueryAsync_sorts_before_paging_so_pages_do_not_overlap()
+    {
+        await SeedSortableLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var first = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 2, InventorySort.SizeDescending, default);
+        var second = await inventory.QueryAsync(null, InventoryFilter.All, null, 2, 2, InventorySort.SizeDescending, default);
+
+        Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], first.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(["c-unprobed.mkv", "B-skipped.mkv"], second.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(4, first.Total);
+    }
+
+    [Fact]
+    public async Task QueryAsync_applies_the_sort_after_the_filter_and_search()
+    {
+        await SeedSortableLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.SizeDescending, default);
+        var searched = await inventory.QueryAsync(null, InventoryFilter.All, "eligible", 1, 0, InventorySort.NameDescending, default);
+
+        Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], eligible.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], searched.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(new InventoryCounts(All: 2, Eligible: 2, Skipped: 0, Unprobed: 0), searched.Counts);
+    }
+
+    [Fact]
+    public async Task QueryAsync_name_sort_orders_by_filename_across_subdirectories_and_separators()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Mixed", Path = "/data/mixed", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(Probed(library.Id, "Films/Orbit/Orbit.mkv", "h264"));
+            db.MediaFiles.Add(Probed(library.Id, "Music\\Album\\01 - Track.flac", "h264"));
+            db.MediaFiles.Add(Probed(library.Id, "Zed/Arrival.mkv", "h264"));
+            db.MediaFiles.Add(Probed(library.Id, "Alpha/Arrival.mkv", "h264"));
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameAscending, default);
+        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameDescending, default);
+
+        // Filename leads; identical filenames tie-break deterministically by full relative path.
+        Assert.Equal(["Music\\Album\\01 - Track.flac", "Alpha/Arrival.mkv", "Zed/Arrival.mkv", "Films/Orbit/Orbit.mkv"],
+            ascending.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(["Films/Orbit/Orbit.mkv", "Alpha/Arrival.mkv", "Zed/Arrival.mkv", "Music\\Album\\01 - Track.flac"],
+            descending.Items.Select(row => row.File.RelativePath));
+    }
+
+    [Fact]
+    public async Task QueryAsync_breaks_equal_sizes_by_path_then_id()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(Probed(library.Id, "z.mkv", "h264"));
+            db.MediaFiles.Add(Probed(library.Id, "m.mkv", "h264"));
+            db.MediaFiles.Add(Probed(library.Id, "A.mkv", "h264"));
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeAscending, default);
+        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeDescending, default);
+
+        // Equal sizes keep a stable, case-insensitive path order in both directions so paging stays deterministic.
+        Assert.Equal(["A.mkv", "m.mkv", "z.mkv"], ascending.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(["A.mkv", "m.mkv", "z.mkv"], descending.Items.Select(row => row.File.RelativePath));
+    }
+
+    [Theory]
+    [InlineData("name_asc", InventorySort.NameAscending)]
+    [InlineData("NAME_DESC", InventorySort.NameDescending)]
+    [InlineData("size_asc", InventorySort.SizeAscending)]
+    [InlineData("Size_Desc", InventorySort.SizeDescending)]
+    [InlineData("verdict_asc", InventorySort.VerdictAscending)]
+    [InlineData("verdict_desc", InventorySort.VerdictDescending)]
+    public void TryParseSort_accepts_each_documented_value_case_insensitively(string value, InventorySort expected)
+    {
+        Assert.True(InventoryQueries.TryParseSort(value, out var sort));
+        Assert.Equal(expected, sort);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void TryParseSort_treats_a_missing_value_as_the_default_order(string? value)
+    {
+        Assert.True(InventoryQueries.TryParseSort(value, out var sort));
+        Assert.Equal(InventorySort.Default, sort);
+    }
+
+    [Theory]
+    [InlineData("size")]
+    [InlineData("SizeDescending")]
+    [InlineData("1")]
+    [InlineData("default")]
+    public void TryParseSort_rejects_unknown_values(string value)
+    {
+        Assert.False(InventoryQueries.TryParseSort(value, out _));
+    }
+
+    // Four files covering every verdict, distinct sizes, and a capitalised name so the
+    // case-insensitive path tie-break is observable against SQLite's binary default order.
+    private async Task SeedSortableLibraryAsync()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(Probed(library.Id, "a-eligible.mkv", "h264", sizeBytes: 3_000_000_000));
+        db.MediaFiles.Add(Probed(library.Id, "B-skipped.mkv", "hevc", sizeBytes: 1_000_000_000));
+        db.MediaFiles.Add(new MediaFile { LibraryId = library.Id, Path = "/data/films/c-unprobed.mkv", RelativePath = "c-unprobed.mkv", SizeBytes = 2_000_000_000, Status = MediaFileStatus.Discovered });
+        db.MediaFiles.Add(Probed(library.Id, "d-eligible.mkv", "h264", sizeBytes: 9_000_000_000));
+        await db.SaveChangesAsync();
+    }
+
+    private static MediaFile Probed(int libraryId, string relativePath, string videoCodec, long sizeBytes = 5_000_000_000) => new()
     {
         LibraryId = libraryId,
         Path = $"/data/films/{relativePath}",
         RelativePath = relativePath,
-        SizeBytes = 5_000_000_000,
+        SizeBytes = sizeBytes,
         Status = MediaFileStatus.Probed,
         Container = "matroska,webm",
         VideoCodec = videoCodec,

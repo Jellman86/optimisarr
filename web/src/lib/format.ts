@@ -29,6 +29,34 @@ export function formatRelative(value: string | Date, now: Date = new Date(), loc
   return format.format(Math.round(seconds / 86400), 'day')
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// A date and time to the minute in the reader's language ("26 Nov 2026, 14:05"). Seconds are
+// noise to a person scanning a list, so they are never shown. An unreadable date is a dash.
+export function formatAbsoluteDateTime(value: string | Date, locale?: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+// The one way the app writes a moment: relative while it is within a day of now ("5 minutes
+// ago", "in 2 hours", "23 hours ago"), because that is how a person thinks about something that
+// just happened, and the absolute date to the minute after that, when "3 days ago" would make
+// them count. Keeping hour precision between 22 and 24 hours prevents a same-day event from
+// falsely reading as "yesterday" or "tomorrow".
+export function formatDateTime(value: string | Date, now: Date = new Date(), locale?: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  const diffMs = date.getTime() - now.getTime()
+  if (Math.abs(diffMs) >= DAY_MS) return formatAbsoluteDateTime(date, locale)
+  const seconds = diffMs / 1000
+  if (Math.abs(seconds) >= 22 * 3600) {
+    const hours = Math.min(23, Math.round(Math.abs(seconds) / 3600)) * Math.sign(seconds)
+    return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(hours, 'hour')
+  }
+  return formatRelative(date, now, locale)
+}
+
 export type SizeChangeStatus = 'saved' | 'unchanged' | 'grew'
 
 // The direction of a size change is a fact about the bytes, and the bytes are its only source:

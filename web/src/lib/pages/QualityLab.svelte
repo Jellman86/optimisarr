@@ -11,11 +11,14 @@
   import { formatDuration } from '../format'
   import { actualPixelsZoom, nextUnratedName, sampleForKey, settingChange, type CalibrationSetting } from '../calibration-presentation'
   import { ruleProfileLabel } from '../rule-profile-label'
+  import { capturesKeys, hasOpenModalDialog } from '../keyboard'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
 
   type Rating = CalibrationClassification | null
@@ -581,19 +584,16 @@
   }
 
   // Switching by key keeps the eyes on the picture, including in full screen where the sample
-  // deck is out of view. Keys typed into a form field stay with that field.
+  // deck is out of view. Keys typed into a form field or behind an open modal stay out of reach.
+  let ownsSampleKeys = $derived(session !== null && session.status !== 'Preparing' && session.status !== 'Failed')
+
   function switchSampleByKey(event: KeyboardEvent) {
-    if (!session || session.status === 'Preparing' || session.status === 'Failed') return
-    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || typingInto(event.target)) return
+    if (!ownsSampleKeys) return
+    if (event.isComposing || event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || hasOpenModalDialog() || capturesKeys(event.target)) return
     const name = sampleForKey(event.key, variants.map((variant) => variant.name))
     if (!name) return
     event.preventDefault()
     void chooseVariant(name)
-  }
-
-  function typingInto(target: EventTarget | null): boolean {
-    return target instanceof HTMLElement && (target.isContentEditable
-      || target.matches('textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="button"])'))
   }
 
   function ratingLabel(rating: CalibrationClassification): string {
@@ -652,36 +652,33 @@
 
 <svelte:window onkeydown={switchSampleByKey} />
 
-<svelte:head>
-  <title>{i18n.m.calibration.eyebrow} · Optimisarr</title>
-</svelte:head>
-
-<div class="quality-lab min-h-full" bind:this={focusRoot}>
-  <header class="mb-5 flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
-    <div>
-      <button class="btn btn-ghost -ml-3 mb-2 min-h-11" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
+<div class="quality-lab min-h-full" bind:this={focusRoot} data-keyboard-owner={ownsSampleKeys ? '' : undefined}>
+  <!-- One name for the feature: the button that navigates here says "Personal quality check",
+       so the page it lands on says the same. A separate eyebrow would only repeat it. -->
+  <PageHeader
+    title={i18n.m.calibration.eyebrow}
+    subtitle={`${library?.name ? `${library.name} · ` : ''}${i18n.m.calibration.lab_intro}`}
+    actionsAlign="end"
+    actions={session?.status === 'Comparing' ? sortedProgress : undefined}
+  >
+    {#snippet eyebrow()}
+      <button class="btn btn-ghost -ml-3" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
         <Icon name="arrow-left" class="h-4 w-4" />
         {i18n.m.calibration.back_to_library}
       </button>
-      <!-- One name for the feature: the button that navigates here says "Personal quality check",
-           so the page it lands on says the same. A separate eyebrow would only repeat it. -->
-      <h1 class="text-2xl font-bold tracking-tight text-ink sm:text-3xl">{i18n.m.calibration.eyebrow}</h1>
-      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-2">
-        {library?.name ? `${library.name} · ` : ''}{i18n.m.calibration.lab_intro}
-      </p>
+    {/snippet}
+  </PageHeader>
+  {#snippet sortedProgress()}
+    <div class="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-ink-2 shadow-[var(--lift-1)]" aria-live="polite">
+      {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
     </div>
-    {#if session?.status === 'Comparing'}
-      <div class="rounded-full border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink-2 shadow-sm" aria-live="polite">
-        {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
-      </div>
-    {/if}
-  </header>
+  {/snippet}
 
   {#if !loading && library}
     <!-- Narrow screens name only the current step; the others stay as numbered markers. -->
     <ol class="mb-5 flex flex-wrap gap-2" aria-label={i18n.m.calibration.steps}>
       {#each steps as step, index}
-        <li class="flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm sm:flex-1 {index === currentStep ? 'flex-1 border-accent-line bg-accent-soft font-semibold text-ink' : 'border-line text-ink-3'}" aria-current={index === currentStep ? 'step' : undefined}>
+        <li class="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm sm:flex-1 {index === currentStep ? 'flex-1 bg-accent-soft font-semibold text-ink' : 'bg-panel text-ink-3 shadow-[var(--lift-1)]'}" aria-current={index === currentStep ? 'step' : undefined}>
           <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold {index < currentStep ? 'bg-ok-soft text-ok' : index === currentStep ? 'bg-accent-fill text-accent-on' : 'bg-sunken text-ink-3'}" aria-hidden="true">
             {#if index < currentStep}<Icon name="check" class="h-3.5 w-3.5" />{:else}{index + 1}{/if}
           </span>
@@ -694,7 +691,7 @@
   {#if error}<div role="alert"><Banner kind="error" class="mb-5">{error}</Banner></div>{/if}
   {#if playbackError}
     <div role="alert"><Banner kind="error" class="mb-5">{i18n.m.calibration.playback_error}</Banner></div>
-    {#if !revealed}<button class="btn mb-5 min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
+    {#if !revealed}<button class="btn mb-5" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
   {/if}
 
   {#if loading}
@@ -707,7 +704,7 @@
         </h2>
         <p class="mt-2 text-sm leading-relaxed text-ink-2">{i18n.m.calibration.intro}</p>
         {#if sources.length === 0}
-          <div class="mt-6 rounded-xl border border-dashed border-line p-8 text-center">
+          <div class="surface-sunken mt-6 p-8 text-center">
             <p class="font-semibold text-ink">{i18n.m.calibration.no_sources}</p>
             <p class="mt-2 text-sm text-ink-3">{i18n.m.calibration.no_sources_hint}</p>
           </div>
@@ -718,8 +715,8 @@
           </select>
           {#if selected?.mediaKind === 'Video'}
             <p class="mt-4 text-sm text-ink-2">{i18n.m.calibration.selected_settings_hint}</p>
-            <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm text-ink">
-              <input class="mt-1" type="checkbox" bind:checked={compareVideoPresets} />
+            <label class="surface-sunken mt-3 flex hit-target cursor-pointer items-start gap-3 p-3 text-sm text-ink">
+              <input class="checkbox mt-0.5 shrink-0" type="checkbox" bind:checked={compareVideoPresets} />
               <span><strong class="block">{i18n.m.calibration.compare_presets}</strong><span class="mt-0.5 block text-xs text-ink-2">{i18n.m.calibration.compare_presets_hint}</span></span>
             </label>
           {/if}
@@ -728,23 +725,23 @@
               <p class="font-semibold">{i18n.m.calibration.hdr_title}</p>
               {#if hdrDisplaySupported}
                 <p class="mt-1 leading-relaxed">{i18n.m.calibration.hdr_body}</p>
-                <label class="mt-3 flex min-h-11 items-start gap-3"><input class="mt-1" type="checkbox" bind:checked={hdrViewingConfirmed} /><span>{i18n.m.calibration.hdr_confirm}</span></label>
+                <label class="mt-3 flex hit-target items-start gap-3"><input class="checkbox mt-0.5 shrink-0" type="checkbox" bind:checked={hdrViewingConfirmed} /><span>{i18n.m.calibration.hdr_confirm}</span></label>
               {:else}<p class="mt-1 leading-relaxed">{i18n.m.calibration.hdr_unsupported}</p>{/if}
             </div>
           {/if}
-          <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-sm text-ink">
-            <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
+          <label class="surface-sunken mt-5 flex hit-target cursor-pointer items-start gap-3 p-3 text-sm text-ink">
+            <input class="checkbox mt-0.5 shrink-0" type="checkbox" bind:checked={ignoreActiveStreams} />
             <span><strong class="block">{i18n.m.calibration.ignore_streams_label}</strong><span class="mt-0.5 block text-xs text-ink-2">{i18n.m.calibration.ignore_streams_hint}</span></span>
           </label>
           <!-- A debugging aid that breaks blindness; kept out of the way unless already chosen. -->
           <details class="mt-3 text-sm" open={diagnosticsEnabled}>
             <summary class="focus-ring cursor-pointer py-2 text-ink-3">{i18n.m.calibration.troubleshooting}</summary>
-            <label class="mt-2 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl p-3 {diagnosticsEnabled ? 'callout tone-warn' : 'border border-line'}">
-              <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
+            <label class="mt-2 flex hit-target cursor-pointer items-start gap-3 p-3 {diagnosticsEnabled ? 'callout tone-warn' : 'surface-sunken'}">
+              <input class="checkbox mt-0.5 shrink-0" type="checkbox" bind:checked={diagnosticsEnabled} />
               <span><strong class="block">{i18n.m.calibration.diag_verify_label}</strong><span class="mt-0.5 block text-xs opacity-80">{i18n.m.calibration.diag_verify_hint}</span></span>
             </label>
           </details>
-          <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
+          <button class="btn btn-lg btn-primary mt-6" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
           </button>
         {/if}
@@ -756,12 +753,12 @@
     </div>
   {:else if session.status === 'Preparing'}
     <section class="card mx-auto max-w-2xl p-6 sm:p-8">
-      <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink" tabindex="-1" data-quality-focus="preparing">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
-      <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-label={i18n.m.calibration.preparing} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(session.preparationProgress * 100)}><div class="h-full rounded-full bg-accent-fill transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
+      <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink" tabindex="-1" data-quality-focus="preparing">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="text-sm font-semibold tabular-nums text-ink">{Math.round(session.preparationProgress * 100)}%</span></div>
+      <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-label={i18n.m.calibration.preparing} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(session.preparationProgress * 100)}><div class="h-full rounded-full bg-accent-fill transition-[width] duration-(--motion-slow)" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : compareVideoPresets ? i18n.m.calibration.preparing_hint : i18n.m.calibration.preparing_quality_hint}</p>
       <!-- These are this server's readings, sampled only while it encodes; a worker's preparation has none. -->
       {#if activity.metrics}
-      <div class="mt-6 border-t border-line pt-5">
+      <div class="hairline-t mt-6 pt-5">
         <div class="mb-3 flex items-center gap-2">
           <Icon name="gpu" class="h-4 w-4 text-ink-4" />
           <div class="label">{i18n.m.dashboard.live_usage}</div>
@@ -779,12 +776,12 @@
         </div>
       </div>
       {/if}
-      {#if error}<button class="btn mt-5 min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
+      {#if error}<button class="btn mt-5" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
     </section>
   {:else if session.status === 'Failed'}
     <section class="card mx-auto max-w-2xl space-y-4 p-6 sm:p-8">
       <div role="alert" tabindex="-1" data-quality-focus="failed"><Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner></div>
-      <button class="btn min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>
+      <button class="btn" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>
     </section>
   {:else}
     <div class="quality-columns">
@@ -799,7 +796,7 @@
               {#if switching}<span class="text-xs font-medium text-accent" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
               {#if activeSample && activeSample.sampleCount > 1}<span class="hidden text-xs text-ink-4 min-[360px]:inline">{sceneLabel(activeScene + 1, activeSample.sampleCount)}</span>{/if}
               {#if session.mediaKind === 'Video'}
-                <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-accent" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
+                <button class="hit-target-square rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-ring" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
                   <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d={fullscreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5'} /></svg>
                 </button>
               {/if}
@@ -846,11 +843,11 @@
               {/if}
             {/key}
           </div>
-          <div class="space-y-3 border-t border-slate-800 px-4 py-3">
+          <div class="space-y-3 border-t border-white/10 px-4 py-3">
             {#if session.mediaKind === 'Image'}
               {@render zoomControls(i18n.m.calibration.image_zoom_controls, i18n.m.calibration.fit_view_label, i18n.m.calibration.pan_hint)}
             {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
-              <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent-fill text-accent-on hover:brightness-110" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-accent" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-ink-4">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
+              <div class="flex items-center gap-3"><button class="hit-target-square rounded-full bg-accent-fill text-accent-on hover:brightness-110" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="hit-target min-w-0 flex-1 accent-accent" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-ink-4">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
               {#if session.mediaKind === 'Video'}
                 {@render zoomControls(i18n.m.calibration.video_zoom_controls, i18n.m.calibration.fit_picture_label, i18n.m.calibration.video_pan_hint)}
               {/if}
@@ -862,7 +859,7 @@
               <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                 <div class="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label={i18n.m.calibration.switch_sample}>
                   {#each variants as variant}
-                    <button class="min-h-11 min-w-11 rounded-full px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-accent {activeName === variant.name ? 'bg-accent-fill text-accent-on' : 'bg-white/10 text-white hover:bg-white/20'}" aria-pressed={activeName === variant.name} aria-label={variant.isOriginal ? i18n.m.calibration.show_original : t(i18n.m.calibration.show_sample, { name: variant.name })} aria-keyshortcuts={variant.isOriginal ? 'O' : variant.name} onclick={() => chooseVariant(variant.name)}>{variant.isOriginal ? 'O' : variant.name}</button>
+                    <button class="hit-target-square rounded-full px-3 text-sm font-bold focus-ring {activeName === variant.name ? 'bg-accent-fill text-accent-on' : 'bg-white/10 text-white hover:bg-white/20'}" aria-pressed={activeName === variant.name} aria-label={variant.isOriginal ? i18n.m.calibration.show_original : t(i18n.m.calibration.show_sample, { name: variant.name })} aria-keyshortcuts={variant.isOriginal ? 'O' : variant.name} onclick={() => chooseVariant(variant.name)}>{variant.isOriginal ? 'O' : variant.name}</button>
                   {/each}
                 </div>
                 <span class="text-xs text-white/60">{i18n.m.calibration.shortcut_hint}</span>
@@ -875,13 +872,13 @@
                 <strong class="text-xs font-semibold text-warn">{i18n.m.calibration.stream_diagnostics}</strong>
                 <span class="font-mono text-xs">{diagnosticSummary()}</span>
               </div>
-              <dl class="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[7rem_minmax(0,1fr)]">
+              <dl class="mt-2 grid gap-x-4 gap-y-1 text-caption sm:grid-cols-[7rem_minmax(0,1fr)]">
                 <dt class="text-warn">{i18n.m.calibration.requested_route}</dt><dd class="break-all font-mono">{activeSample.url}</dd>
                 <dt class="text-warn">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
                 <dt class="text-warn">{i18n.m.calibration.playback_time}</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · {sceneButton(activeScene + 1)}</dd>
               </dl>
               {#if session.mediaKind === 'Video' && browserStreamUrl}
-                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-warn-line px-3 py-2 text-xs font-semibold text-warn-strong hover:bg-warn-soft focus-visible:outline-2 focus-visible:outline-warn" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
+                <a class="mt-3 hit-target rounded-lg border border-warn-line px-3 py-2 text-xs font-semibold text-warn-strong hover:bg-warn-soft focus-ring" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
               {/if}
             </div>
           {/if}
@@ -889,7 +886,7 @@
 
         {#if activeSample && activeSample.sampleCount > 1}
           <nav class="flex gap-2" aria-label={session.mediaKind === 'Audio' ? i18n.m.calibration.excerpts : i18n.m.calibration.scenes}>
-            {#each activeVariant?.samples ?? [] as sample, index}<button class="btn min-h-11 flex-1" class:btn-primary={activeScene === index} aria-current={activeScene === index ? 'true' : undefined} onclick={() => chooseScene(index)}>{sceneButton(sample.sampleNumber)}</button>{/each}
+            {#each activeVariant?.samples ?? [] as sample, index}<button class="choice hit-target flex-1 justify-center rounded-lg px-3 text-sm font-medium" class:choice-selected={activeScene === index} aria-current={activeScene === index ? 'true' : undefined} onclick={() => chooseScene(index)}>{sceneButton(sample.sampleNumber)}</button>{/each}
           </nav>
         {/if}
 
@@ -898,11 +895,11 @@
           <div class="sample-deck mt-4">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
-              <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
+              <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : resultVariant?.recommended ? `${variant.name} · ${i18n.m.calibration.recommended_sample}` : variant.name} aria-pressed={activeName === variant.name}>
                 <span class="text-xl font-bold text-ink">{variantLabel(variant.name)}</span>
-                {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold text-accent">{i18n.m.calibration.reference_label}</span>
-                {:else if ratings[variant.name]}<span class="mt-1 flex items-center gap-1 truncate text-[11px] font-semibold text-accent"><Icon name="check" class="h-3 w-3 shrink-0" />{ratingLabel(ratings[variant.name]!)}</span>
-                {:else if !revealed}<span class="mt-1 block truncate text-[11px] text-ink-4">{i18n.m.calibration.not_rated}</span>{/if}
+                {#if variant.isOriginal}<span class="mt-1 block text-micro font-semibold text-ink-3">{i18n.m.calibration.reference_label}</span>
+                {:else if ratings[variant.name]}<span class="mt-1 flex items-center gap-1 truncate text-micro font-semibold text-ink-2"><OkMark class="h-3 w-3 shrink-0" />{ratingLabel(ratings[variant.name]!)}</span>
+                {:else if !revealed}<span class="mt-1 block truncate text-micro text-ink-4">{i18n.m.calibration.not_rated}</span>{/if}
                 {#if revealed}<span class="mt-1 block text-xs text-ink-3">{revealedLabel(variant.name)}</span>{/if}
                 {#if resultVariant?.recommended}<span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-ok" title={i18n.m.calibration.recommended_sample}></span>{/if}
               </button>
@@ -928,24 +925,24 @@
               {#if switching}<p class="mt-2 text-xs text-ink-3" aria-live="polite">{i18n.m.calibration.rating_locked_loading}</p>{/if}
             {/if}
             {#if nextUnrated && (activeVariant?.isOriginal || ratings[activeName])}
-              <button class="btn mt-3 min-h-11 w-full" disabled={switching} onclick={() => chooseVariant(nextUnrated!)}>
+              <button class="btn mt-3 w-full" disabled={switching} onclick={() => chooseVariant(nextUnrated!)}>
                 {t(i18n.m.calibration.next_unrated, { name: nextUnrated })}
                 <Icon name="arrow-right" class="h-4 w-4" />
               </button>
             {:else if canReveal}
               <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.calibration.all_rated}</p>
             {/if}
-            <button class="btn btn-primary mt-5 min-h-12 w-full" disabled={!canReveal || busy} onclick={revealResults}>{busy ? i18n.m.common.loading_short : i18n.m.calibration.reveal_lineup}</button>
+            <button class="btn btn-lg btn-primary mt-5 w-full" disabled={!canReveal || busy} onclick={revealResults}>{busy ? i18n.m.common.loading_short : i18n.m.calibration.reveal_lineup}</button>
           </section>
         {:else if session.result}
           <section class="card overflow-hidden">
-            <div class="border-b border-line p-5">
-              <p class="text-xs font-semibold text-accent">{i18n.m.calibration.result_title}</p>
+            <div class="hairline-b p-5">
+              <p class="text-xs font-semibold text-ink-3">{i18n.m.calibration.result_title}</p>
               <h2 class="mt-1 text-xl font-bold text-ink" tabindex="-1" data-quality-focus="result">{change ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2>
               <p class="mt-2 text-sm leading-relaxed text-ink-2">{change ? i18n.m.calibration.result_basis : i18n.m.calibration.result_none_basis}</p>
             </div>
             {#if change}
-              <div class="border-b border-line p-5">
+              <div class="hairline-b p-5">
                 <h3 class="text-sm font-semibold text-ink">{i18n.m.calibration.setting_change}</h3>
                 <dl class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
                   <dt class="text-ink-3">{i18n.m.calibration.setting_now}</dt><dd class="text-ink-2">{settingLabel(change.now)}</dd>
@@ -957,7 +954,7 @@
                   <p class="mt-0.5 text-xs text-ink-3">{i18n.m.calibration.estimate_note}</p>
                 {/if}
                 <p class="mt-3 flex gap-2 text-xs leading-relaxed text-ink-2"><Icon name="shield-check" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" /><span>{i18n.m.calibration.apply_scope}{#if change.after.profile}{' '}{i18n.m.calibration.apply_scope_presets}{/if}</span></p>
-                <button class="btn btn-primary mt-4 min-h-12 w-full" disabled={busy || session.status === 'Applied'} onclick={applyResult}>{session.status === 'Applied' ? i18n.m.calibration.applied : i18n.m.calibration.apply}</button>
+                <button class="btn btn-lg btn-primary mt-4 w-full" disabled={busy || session.status === 'Applied'} onclick={applyResult}>{session.status === 'Applied' ? i18n.m.calibration.applied : i18n.m.calibration.apply}</button>
                 <span class="sr-only" role="status">{session.status === 'Applied' ? i18n.m.calibration.applied : ''}</span>
               </div>
             {/if}
@@ -966,19 +963,19 @@
                 <div class="px-5 py-3" class:bg-ok-soft={variant.recommended}>
                   <div class="flex items-center gap-3"><strong class="w-16 text-ink">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-ink-2">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-ink-3">{ratingLabel(variant.classification)}</span>{/if}</div>
                   {#if variant.vmaf}
-                    <div class="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-sunken font-mono text-[11px] tabular-nums" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
-                      <span class="bg-sunken px-2 py-1.5 text-accent">VMAF H {vmafScore(variant.vmaf.harmonicMean)}</span>
-                      <span class="bg-sunken px-2 py-1.5 text-ink-2">P5 {vmafScore(variant.vmaf.fifthPercentile)}</span>
-                      <span class="bg-sunken px-2 py-1.5 text-ink-2">min {vmafScore(variant.vmaf.minimum)}</span>
+                    <div class="surface-sunken mt-2 grid grid-cols-3 gap-px overflow-hidden text-micro tabular-nums" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
+                      <span class="px-2 py-1.5 font-semibold text-ink">VMAF H {vmafScore(variant.vmaf.harmonicMean)}</span>
+                      <span class="px-2 py-1.5 text-ink-2">P5 {vmafScore(variant.vmaf.fifthPercentile)}</span>
+                      <span class="px-2 py-1.5 text-ink-2">min {vmafScore(variant.vmaf.minimum)}</span>
                     </div>
                   {/if}
                 </div>
               {/each}
             </div>
-            <div class="space-y-3 border-t border-line p-5">
+            <div class="hairline-t space-y-3 p-5">
               {#if session.result.variants.some((variant) => variant.vmaf)}<p class="text-xs leading-relaxed text-ink-3">{i18n.m.calibration.vmaf_note}</p>{/if}
               <p class="text-xs leading-relaxed text-ink-3">{session.mediaKind === 'Audio' ? i18n.m.calibration.result_caveat_audio : session.mediaKind === 'Image' ? i18n.m.calibration.result_caveat_image : i18n.m.calibration.result_caveat}</p>
-              <button class="btn min-h-11 w-full" disabled={busy} onclick={checkAnother}>{i18n.m.calibration.check_another}</button>
+              <button class="btn w-full" disabled={busy} onclick={checkAnother}>{i18n.m.calibration.check_another}</button>
             </div>
           </section>
         {/if}
@@ -989,18 +986,17 @@
 
 {#snippet zoomControls(label: string, fitLabel: string, panHint: string)}
   <div class="flex flex-wrap items-center justify-center gap-2" role="group" aria-label={label}>
-    <button class="btn min-h-11" aria-label={fitLabel} aria-pressed={viewZoom === 1} onclick={fitView}>{i18n.m.calibration.fit_view}</button>
-    <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_out} onclick={() => zoom(-0.25)}>−</button>
+    <button class="btn" aria-label={fitLabel} aria-pressed={viewZoom === 1} onclick={fitView}>{i18n.m.calibration.fit_view}</button>
+    <button class="btn btn-icon" aria-label={i18n.m.calibration.zoom_out} onclick={() => zoom(-0.25)}>−</button>
     <span class="min-w-14 text-center font-mono text-xs text-white/75" aria-live="polite">{t(i18n.m.calibration.zoom_level, { percent: Math.round(viewZoom * 100) })}</span>
-    <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
-    <button class="btn min-h-11" aria-label={i18n.m.calibration.actual_pixels_label} disabled={!pictureSize} onclick={showActualPixels}>{i18n.m.calibration.actual_pixels}</button>
+    <button class="btn btn-icon" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
+    <button class="btn" aria-label={i18n.m.calibration.actual_pixels_label} disabled={!pictureSize} onclick={showActualPixels}>{i18n.m.calibration.actual_pixels}</button>
   </div>
   {#if viewZoom > 1}<p class="text-center text-xs text-white/60">{panHint}</p>{/if}
 {/snippet}
 
 <style>
   .quality-lab { container-type: inline-size; }
-  .quality-lab .btn-primary:hover { background: color-mix(in srgb, var(--accent-fill) 92%, black); }
   .sample-deck { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); gap: 0.5rem; }
   .quality-columns { display: grid; gap: 1.25rem; }
   @container (min-width: 60rem) {
@@ -1008,5 +1004,5 @@
   }
   .quality-lab :global(:fullscreen) { display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
   .quality-lab :global(:fullscreen .comparison-stage) { flex: 1 1 auto; height: auto; min-height: 0; aspect-ratio: auto; }
-  @media (prefers-reduced-motion: reduce) { .quality-lab * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
+  @media (prefers-reduced-motion: reduce) { .quality-lab * { scroll-behavior: auto !important; } }
 </style>

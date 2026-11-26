@@ -26,8 +26,9 @@ never connects to an installed Optimisarr server and cannot alter a real library
 The frontend CI job runs the full capture harness to detect API/UI drift; displayed application
 and sidecar versions are read from project metadata.
 
-The script uses English, dark appearance, a fixed documentation clock, and reduced motion. The
-standard viewport is 1440 × 1000; the Quarantine review uses 1440 × 1500 to show both the comparison
+The script uses English, a fixed documentation clock, and reduced motion, and captures every image in
+the dark appearance (`-dark.png`). `--scheme=light` or `--scheme=both` also captures the light one
+(`-light.png`) when a page needs it. The standard viewport is 1440 × 1000; the Quarantine review uses 1440 × 1500 to show both the comparison
 and decision controls, the quality lab uses 1440 × 1250, Find duplicates uses 1440 × 3200,
 library configuration uses 2048 × 1167, the soundtrack report uses 1440 × 1900, and the mobile Queue uses 390 × 1000.
 Focused dialogs/cards are captured without unrelated surrounding UI. Some stable filenames remain

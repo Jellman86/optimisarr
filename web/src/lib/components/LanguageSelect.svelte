@@ -111,7 +111,7 @@
   <button
     bind:this={trigger}
     type="button"
-    class={compact ? 'btn btn-ghost px-2' : 'input flex h-8 w-full items-center justify-between py-0 text-left text-xs'}
+    class={compact ? 'btn btn-ghost btn-icon' : 'input flex h-8 w-full items-center justify-between py-0 text-left text-xs'}
     aria-label={compact ? `${i18n.m.language.label}: ${selectedName}` : i18n.m.language.label}
     title={compact ? selectedName : undefined}
     aria-haspopup="listbox"
@@ -158,7 +158,7 @@
           role="option"
           aria-selected={locale.code === i18n.locale}
           data-locale={locale.code}
-          class="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus:outline-none"
+          class="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus-ring-inset"
           class:text-accent={locale.code === i18n.locale}
           onclick={() => selectLocale(locale.code)}
           onkeydown={(event) => moveFocus(event, index)}

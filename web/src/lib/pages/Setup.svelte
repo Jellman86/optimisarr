@@ -15,6 +15,7 @@
   import FilesChoice from '../components/FilesChoice.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import LanguageSelect from '../components/LanguageSelect.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
@@ -565,8 +566,8 @@
       <div class="font-bold tracking-tight text-ink">Optimisarr</div>
       <div class="text-xs text-ink-3">{i18n.m.app.tagline}</div>
     </div>
-    <div class="flex items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
-      <button type="button" class="btn btn-ghost min-h-11 min-w-11" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme} aria-describedby="setup-theme-mode">
+    <div class="flex items-center gap-2">
+      <button type="button" class="btn btn-ghost btn-icon" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme} aria-describedby="setup-theme-mode">
         <Icon name={theme.icon} class="h-5 w-5" />
         <span id="setup-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
       </button>
@@ -574,9 +575,9 @@
     </div>
   </header>
 
-  <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] max-w-5xl card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
-    <aside class="border-b border-line bg-sunken px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7">
-      <p class="mb-4 text-xs font-semibold text-accent">
+  <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] max-w-5xl card overflow-hidden md:grid-cols-[15rem_minmax(0,1fr)]">
+    <aside class="hairline-b bg-sunken px-4 py-5 md:px-5 md:py-7 md:shadow-[inset_-1px_0_0_var(--divide-soft)]">
+      <p class="mb-4 text-xs font-semibold text-ink-3">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
       </p>
       <ol class="grid grid-cols-5 gap-1 md:block" aria-label={i18n.m.setup.progress_label}>
@@ -584,10 +585,10 @@
           {@const number = index + 1}
           <li class="relative md:pb-6" aria-current={number === viewStep ? 'step' : undefined} aria-label={`${name}: ${stepStatus(number)}`}>
             {#if number < stepNames.length}
-              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-line md:block"></span>
+              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-line-soft md:block"></span>
             {/if}
             <div class="relative flex flex-col items-center text-center md:flex-row md:items-start md:gap-3 md:text-left" >
-              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'tone-ok' : number === viewStep ? 'tone-accent' : 'bg-sunken text-ink-3'}">
+              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'tone-ok' : number === viewStep ? 'tone-accent' : 'bg-panel text-ink-3 shadow-[var(--lift-1)]'}">
                 {#if number <= (setup.state?.completedStep ?? 0)}<Icon name="check" class="h-4 w-4" />{:else}{number}{/if}
               </span>
               <span class="hidden min-w-0 pt-0.5 md:block">
@@ -606,7 +607,7 @@
         <div bind:this={errorSummary} class="callout tone-bad mb-5 px-4 py-3" role="alert" tabindex="-1">
           <div class="font-semibold">{i18n.m.setup.error_heading}</div>
           <div>{error}</div>
-          {#if !contextReady}<button class="btn mt-3 min-h-11" type="button" onclick={() => void loadContext()} disabled={loadingContext}>{i18n.m.setup.retry}</button>{/if}
+          {#if !contextReady}<button class="btn mt-3" type="button" onclick={() => void loadContext()} disabled={loadingContext}>{i18n.m.setup.retry}</button>{/if}
         </div>
       {/if}
 
@@ -615,7 +616,7 @@
           <h1 tabindex="-1" class="page-title">{w.machine_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{w.machine_body}</p>
 
-          <div class="mt-7 max-w-3xl divide-y divide-line border-y border-line" data-setup-checks>
+          <div class="mt-7 max-w-3xl divide-y divide-line-soft border-y border-line-soft" data-setup-checks>
             {#each checks as check (check.key)}
               <div>
               {@render checkRow(check.key, check.title, check.text, check.state)}
@@ -627,7 +628,7 @@
                   <div class="text-xs font-semibold text-ink-3">{i18n.m.setup.recovery_title}</div>
                   <div class="mt-2 grid grid-cols-2 gap-1 sm:flex sm:flex-wrap" role="group" aria-label={i18n.m.setup.deployment_label}>
                     {#each ['local', 'compose', 'unraid', 'truenas'] as platform (platform)}
-                      <button class="choice min-h-11 rounded-md px-2.5 text-xs font-medium {selectedPlatform === platform ? 'choice-selected' : 'text-ink-2'}" type="button"
+                      <button class="choice hit-target justify-center rounded-md px-2.5 text-xs font-medium {selectedPlatform === platform ? 'choice-selected' : 'text-ink-2'}" type="button"
                         aria-pressed={selectedPlatform === platform} onclick={() => (selectedPlatform = platform as SetupReadiness['platform'])}>
                         {platformLabel(platform as SetupReadiness['platform'])}
                         {#if detectedPlatform === platform}<span class="block text-xs font-normal opacity-70">{i18n.m.setup.platform_detected}</span>{/if}
@@ -645,7 +646,7 @@
               {#if encoderChoices.length > 0}
                 <div class="mb-4 ml-9 flex flex-wrap gap-2" role="group" aria-label={w.encoder_title}>
                   {#each encoderChoices as choice (choice.value)}
-                    <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {encoderChoice === choice.value ? 'choice-selected' : 'text-ink-2'}" type="button"
+                    <button class="choice hit-target justify-center rounded-md px-3 text-sm font-medium {encoderChoice === choice.value ? 'choice-selected' : 'text-ink-2'}" type="button"
                       aria-pressed={encoderChoice === choice.value} onclick={() => (encoderChoice = choice.value)}>{choice.label}</button>
                   {/each}
                 </div>
@@ -657,7 +658,7 @@
 
           <!-- The proof behind each line. Closed when all is well, open when something needs fixing. -->
           <details class="mt-4 max-w-3xl text-xs text-ink-3" open={hasProblem} data-setup-details>
-            <summary class="focus-ring inline-flex min-h-11 cursor-pointer items-center rounded px-1 font-medium">{w.details}</summary>
+            <summary class="focus-ring cursor-pointer rounded px-1 py-3 font-medium">{w.details}</summary>
             <ul class="mt-2 space-y-1.5 font-mono leading-5">
               {#each tools as tool (tool.name)}
                 <li class="break-words">{tool.name} · {tool.version ?? tool.error ?? tool.command} · {tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</li>
@@ -669,13 +670,13 @@
             </ul>
           </details>
 
-          <p class="callout mt-4 max-w-3xl text-sm leading-6 text-ink-2">{w.private_note}</p>
+          <p class="callout tone-info mt-4 max-w-3xl text-sm leading-6 text-ink-2">{w.private_note}</p>
           <div class="mt-5 flex flex-wrap items-center gap-3" aria-live="polite">
-            <button class="btn min-h-11" type="button" onclick={() => void loadContext(true)} disabled={busy || retesting}>
+            <button class="btn" type="button" onclick={() => void loadContext(true)} disabled={busy || retesting}>
               <Icon name="retry" class="h-4 w-4 motion-reduce:animate-none {retesting ? 'animate-spin' : ''}" />
               {retesting ? w.testing : w.test_again}
             </button>
-            {#if retestMessage}<span class="text-sm text-ok">{retestMessage}</span>{/if}
+            {#if retestMessage}<span class="inline-flex items-center gap-1.5 text-sm text-ink-2"><OkMark />{retestMessage}</span>{/if}
           </div>
         {:else if viewStep === 2}
           <h1 tabindex="-1" class="page-title">{w.library_heading}</h1>
@@ -684,7 +685,7 @@
           {#if libraries.length > 0}
             <section class="mt-7 max-w-3xl" aria-labelledby="setup-libraries-heading">
               <h2 id="setup-libraries-heading" class="font-semibold text-ink">{w.saved_heading}</h2>
-              <div class="mt-3 divide-y divide-line border-y border-line">
+              <div class="mt-3 divide-y divide-line-soft border-y border-line-soft">
                 {#each libraries as library (library.id)}
                   {@const access = libraryAccess[library.id]}
                   {@const scan = scans[library.id]}
@@ -696,14 +697,14 @@
                         {#if isVideoLibrary(library.mediaType)}<span class="badge tone-neutral">{presetName(library.ruleProfile, i18n.m)}</span>{/if}
                       </div>
                       <div class="mt-1 break-all font-mono text-xs text-ink-3">{library.path}</div>
-                      <div class="mt-2 text-xs font-medium {access?.ok ? 'text-ok' : 'text-warn'}">{access?.ok ? w.folder_ok : access?.message ?? i18n.m.setup.access_checking}</div>
+                      <div class="mt-2 flex items-center gap-1.5 text-xs font-medium {access?.ok ? 'text-ink-2' : 'text-warn'}">{#if access?.ok}<OkMark class="h-3 w-3" />{/if}{access?.ok ? w.folder_ok : access?.message ?? i18n.m.setup.access_checking}</div>
                       {#if access && !access.ok}<p class="callout tone-warn mt-2 text-xs leading-5">{recoverySteps()}</p>{/if}
                       {#if scan}
                         <div class="mt-2 text-xs {scan.state === 'failed' ? 'text-bad' : 'text-ink-2'}" role="status" data-setup-scan={scan.state}>{scanText(scan)}</div>
-                        {#if scan.state === 'failed'}<button class="btn mt-2 min-h-11" type="button" onclick={() => void scanLibrary(library.id)}>{w.scan_retry}</button>{/if}
+                        {#if scan.state === 'failed'}<button class="btn mt-2" type="button" onclick={() => void scanLibrary(library.id)}>{w.scan_retry}</button>{/if}
                       {/if}
                     </div>
-                    <button class="btn min-h-11 flex-none" type="button" onclick={() => startEditing(library)} aria-label={`${i18n.m.setup.change}: ${library.name}`}>{i18n.m.setup.change}</button>
+                    <button class="btn flex-none" type="button" onclick={() => startEditing(library)} aria-label={`${i18n.m.setup.change}: ${library.name}`}>{i18n.m.setup.change}</button>
                   </article>
                 {/each}
               </div>
@@ -720,7 +721,7 @@
                 <div class="label" id="setup-library-kind">{w.kind_label}</div>
                 <div class="flex flex-wrap gap-2" role="group" aria-labelledby="setup-library-kind">
                   {#each kinds as kind (kind)}
-                    <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {form.mediaType === kind ? 'choice-selected' : 'text-ink-2'}" type="button"
+                    <button class="choice hit-target justify-center rounded-md px-3 text-sm font-medium {form.mediaType === kind ? 'choice-selected' : 'text-ink-2'}" type="button"
                       aria-pressed={form.mediaType === kind} onclick={() => chooseKind(kind)}>{mediaTypeLabel(kind, i18n.m)}</button>
                   {/each}
                 </div>
@@ -729,7 +730,7 @@
                 <label class="label" for="setup-library-path">{w.folder_label}</label>
                 <div class="flex max-w-xl flex-wrap gap-2">
                   <input id="setup-library-path" class="input min-w-0 flex-1 font-mono" bind:value={form.path} autocomplete="off" spellcheck="false" />
-                  <button class="btn min-h-11" type="button" onclick={() => (pickingFolder = true)}>{w.browse}</button>
+                  <button class="btn" type="button" onclick={() => (pickingFolder = true)}>{w.browse}</button>
                 </div>
               </div>
               {#if isVideoLibrary(form.mediaType)}
@@ -754,12 +755,12 @@
               <LibrarySummary lines={summaryLines} headingId="setup-summary-heading" intro={t(w.summary_heading, { name: form.name.trim() || w.summary_unnamed })} />
               {#if formError}<p class="callout tone-bad text-sm" role="alert">{formError}</p>{/if}
               <div class="flex flex-wrap gap-2">
-                <button class="btn btn-primary min-h-11" type="submit" disabled={savingLibrary}>{savingLibrary ? i18n.m.setup.saving : editingId === null ? w.add : w.save_changes}</button>
-                {#if libraries.length > 0}<button class="btn min-h-11" type="button" onclick={cancelForm} disabled={savingLibrary}>{i18n.m.common.cancel}</button>{/if}
+                <button class="btn btn-lg btn-primary" type="submit" disabled={savingLibrary}>{savingLibrary ? i18n.m.setup.saving : editingId === null ? w.add : w.save_changes}</button>
+                {#if libraries.length > 0}<button class="btn btn-lg" type="button" onclick={cancelForm} disabled={savingLibrary}>{i18n.m.common.cancel}</button>{/if}
               </div>
             </form>
           {:else}
-            <button class="btn mt-5 min-h-11" type="button" onclick={startAdding}><Icon name="plus" class="h-4 w-4" />{w.add_another}</button>
+            <button class="btn mt-5" type="button" onclick={startAdding}><Icon name="plus" class="h-4 w-4" />{w.add_another}</button>
           {/if}
         {:else if viewStep === 3}
           <h1 tabindex="-1" class="page-title">{w.apps_heading}</h1>
@@ -778,7 +779,7 @@
                 <ul class="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-ink-2">
                   {#each app.points as point (point)}<li>{point}</li>{/each}
                 </ul>
-                <button class="btn mt-3 min-h-11" type="button" aria-expanded={appsOpen === app.room} onclick={() => toggleApps(app.room)}>{appsOpen === app.room ? w.apps_close : w.apps_open}</button>
+                <button class="btn mt-3" type="button" aria-expanded={appsOpen === app.room} onclick={() => toggleApps(app.room)}>{appsOpen === app.room ? w.apps_close : w.apps_open}</button>
                 {#if appsOpen === app.room}<div class="mt-4" data-setup-app-form><Settings_ embeddedRoom={app.room} onEmbeddedChange={() => void loadApps()} bind:embeddedDraft={appsDraft} /></div>{/if}
               </section>
             {/each}
@@ -807,12 +808,12 @@
               <fieldset data-setup-keep>
                 <legend class="font-semibold text-ink">{w.keep_legend}</legend>
                 <div class="mt-2 grid gap-2">
-                  <label class="choice flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 {keepMode === 'approve' ? 'choice-selected' : ''}">
+                  <label class="choice flex hit-target cursor-pointer items-center gap-3 rounded-lg px-3 py-2 {keepMode === 'approve' ? 'choice-selected' : ''}">
                     <input class="h-4 w-4 accent-accent" type="radio" name="setup-keep" checked={keepMode === 'approve'} onchange={() => (keepMode = 'approve')} />
                     <span class="text-sm text-ink">{w.keep_until}</span>
                   </label>
                   <div class="choice flex flex-wrap items-center gap-3 rounded-lg px-3 py-2 {keepMode === 'days' ? 'choice-selected' : ''}">
-                    <label class="flex min-h-11 cursor-pointer items-center gap-3">
+                    <label class="flex hit-target cursor-pointer items-center gap-3">
                       <input class="h-4 w-4 accent-accent" type="radio" name="setup-keep" checked={keepMode === 'days'} onchange={() => (keepMode = 'days')} />
                       <span class="text-sm text-ink">{w.keep_days}</span>
                     </label>
@@ -828,8 +829,8 @@
                 <p class="mt-2 text-xs leading-5 text-ink-3">{w.keep_warning}</p>
               </fieldset>
 
-              <label class="flex cursor-pointer items-start gap-3 border-y border-line py-4" data-setup-lock>
-                <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={settings.dryRunMode} />
+              <label class="flex cursor-pointer items-start gap-3 border-y border-line-soft py-4" data-setup-lock>
+                <input class="checkbox mt-1 shrink-0" type="checkbox" bind:checked={settings.dryRunMode} />
                 <span><span class="block font-semibold text-ink">{w.lock_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{w.lock_body}</span></span>
               </label>
             </div>
@@ -841,7 +842,7 @@
           </p>
 
           {#if suggestions.length > 0}
-            <div class="mt-6 max-w-3xl divide-y divide-line border-y border-line" data-setup-suggestions>
+            <div class="mt-6 max-w-3xl divide-y divide-line-soft border-y border-line-soft" data-setup-suggestions>
               {#each suggestions as suggestion (suggestion.file.id)}
                 {@const file = suggestion.file}
                 <article class="flex flex-wrap items-center gap-3 py-4" aria-label={suggestion.label}>
@@ -855,13 +856,13 @@
                       {#if file.durationSeconds !== null}<span>{formatDuration(file.durationSeconds)}</span>{/if}
                     </div>
                   </div>
-                  <button class="btn min-h-11 flex-none" type="button" disabled={busy} onclick={() => void finish(`/inventory/optimise/${file.id}`)}>{i18n.m.onePlan.open}</button>
+                  <button class="btn flex-none" type="button" disabled={busy} onclick={() => void finish(`/inventory/optimise/${file.id}`)}>{i18n.m.onePlan.open}</button>
                 </article>
               {/each}
             </div>
             <p class="mt-3 max-w-3xl text-xs leading-5 text-ink-3">{w.choose_note}</p>
           {:else if eligiblePage && eligiblePage.counts.unprobed === 0 && !Object.values(scans).some((scan) => scan.state === 'scanning')}
-            <p class="callout mt-6 max-w-3xl text-sm leading-6" data-setup-try-none>{w.try_none}</p>
+            <p class="callout tone-info mt-6 max-w-3xl text-sm leading-6" data-setup-try-none>{w.try_none}</p>
           {:else}
             <p class="mt-6 max-w-3xl text-sm text-ink-3" role="status" data-setup-try-waiting>{w.try_waiting}</p>
           {/if}
@@ -871,16 +872,16 @@
 
           <section class="mt-8 max-w-3xl" aria-labelledby="setup-summary-title" data-setup-summary>
             <h2 id="setup-summary-title" class="font-semibold text-ink">{w.setup_heading}</h2>
-            <ul class="mt-3 divide-y divide-line border-y border-line text-sm text-ink-2">
-              <li class="flex flex-wrap items-center justify-between gap-3 py-3"><span class="min-w-0 flex-1">{t(w.sum_encoder, { name: chosenEncoderName })}</span><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></li>
+            <ul class="mt-3 divide-y divide-line-soft border-y border-line-soft text-sm text-ink-2">
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3"><span class="min-w-0 flex-1">{t(w.sum_encoder, { name: chosenEncoderName })}</span><button class="btn" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></li>
               <li class="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span class="min-w-0 flex-1">{#each libraries as library (library.id)}<span class="block break-words">{library.name} · {isVideoLibrary(library.mediaType) ? presetName(library.ruleProfile, i18n.m) : mediaTypeLabel(library.mediaType, i18n.m)} · <span class="font-mono text-xs">{library.path}</span></span>{/each}</span>
-                <button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button>
+                <button class="btn" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button>
               </li>
-              <li class="flex flex-wrap items-center justify-between gap-3 py-3"><span class="min-w-0 flex-1">{arrCount + serverCount === 0 ? w.sum_apps_none : t(w.sum_apps, { arr: arrCount, servers: serverCount })}</span><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></li>
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3"><span class="min-w-0 flex-1">{arrCount + serverCount === 0 ? w.sum_apps_none : t(w.sum_apps, { arr: arrCount, servers: serverCount })}</span><button class="btn" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></li>
               <li class="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span class="min-w-0 flex-1">{#each libraries as library (library.id)}<span class="block break-words">{filesSentence(library)}</span>{/each}<span class="block">{keptSentence}{#if settings?.dryRunMode}{' '}{i18n.m.librarySummary.dry_run}{/if}</span></span>
-                <button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button>
+                <button class="btn" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button>
               </li>
               {#if automaticLibraries.length === 0}<li class="py-3">{w.sum_automatic_off}</li>{/if}
             </ul>
@@ -888,14 +889,14 @@
         {/if}
       </fieldset>
 
-      <div class="mt-8 border-t border-line pt-5">
+      <div class="hairline-t mt-8 pt-5">
         {#if blockedReason}<p id="setup-blocked" class="mb-3 text-sm text-warn" role="status" data-setup-blocked>{blockedReason}</p>{/if}
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <button class="btn min-h-11" type="button" onclick={() => changeStep(Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy || loadingContext}>{i18n.m.setup.back}</button>
+          <button class="btn btn-lg" type="button" onclick={() => changeStep(Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy || loadingContext}>{i18n.m.setup.back}</button>
           {#if viewStep === 5}
-            <button class="btn btn-primary min-h-11 px-5" type="button" onclick={() => void finish('/')} disabled={busy || loadingContext || !contextReady}>{busy ? w.finishing : w.finish_dashboard}</button>
+            <button class="btn btn-lg btn-primary" type="button" onclick={() => void finish('/')} disabled={busy || loadingContext || !contextReady}>{busy ? w.finishing : w.finish_dashboard}</button>
           {:else}
-            <button class="btn btn-primary min-h-11 px-5" type="button" onclick={continueStep} disabled={busy || loadingContext || retesting || !contextReady || blockedReason !== null} aria-describedby={blockedReason ? 'setup-blocked' : undefined}>
+            <button class="btn btn-lg btn-primary" type="button" onclick={continueStep} disabled={busy || loadingContext || retesting || !contextReady || blockedReason !== null} aria-describedby={blockedReason ? 'setup-blocked' : undefined}>
               {loadingContext ? i18n.m.setup.loading : busy ? i18n.m.setup.saving : viewStep === 3 && arrCount + serverCount === 0 ? w.skip : i18n.m.common.continue}
             </button>
           {/if}

@@ -204,12 +204,14 @@ internal static class MediaAndQueueEndpoints
         .WithName("CandidateSummary");
 
         // The Inventory view: discovered files paired with their rule verdict, filtered, counted, and paged
-        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring. The
-        // response carries the page, the filtered total, and the per-filter tallies for the UI chips.
+        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring; `sort`
+        // is name/size/verdict with an _asc/_desc suffix (blank keeps path order). The response carries the
+        // page, the filtered total, and the per-filter tallies for the UI chips.
         app.MapGet("/api/inventory", async (
             int? libraryId,
             string? show,
             string? search,
+            string? sort,
             int? page,
             int? pageSize,
             InventoryQueries inventory,
@@ -222,9 +224,15 @@ internal static class MediaAndQueueEndpoints
                     $"Unknown inventory filter '{show}'. Valid values: {string.Join(", ", Enum.GetNames<InventoryFilter>())}.",
                     new { value = show });
             }
+            if (!InventoryQueries.TryParseSort(sort, out var order))
+            {
+                return ApiErrors.BadRequest("inventory.sort.invalid",
+                    $"Unknown inventory sort '{sort}'. Valid values: {string.Join(", ", InventoryQueries.SortValues.Keys)}.",
+                    new { value = sort });
+            }
 
             return Results.Ok(await inventory.QueryAsync(
-                libraryId, filter, search, page ?? 1, pageSize ?? 0, cancellationToken));
+                libraryId, filter, search, page ?? 1, pageSize ?? 0, order, cancellationToken));
         })
         .WithName("GetInventory");
 

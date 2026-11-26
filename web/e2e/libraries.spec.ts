@@ -169,7 +169,7 @@ test('replacing automatically can be switched back to asking without confirmatio
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ autoReplace: false, moveOnComplete: false })
   await expect(page.getByText('Updated library "Films".', { exact: true })).toBeVisible()
-  await expect(page.locator('[data-library-workflow]')).toBeEnabled()
+  await expect(page.locator('[data-library-workflow] fieldset[data-library-page]')).toBeEnabled()
   await expect(filesChoice(page, 'ask')).toBeChecked()
 })
 
@@ -325,14 +325,21 @@ test('the library list leads with the count, one Scan button, and the rest in a 
   await expect(card.getByText('Auto-optimise 00:00–09:00 · auto-replace')).toBeVisible()
   await expect(card.getByText('access ok')).toHaveCount(0)
 
-  // One primary action on the card; the secondary and destructive ones are one click away.
-  await expect(card.getByRole('button')).toHaveCount(2)
+  // One default Scan button on the card; the secondary and destructive ones are one click away.
+  // The only other button explains the skipped files behind the count.
+  await expect(card.getByRole('button')).toHaveCount(3)
+  await expect(card.getByRole('button', { name: /^About: / })).toHaveAccessibleDescription(/skipped: already optimal, excluded, or not yet eligible/)
   await expect(card.getByRole('button', { name: 'Scan' })).toBeVisible()
   await expect(card.getByRole('button', { name: 'Delete' })).toHaveCount(0)
 
   await card.getByRole('button', { name: 'More actions for Films' }).click()
   const menu = page.getByRole('menu', { name: 'More actions for Films' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['Enqueue', 'Configure', 'Delete'])
+  await expect(menu.getByRole('menuitem')).toHaveText([/^\s*Enqueue\b/, 'Configure', 'Delete'])
+  // What Enqueue does is on screen under its name, not in a hover-only title.
+  const enqueue = menu.getByRole('menuitem', { name: 'Enqueue', exact: true })
+  await expect(enqueue).toHaveAccessibleDescription("Queue this library's eligible files")
+  await expect(enqueue.getByText("Queue this library's eligible files")).toBeVisible()
+  await expect(enqueue).not.toHaveAttribute('title')
   await menu.getByRole('menuitem', { name: 'Configure' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
 })
@@ -345,6 +352,80 @@ test('the library list says how many files are ready when some are', async ({ pa
   const card = page.locator('[data-library-card="1"]')
   await expect(card.getByText('12 ready to optimise')).toBeVisible()
   await expect(card.getByText('All already optimal')).toHaveCount(0)
+})
+
+test('the library list keeps one accent fill, for Add library, and its summaries in ink', async ({ page }) => {
+  await mockLibraries(page, { ...library, lastAutoEnqueueAt: '2026-07-23T11:00:00Z' })
+  await page.route('**/api/candidates/summary', (route) => json(route, [{ libraryId: 1, eligible: 12, skipped: 3 }]))
+  await page.goto('/#/libraries')
+
+  const card = page.locator('[data-library-card="1"]')
+  await expect(card.getByText('12 ready to optimise')).toBeVisible()
+  // Scan advances one library; adding a library is the page's single primary action.
+  await expect(page.locator('main .btn-primary')).toHaveCount(1)
+  await expect(page.locator('main .btn-primary')).toHaveText('Add library')
+  const scan = card.getByRole('button', { name: 'Scan' })
+  await expect(scan).toHaveClass(/(^|\s)btn(\s|$)/)
+  await expect(scan).not.toHaveClass(/btn-primary/)
+  // The count is a fact, not a link, so it never wears the clickable blue.
+  const ready = card.locator('[data-library-ready]')
+  await expect(ready).not.toHaveClass(/text-accent/)
+  expect(await ready.evaluate((element) => element.closest('a, button'))).toBeNull()
+  const run = card.locator('time')
+  await expect(run).toHaveAttribute('datetime', '2026-07-23T11:00:00Z')
+  await expect(run).toHaveAttribute('title', /2026/)
+})
+
+test('a library with nothing waiting says so beside the ok mark', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries')
+  const optimal = page.locator('[data-library-card="1"] [data-library-optimal]')
+  await expect(optimal).toHaveText('All already optimal')
+  await expect(optimal.locator('[data-ok-mark]')).toHaveCount(1)
+  await expect(optimal).not.toHaveClass(/text-accent/)
+})
+
+test('an empty library list offers Add library once, in the empty state', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/libraries', (route) => json(route, []))
+  await page.goto('/#/libraries')
+  await expect(page.getByText('No libraries yet')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add library' })).toHaveCount(1)
+  await expect(page.locator('main .btn-primary')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Add library' }).click()
+  await expect(page).toHaveURL(/#\/libraries\/new$/)
+})
+
+test('loading and failed library fetches do not flash a false empty state', async ({ page }) => {
+  await mockLibraries(page)
+  let releaseLoad = () => {}
+  let requested = false
+  await page.route('**/api/libraries', async (route) => {
+    await new Promise<void>((resolve) => { releaseLoad = resolve; requested = true })
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Database offline' }) })
+  })
+  await page.goto('/#/libraries')
+  // The page arrives after its route; hold the list's own load until the page is asking for it.
+  await expect(page.getByRole('heading', { name: 'Libraries', level: 1 })).toBeVisible()
+  await expect.poll(() => requested).toBe(true)
+  await expect(page.getByRole('status')).toContainText('Loading')
+  await expect(page.getByText('No libraries yet')).toHaveCount(0)
+  releaseLoad()
+  await expect(page.getByText('Database offline')).toBeVisible()
+  await expect(page.getByText('No libraries yet')).toHaveCount(0)
+})
+
+test('excluded files show when they were excluded as a humane date with the exact time on hover', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/exclusions*', (route) => json(route, [{
+    id: 7, path: '/media/films/a.mkv', libraryId: 1, relativePath: 'a.mkv', reason: null, source: 'Manual', createdAt: '2026-07-23T11:00:00Z',
+  }]))
+  await page.goto('/#/libraries/1/configure/files')
+  await page.getByRole('button', { name: /Excluded \(/ }).click()
+  await expect(page.getByText('a.mkv', { exact: true })).toBeVisible()
+  const excludedAt = page.locator('time[datetime="2026-07-23T11:00:00Z"]')
+  await expect(excludedAt).toBeVisible()
+  await expect(excludedAt).toHaveAttribute('title', /2026/)
 })
 
 test('the library list stacks on a phone without horizontal overflow', async ({ page }) => {
@@ -400,6 +481,19 @@ test('Edit on a summary line opens the page with every control for it, and the s
   await expect(page.locator('[data-summary-unsaved]')).toHaveText('Includes changes you have not saved yet.')
   // The counts describe the saved rules, so they step aside while something is unsaved.
   await expect(page.locator('[data-summary-line="files"] [data-summary-detail]')).toHaveCount(0)
+})
+
+test('unsaved edits disable Scan and the overview says so beside it, not in a hover title', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  await page.getByRole('checkbox', { name: 'Remove black bars', exact: true }).check()
+  await pageTab(page, 'Overview').click()
+  const scan = page.getByRole('button', { name: 'Scan', exact: true })
+  await expect(scan).toBeDisabled()
+  await expect(scan).not.toHaveAttribute('title')
+  await expect(page.locator('[data-scan-unsaved]')).toHaveText('Save changes first')
+  await expect(scan).toHaveAccessibleDescription('Save changes first')
+  await expect(page.locator('[data-duplicates-unsaved]')).toHaveText('Save changes first')
 })
 
 test('a film library has an overview and five pages, a music library has no Video page and a photo library has Images', async ({ page }) => {
@@ -918,9 +1012,11 @@ test('a longer explanation opens in the page, stays open while the control is us
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/video')
   await page.locator('html').evaluate(element => { element.style.fontSize = '125%' })
+  // Pages load on first visit, so wait for the rows before counting anything on them.
+  const explanations = page.locator('[data-setting-row] details')
+  await expect(explanations.first()).toBeAttached()
   // No explanation on this page hides in a hover bubble.
   await expect(page.locator('main [data-library-workflow] [role="tooltip"]')).toHaveCount(0)
-  const explanations = page.locator('[data-setting-row] details')
   expect(await explanations.count()).toBeGreaterThan(10)
   const crop = page.locator('[data-setting-row]').filter({ has: page.locator('#lib-noise') })
   const more = crop.locator('details')
@@ -1018,8 +1114,6 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const panelRgb = surface.panel.slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16)).join(', ')
       expect(surface.fill).toBe(`rgb(${panelRgb})`)
       expect(surface.shadow).not.toBe('none')
-      await card.hover()
-      await expect.poll(() => card.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe(surface.shadow)
       for (const input of await workflow.locator('.input').all()) {
         if (await input.isVisible()) expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44)
       }
@@ -1040,7 +1134,7 @@ test('library tab headings describe the displayed content and restore the page h
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Which files')
 })
 
-test('the page list fills the page being read and nothing else', async ({ page }) => {
+test('the page list lights the page being read and keeps the accent fill for Save', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/checks')
   const current = pageTab(page, 'Checks')
@@ -1053,12 +1147,179 @@ test('the page list fills the page being read and nothing else', async ({ page }
     probe.remove()
     return value
   })
-  await expect(current).toHaveCSS('background-color', fill)
-  await expect(pageTab(page, 'Video')).not.toHaveCSS('background-color', fill)
+  const lit = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.className = 'bg-accent-soft'
+    document.body.append(probe)
+    const value = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return value
+  })
+  // The page being read is a lit fill in semibold ink; the accent fill means "the action that
+  // advances the work", so a navigation entry never wears it, and no coloured edge marks it.
+  await expect(current).not.toHaveCSS('background-color', fill)
+  await expect(current).toHaveCSS('background-color', lit)
+  await expect(current).toHaveCSS('font-weight', '600')
+  await expect(current).toHaveCSS('border-left-width', '0px')
+  await expect(pageTab(page, 'Video')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await pageTab(page, 'Video').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video')
   await expect(pageTab(page, 'Video')).toHaveAttribute('aria-current', 'page')
   await expect(pageTab(page, 'Checks')).not.toHaveAttribute('aria-current', 'page')
+})
+
+test('one sticky rail beside the form lists the stages, and the Video sections sit under Video', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  const rail = page.getByRole('navigation', { name: 'Library settings pages' })
+  const form = page.locator('[data-library-workflow] fieldset[data-library-page]')
+  await expect(rail.getByRole('button')).toHaveText(['Overview', 'Which files', 'Video', 'Audio & subtitles', 'Checks', 'Schedule & replace'])
+  await expect(rail).toHaveCSS('position', 'sticky')
+  const [railBox, formBox] = [(await rail.boundingBox())!, (await form.boundingBox())!]
+  expect(railBox.x + railBox.width).toBeLessThan(formBox.x)
+  expect(Math.abs(railBox.y - formBox.y)).toBeLessThanOrEqual(2)
+
+  // The sections of the page being read are links in the same rail, not a second rail in the form.
+  const sections = rail.getByRole('navigation', { name: 'On this page' })
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toHaveCount(1)
+  await expect(form.locator('nav')).toHaveCount(0)
+  await expect(sections.getByRole('link')).toHaveText(['What to do', 'Format', 'Quality', 'Picture', 'Encoder', 'AI super-resolution (experimental)'])
+  const videoStage = (await pageTab(page, 'Video').boundingBox())!
+  const sectionsBox = (await sections.boundingBox())!
+  const audioStage = (await pageTab(page, 'Audio & subtitles').boundingBox())!
+  expect(sectionsBox.y).toBeGreaterThanOrEqual(videoStage.y + videoStage.height)
+  expect(sectionsBox.y + sectionsBox.height).toBeLessThanOrEqual(audioStage.y)
+
+  // A section link carries a real hash route, scrolls the form to it, moves keyboard focus to its heading, and leaves the page's own address alone on left-click.
+  const encoderLink = sections.getByRole('link', { name: 'Encoder', exact: true })
+  await expect(encoderLink).toHaveAttribute('href', '#/libraries/1/configure/video#library-encoder')
+  await encoderLink.click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/configure\/video$/)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video')
+  await expect(page.locator('#library-encoder-heading')).toBeFocused()
+  await expect.poll(async () => (await page.locator('#library-encoder').boundingBox())!.y).toBeLessThan(200)
+  await expect(rail).toBeInViewport()
+  await expect(pageTab(page, 'Video')).toHaveAttribute('aria-current', 'page')
+
+  // Other stages carry no section links.
+  await pageTab(page, 'Checks').click()
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toHaveCount(0)
+})
+
+test('below a desktop width the stages wrap above the form as finger-sized pills', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  const rail = page.getByRole('navigation', { name: 'Library settings pages' })
+  const form = page.locator('[data-library-workflow] fieldset[data-library-page]')
+  await expect(rail).toHaveCSS('position', 'static')
+  const [railBox, formBox] = [(await rail.boundingBox())!, (await form.boundingBox())!]
+  expect(railBox.y + railBox.height).toBeLessThanOrEqual(formBox.y)
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toBeHidden()
+  for (const stage of await rail.getByRole('button').all()) {
+    expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  }
+  expect(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth)).toBe(true)
+})
+
+test('on an ultrawide screen each summary sentence keeps a readable measure with Edit beside it', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  const lines = page.locator('[data-summary-line]')
+  await expect(lines.first()).toBeVisible()
+  const measure = await page.locator('[data-summary-line] p').first().evaluate(element => {
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:72ch'
+    element.append(probe)
+    const width = probe.getBoundingClientRect().width
+    probe.remove()
+    return width
+  })
+  for (const line of await lines.all()) {
+    const text = (await line.locator(':scope > div').first().boundingBox())!
+    const edit = (await line.getByRole('button', { name: /^Edit / }).boundingBox())!
+    expect(text.width).toBeLessThanOrEqual(measure + 1)
+    expect(edit.x - (text.x + text.width)).toBeLessThanOrEqual(24)
+  }
+  const duplicates = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Find duplicates', exact: true }) })
+  const hint = (await duplicates.locator(':scope > div').first().boundingBox())!
+  const open = (await duplicates.getByRole('button', { name: 'Find duplicates' }).boundingBox())!
+  expect(hint.width).toBeLessThanOrEqual(measure + 1)
+  expect(open.x - (hint.x + hint.width)).toBeLessThanOrEqual(24)
+})
+
+test('on an ultrawide screen a setting keeps a readable sentence with its control beside it', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/checks')
+  const rows = page.locator('[data-setting-row]')
+  await expect(rows.first()).toBeVisible()
+  const checked = await rows.evaluateAll(elements => elements.filter(row => row.checkVisibility()).map(row => {
+    const text = row.querySelector<HTMLElement>('.setting-text')!
+    const control = row.querySelector<HTMLElement>('.setting-control')!
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:72ch'
+    text.append(probe)
+    const measure = probe.getBoundingClientRect().width
+    probe.remove()
+    const [textBox, controlBox, rowBox] = [text, control, row].map(element => element.getBoundingClientRect())
+    return { label: row.dataset.settingRow, measure, text: textBox.width, gap: controlBox.left - textBox.right, row: rowBox.width, overflow: controlBox.right - rowBox.right }
+  }))
+  expect(checked.length).toBeGreaterThan(2)
+  for (const row of checked) {
+    expect(row.text, row.label).toBeLessThanOrEqual(row.measure + 1)
+    expect(row.overflow, row.label).toBeLessThanOrEqual(1)
+    // A control beside its sentence sits a column-gap away; a stacked one sits under it.
+    if (row.gap > 0) expect(row.gap, row.label).toBeLessThanOrEqual(40)
+  }
+  // The row itself still spans the card, so its divider and changed highlight reach the edge.
+  const card = (await page.locator('#library-core-checks').boundingBox())!
+  expect(checked[0].row).toBeGreaterThan(card.width - 120)
+})
+
+test('unsaved changes pin the save bar to the bottom of a desktop window; saved, it stays in place', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/files')
+  const actions = page.locator('[data-library-actions]')
+  await expect(actions).toHaveCSS('position', 'static')
+  await page.getByLabel('Name', { exact: true }).fill('Films archive')
+  await expect(actions).toHaveClass(/\bsticky-actions\b/)
+  await expect(actions).toHaveCSS('position', 'sticky')
+  await expect(actions).toHaveCSS('bottom', '0px')
+  await expect(actions).toBeInViewport()
+  const [actionsBox, mainBox] = [(await actions.boundingBox())!, (await page.locator('main').boundingBox())!]
+  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height + 1)
+  await page.getByLabel('Name', { exact: true }).fill('Films')
+  await expect(actions).toHaveCSS('position', 'static')
+})
+
+test('a short desktop viewport keeps every rail stage reachable by scrolling the rail independently', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await mockLibraries(page, { ...library, mediaType: 'Other' })
+  await page.goto('/#/libraries/1/configure/video')
+  const schedule = pageTab(page, 'Schedule & replace')
+  await schedule.scrollIntoViewIfNeeded()
+  await expect(schedule).toBeInViewport()
+  await schedule.click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Schedule & replace')
+})
+
+test('a sticky dirty save bar explains why Save is disabled and jumps to the invalid setting', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/audio')
+  await page.getByLabel('Keep audio languages', { exact: true }).fill('not-a-code!')
+  await pageTab(page, 'Video').click()
+  const actions = page.locator('[data-library-actions]')
+  await expect(actions).toHaveCSS('position', 'sticky')
+  await expect(actions.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  const blocker = actions.locator('[data-save-blocker]')
+  await expect(blocker).toBeVisible()
+  await blocker.getByRole('button').first().click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Audio & subtitles')
 })
 
 test('image quality is one choice of four, needs a score before it can be required, and keeps SSIM', async ({ page }) => {

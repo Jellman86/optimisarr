@@ -42,8 +42,21 @@ export async function mockInventory(page: Page) {
     if (path === '/api/settings') return json(route, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
     if (path === '/api/inventory') {
       const library = url.searchParams.get('libraryId'), show = url.searchParams.get('show')
-      const scoped = inventoryFiles.filter(f => !library || f.libraryId === Number(library))
+      const search = url.searchParams.get('search')?.toLowerCase(), sort = url.searchParams.get('sort')
+      const scoped = inventoryFiles.filter(f => (!library || f.libraryId === Number(library)) && (!search || f.relativePath.toLowerCase().includes(search)))
       const items = scoped.filter(f => !show || (show === 'eligible' ? f.id === 7 : show === 'skipped' ? f.id === 8 : f.id === 9))
+      // Eligible, then not yet probed, then skipped: the server's verdict order.
+      const verdictRank = (f: typeof inventoryFiles[number]) => f.id === 7 ? 0 : f.id === 9 ? 1 : 2
+      const fileNameOf = (p: string) => p.split(/[\\/]/).pop() || p
+      const byPath = (a: typeof inventoryFiles[number], b: typeof inventoryFiles[number]) => a.relativePath.localeCompare(b.relativePath)
+      const byName = (a: typeof inventoryFiles[number], b: typeof inventoryFiles[number]) => fileNameOf(a.relativePath).localeCompare(fileNameOf(b.relativePath))
+      if (sort) {
+        const [column, direction] = sort.split('_')
+        const sign = direction === 'desc' ? -1 : 1
+        items.sort((a, b) => (column === 'size' ? sign * (a.sizeBytes - b.sizeBytes)
+          : column === 'verdict' ? sign * (verdictRank(a) - verdictRank(b))
+          : sign * byName(a, b)) || byPath(a, b))
+      }
       return json(route, { items: items.map(file => ({ file, eligible: file.id === 9 ? null : file.id === 7, reason: file.id === 9 ? null : file.id === 7 ? 'Video codec differs from the library’s HEVC target.' : 'Already uses the target codec.' })), total: items.length, counts: { all: scoped.length, eligible: scoped.filter(f => f.id === 7).length, skipped: scoped.filter(f => f.id === 8).length, unprobed: scoped.filter(f => f.id === 9).length } })
     }
     return json(route, {})
@@ -268,3 +281,154 @@ test('the detail actions wrap instead of overflowing on a phone', async ({ page 
   expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
 })
+
+// The order the rows are shown in, read by file name.
+async function rowNames(page: Page) {
+  return page.locator('[id^="inventory-file-"]').evaluateAll(buttons => buttons.map(button => button.querySelector('.text-label')?.textContent ?? ''))
+}
+
+function recordInventoryRequests(page: Page) {
+  const requests: URLSearchParams[] = []
+  page.on('request', request => {
+    const url = new URL(request.url())
+    if (url.pathname === '/api/inventory') requests.push(url.searchParams)
+  })
+  return requests
+}
+
+test('search waits for a pause in typing, asks the server, and says when nothing matches', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  await page.getByRole('checkbox', { name: /Select Orbit/ }).check()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+
+  const search = page.getByRole('searchbox', { name: 'Search files' })
+  await expect(search).toHaveAttribute('placeholder', 'Filter by file or folder name…')
+  await search.pressSequentially('orbit', { delay: 20 })
+  await expect.poll(() => requests.map(params => params.get('search')).filter(Boolean)).toEqual(['orbit'])
+  expect(requests.at(-1)!.get('page')).toBe('1')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ })).toBeVisible()
+  // A pick made among the rows before the search does not carry into the new set.
+  await expect(page.getByText(/^\d+ (of \d+ )?selected$/)).toHaveCount(0)
+
+  await search.fill('nothing-here')
+  await search.press('Enter')
+  await expect(page.getByText('No files match “nothing-here”.')).toBeVisible()
+  await page.getByRole('main').getByRole('button', { name: 'Clear search' }).last().click()
+  await expect(search).toHaveValue('')
+  await expect(search).toBeFocused()
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  expect(requests.at(-1)!.has('search')).toBe(false)
+})
+
+test('the clear button and Escape both empty the search field', async ({ page }) => {
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  const search = page.getByRole('searchbox', { name: 'Search files' })
+  const clear = page.getByRole('search').getByRole('button', { name: 'Clear search' })
+  await expect(clear).toHaveCount(0)
+
+  await search.fill('arrival')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await clear.click()
+  await expect(search).toHaveValue('')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+
+  await search.fill('music')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+})
+
+test('size sorts largest first, then smallest, then back to path order', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  const header = page.getByRole('columnheader', { name: 'Size' })
+  const sortButton = header.getByRole('button', { name: 'Size' })
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('size_desc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', 'Arrival.2016.1080p.HEVC.mkv', '01 - A very long track title with no artwork available.flac'])
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'ascending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('size_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv', 'Orbit.2025.2160p.mkv'])
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await expect.poll(() => requests.at(-1)?.has('sort')).toBe(false)
+})
+
+test('the verdict and file columns sort from the top of their order and only one column sorts at a time', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  const verdict = page.getByRole('columnheader', { name: 'Rule verdict' })
+  const file = page.getByRole('columnheader', { name: 'File' })
+
+  await verdict.getByRole('button').click()
+  await expect(verdict).toHaveAttribute('aria-sort', 'ascending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('verdict_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', '01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv'])
+
+  await verdict.getByRole('button').click()
+  await expect(verdict).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('verdict_desc')
+
+  await file.getByRole('button').click()
+  await expect(file).toHaveAttribute('aria-sort', 'ascending')
+  await expect(verdict).toHaveAttribute('aria-sort', 'none')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('name_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv', 'Orbit.2025.2160p.mkv'])
+  expect(requests.at(-1)!.get('page')).toBe('1')
+  await file.getByRole('button').click()
+  await expect(file).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('name_desc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', 'Arrival.2016.1080p.HEVC.mkv', '01 - A very long track title with no artwork available.flac'])
+})
+
+test('rows are compact on a desktop and keep a finger-sized target on a phone', async ({ page }) => {
+  await mockInventory(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/inventory')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  for (const height of await page.locator('tbody tr').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(48)
+    expect(height).toBeLessThanOrEqual(60)
+  }
+
+  await page.setViewportSize({ width: 375, height: 667 })
+  for (const height of await page.locator('[id^="inventory-file-"]').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(44)
+  }
+})
+
+for (const width of [320, 375]) {
+  test(`the search field and sortable headers fit a ${width}px phone without sideways scrolling`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: 700 })
+    await page.goto('/#/inventory')
+    const search = page.getByRole('searchbox', { name: 'Search files' })
+    await search.fill('a very long search that should never push the page sideways')
+    const box = (await search.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    const clear = (await page.getByRole('search').getByRole('button', { name: 'Clear search' }).boundingBox())!
+    expect(clear.x + clear.width).toBeLessThanOrEqual(box.x + box.width + 1)
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+    await search.fill('')
+    for (const name of ['File', 'Rule verdict']) {
+      const sort = (await page.getByRole('columnheader', { name }).getByRole('button').boundingBox())!
+      expect(sort.height).toBeGreaterThanOrEqual(44)
+    }
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+  })
+}

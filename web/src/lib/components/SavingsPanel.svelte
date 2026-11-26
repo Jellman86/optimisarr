@@ -3,6 +3,9 @@
   import { formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Icon from './Icon.svelte'
+  import InfoTip from './InfoTip.svelte'
+  import OkMark from './OkMark.svelte'
+  import PanelHeader from './PanelHeader.svelte'
 
   let {
     stats,
@@ -27,34 +30,31 @@
   let keptShare = $derived(stats && stats.originalBytes > 0 ? Math.min(100, (stats.optimisedBytes / stats.originalBytes) * 100) : 0)
 </script>
 
+{#snippet resetControls()}
+  {#if confirmingReset}
+    <button class="btn btn-sm btn-danger" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
+    <button class="btn btn-sm" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
+  {:else}
+    <button
+      class="btn btn-sm btn-ghost btn-icon text-ink-4"
+      title={i18n.m.dashboard.reset_title}
+      aria-label={i18n.m.dashboard.reset_title}
+      onclick={() => (confirmingReset = true)}
+    ><Icon name="trash" class="h-3.5 w-3.5" /></button>
+  {/if}
+{/snippet}
+
 <section class="card flex h-full flex-col" aria-labelledby="savings-heading">
-  <div class="flex items-center gap-3 border-b border-line px-4 py-2.5">
-    <h2 id="savings-heading" class="label mb-0">{i18n.m.dashboard.total_saved}</h2>
-    {#if optimised}
-      {#if confirmingReset}
-        <span class="ml-auto flex items-center gap-1">
-          <button class="btn btn-danger px-2 py-0.5 text-[10px]" onclick={onreset} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
-          <button class="btn px-2 py-0.5 text-[10px]" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
-        </span>
-      {:else}
-        <button
-          class="ml-auto rounded text-ink-4 transition hover:text-ink-2 focus-ring"
-          title={i18n.m.dashboard.reset_title}
-          aria-label={i18n.m.dashboard.reset_title}
-          onclick={() => (confirmingReset = true)}
-        ><Icon name="trash" class="h-3.5 w-3.5" /></button>
-      {/if}
-    {/if}
-  </div>
+  <PanelHeader as="h2" id="savings-heading" title={i18n.m.dashboard.total_saved} trailing={optimised ? resetControls : undefined} />
 
   <div class="flex flex-1 flex-col gap-4 p-4">
     <div>
-      <div class="text-[2.75rem] font-bold leading-none tracking-[-0.03em] tabular-nums text-ink">
+      <div class="text-display font-bold tracking-[-0.03em] tabular-nums text-ink">
         {stats ? formatSize(stats.bytesSaved) : '—'}
       </div>
       <p class="mt-2 text-sm text-ink-2">
         {optimised && stats
-          ? t(i18n.m.dashboard.saved_detail, { count: stats.filesOptimised.toLocaleString(), percent: Math.round(stats.averageSavingPercent) })
+          ? t(stats.filesOptimised === 1 ? i18n.m.dashboard.saved_detail_one : i18n.m.dashboard.saved_detail_other, { count: stats.filesOptimised.toLocaleString(), percent: Math.round(stats.averageSavingPercent) })
           : i18n.m.dashboard.empty_short}
       </p>
     </div>
@@ -75,7 +75,7 @@
 
   <!-- Health earns attention only when it changes: a quiet line that turns amber and says what is
        missing, rather than a card of its own for a status that is true almost always. -->
-  <dl class="m-0 grid grid-cols-2 border-t border-line text-xs">
+  <dl class="hairline-t m-0 grid grid-cols-2 text-xs">
     <div class="px-4 py-3">
       <dt class="label mb-0.5">{i18n.m.nav.libraries}</dt>
       <dd class="m-0 text-ink-2">
@@ -85,11 +85,12 @@
         })}
       </dd>
     </div>
-    <div class="border-l border-line px-4 py-3">
+    <div class="border-l border-line-soft px-4 py-3">
       <dt class="label mb-0.5">{i18n.m.dashboard.health}</dt>
-      <dd class="m-0 flex items-center gap-1.5 {healthy ? 'text-ok' : 'text-warn'}" title={healthDetail}>
-        <Icon name={healthy ? 'check' : 'warning'} class="h-3.5 w-3.5" />
+      <dd class="m-0 flex items-center gap-1.5 {healthy ? 'text-ink-2' : 'text-warn'}">
+        {#if healthy}<OkMark />{:else}<Icon name="warning" class="h-3.5 w-3.5" />{/if}
         {healthy ? i18n.m.dashboard.health_ok : i18n.m.dashboard.needs_attention}
+        <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.dashboard.health })} text={healthDetail} />
       </dd>
     </div>
   </dl>

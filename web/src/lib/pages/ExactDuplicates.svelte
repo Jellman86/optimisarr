@@ -2,9 +2,10 @@
   import { onMount, onDestroy } from 'svelte'
   import { api, type AutoDuplicateCleanup, type DuplicateCleanupPreview, type DuplicateCleanupRefusal, type DuplicateCleanupStatus, type Library, type ExactDuplicateStatus } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
-  import { formatSize } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime, formatSize } from '../format'
   import Banner from '../components/Banner.svelte'
-  import Icon from '../components/Icon.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import ExactCopyGroup from '../components/ExactCopyGroup.svelte'
   import { router } from '../stores/ui.svelte'
 
@@ -142,7 +143,7 @@
     const outcome = value.lastOutcome
     if (!value.lastRunAt || !outcome) return i18n.m.duplicates.auto_never
     const result = t(i18n.m.duplicates[`auto_${outcome}`], { moved: value.lastMoved, size: formatSize(value.lastBytes) })
-    return t(i18n.m.duplicates.auto_last, { time: new Date(value.lastRunAt).toLocaleString(), result })
+    return t(i18n.m.duplicates.auto_last, { time: formatDateTime(value.lastRunAt, new Date(), i18n.locale), result })
   }
 
   onDestroy(() => { disposed = true; revision++; clearTimeout(timer); clearTimeout(cleanupTimer) })
@@ -207,35 +208,45 @@
 </script>
 
 <div class="duplicate-view">
-  <nav class="flex flex-wrap items-center gap-2 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-    {#if routeLibraryId !== null}
-      <a class="focus-ring hover:text-accent" href="#/libraries">{i18n.m.nav.libraries}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
-      <a class="focus-ring hover:text-accent" href={`#/libraries/${routeLibraryId}/configure`}>{libraries.find(l => l.id === routeLibraryId)?.name ?? i18n.m.inventory.library_label}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />
-    {:else}<a class="focus-ring hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a><Icon name="chevron" class="h-4 w-4 -rotate-90" />{/if}<span aria-current="page">{i18n.m.duplicates.title}</span>
-  </nav>
-  <header><h1 class="page-title">{i18n.m.duplicates.title}</h1><p class="page-subtitle">{i18n.m.duplicates.subtitle}</p></header>
+  <!-- The view's grid gap already separates the header from the content; mb-1 tops it up to 24px. -->
+  <PageHeader class="mb-1" title={i18n.m.duplicates.title} subtitle={i18n.m.duplicates.subtitle}>
+    {#snippet eyebrow()}
+      <nav class="flex flex-wrap items-center gap-1.5 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+        {#if routeLibraryId !== null}
+          <a class="focus-ring hit-target inline-flex items-center rounded text-ink-2 hover:text-accent" href="#/libraries">{i18n.m.nav.libraries}</a>
+          <span aria-hidden="true">/</span>
+          <a class="focus-ring hit-target inline-flex items-center rounded text-ink-2 hover:text-accent" href={`#/libraries/${routeLibraryId}/configure`}>{libraries.find(l => l.id === routeLibraryId)?.name ?? i18n.m.inventory.library_label}</a>
+          <span aria-hidden="true">/</span>
+        {:else}
+          <a class="focus-ring hit-target inline-flex items-center rounded text-ink-2 hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a>
+          <span aria-hidden="true">/</span>
+        {/if}
+        <span aria-current="page">{i18n.m.duplicates.title}</span>
+      </nav>
+    {/snippet}
+  </PageHeader>
   <section class="card p-5 sm:p-6" aria-label={i18n.m.duplicates.title}>
     <div class="duplicate-controls">
       <div class="min-w-0 flex-1"><label class="label" for="duplicate-library">{i18n.m.inventory.library_label}</label><select class="input" id="duplicate-library" value={libraryId ?? ''} onchange={select} disabled={acting}><option value="">{i18n.m.duplicates.choose}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
       {#if running}<button class="btn" disabled={acting} onclick={() => act(true)}>{i18n.m.duplicates.cancel}</button>
-      {:else}<button class="btn btn-primary" disabled={libraryId === null || loading || acting} onclick={() => act()}>{i18n.m.duplicates.scan}</button>{/if}
+      {:else}<button class="btn {cleanupPreview && cleanupPreview.copies > 0 ? '' : 'btn-primary'}" disabled={libraryId === null || loading || acting} onclick={() => act()}>{i18n.m.duplicates.scan}</button>{/if}
     </div>
     {#if libraryId !== null && scopeLibraries.length > 1}
-      <details class="scope-picker mt-4 rounded-xl border border-line p-4" bind:open={scopeExpanded}>
+      <details class="scope-picker surface-sunken mt-4 p-4" bind:open={scopeExpanded}>
         <summary class="focus-ring cursor-pointer text-sm font-semibold text-ink">{i18n.m.duplicates.compareLibraries}{compareIds.length ? ` (${compareIds.length})` : ''}</summary>
         <p class="mt-3 text-sm leading-relaxed text-ink-3" id="duplicate-scope-hint">{i18n.m.duplicates.scopeHint}</p>
         <fieldset class="scope-grid mt-3" aria-describedby="duplicate-scope-hint" disabled={running || acting || loading}>
           <legend class="sr-only">{i18n.m.duplicates.compareLibraries}</legend>
           {#each scopeLibraries.filter(l => l.id !== libraryId) as library (library.id)}
-            <label class="scope-library"><input type="checkbox" class="h-4 w-4 shrink-0 accent-accent" checked={compareIds.includes(library.id)} disabled={(compareIds.length >= 15 || !library.available) && !compareIds.includes(library.id)} onchange={event => toggleLibrary(library.id,event.currentTarget.checked)} />
+            <label class="scope-library"><input type="checkbox" class="checkbox shrink-0" checked={compareIds.includes(library.id)} disabled={(compareIds.length >= 15 || !library.available) && !compareIds.includes(library.id)} onchange={event => toggleLibrary(library.id,event.currentTarget.checked)} />
               <span class="min-w-0 break-words text-sm text-ink">{library.name}{#if !library.available}<span class="mt-1 block text-xs text-ink-3">{i18n.m.duplicates.libraryUnavailable}</span>{/if}</span>
             </label>
           {/each}
         </fieldset>
       </details>
     {/if}
-    <label class="mt-4 flex min-h-11 items-center gap-3 text-sm text-ink">
-      <input type="checkbox" class="h-4 w-4 accent-accent" bind:checked={forceRefresh} disabled={running || acting || loading} aria-describedby="duplicate-refresh-hint" />
+    <label class="mt-4 flex hit-target items-center gap-3 text-sm text-ink">
+      <input type="checkbox" class="checkbox shrink-0" bind:checked={forceRefresh} disabled={running || acting || loading} aria-describedby="duplicate-refresh-hint" />
       {i18n.m.duplicates.refresh}
     </label>
     <details class="mt-3 text-sm text-ink-3"><summary class="focus-ring cursor-pointer">{i18n.m.duplicates.scanDetails}</summary>
@@ -243,14 +254,14 @@
       <p class="mt-3 leading-relaxed">{i18n.m.duplicates.cost}</p>
       <p class="mt-3 text-xs leading-relaxed">{i18n.m.duplicates.snapshot}</p>
     </details>
-    <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink-2"><Icon name="check" class="h-4 w-4 shrink-0 text-ok" /><span class="min-w-0 break-words">{i18n.m.duplicates.safe}</span></p>
+    <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink-2"><OkMark /><span class="min-w-0 break-words">{i18n.m.duplicates.safe}</span></p>
   </section>
   {#if error}<Banner kind="error">{error}<button class="btn ml-3" onclick={() => libraryId === null ? loadLibraries() : load(libraryId)}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if report}
     <section class="card p-5 sm:p-6" aria-busy={loading || running}>
       <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 class="text-base font-semibold text-ink" aria-live="polite">{loading ? i18n.m.common.loading_short : statusLabel}</h2>
-        {#if report.finishedAt}<span class="text-xs tabular-nums text-ink-3">{new Date(report.finishedAt).toLocaleString()}</span>{/if}
+        {#if report.finishedAt}<time class="text-xs tabular-nums text-ink-3" datetime={report.finishedAt}>{formatDateTime(report.finishedAt, new Date(), i18n.locale)}</time>{/if}
       </div>
       {#if running}
         <div class="scan-progress mt-4">
@@ -266,7 +277,7 @@
       {#if report.progress.reused}<p class="mt-1 text-sm text-ink-3">{t(i18n.m.duplicates.reused, { count: report.progress.reused })}</p>{/if}
       {#if report.error}<p class="mt-3 text-sm text-bad" role="alert">{report.error}</p>{/if}
       {#if report.result?.groups.length === 0}<p class="mt-3 text-sm text-ink">{i18n.m.duplicates.empty}</p>{/if}
-      {#if report.libraries?.length}<div class="mt-4 border-t border-line pt-4"><h3 class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.reportScope}</h3><ul class="mt-2 flex flex-wrap gap-2" aria-label={i18n.m.duplicates.reportScope}>{#each report.libraries as library (library.id)}<li class="badge tone-neutral" title={library.root}>{library.name}</li>{/each}</ul></div>{/if}
+      {#if report.libraries?.length}<div class="hairline-t mt-4 pt-4"><h3 class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.reportScope}</h3><ul class="mt-2 flex flex-wrap gap-2" aria-label={i18n.m.duplicates.reportScope}>{#each report.libraries as library (library.id)}<li class="badge tone-neutral" title={library.root}>{library.name}</li>{/each}</ul></div>{/if}
     </section>
     {#if cleanupPreview || cleanup || cleanupError}
       <section class="card p-5 sm:p-6" aria-labelledby="duplicate-cleanup" data-testid="duplicate-cleanup">
@@ -274,17 +285,17 @@
         {#if cleanupError}<p class="mt-2 text-sm text-bad" role="alert">{cleanupError}</p>{/if}
         {#if cleanup?.running}
           <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_running, { done: cleanup.done, total: cleanup.total, moved: cleanup.moved })}</p>
-          <button class="btn mt-3 min-h-11" onclick={stopCleanup}>{i18n.m.duplicates.cancel}</button>
+          <button class="btn mt-3" onclick={stopCleanup}>{i18n.m.duplicates.cancel}</button>
         {:else}
           {#if cleanup}
-            <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_finished, { moved: cleanup.moved, size: formatSize(cleanup.bytesHeld) })} <a class="focus-ring underline" href="#/quarantine">{i18n.m.nav.quarantine}</a></p>
+            <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_finished, { moved: cleanup.moved, size: formatSize(cleanup.bytesHeld) })} <a class="focus-ring rounded text-accent hover:underline" href="#/quarantine">{i18n.m.nav.quarantine}</a></p>
             {#if cleanup.failures.length}
               <ul class="mt-2 space-y-1 text-xs text-bad">{#each cleanup.failures as failure (failure.path + failure.reason)}<li class="break-all">{failure.path}: {failure.reason}</li>{/each}</ul>
             {/if}
           {/if}
           {#if cleanupPreview && cleanupPreview.copies > 0}
             <p class="mt-2 text-sm text-ink-2">{t(i18n.m.duplicates.clean_summary, { copies: cleanupPreview.copies, groups: cleanupPreview.groups, size: formatSize(cleanupPreview.bytesToFree) })}</p>
-            <button class="btn btn-primary mt-3 min-h-11" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
+            <button class="btn btn-primary mt-3" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
           {:else if cleanupPreview && !cleanup}
             <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.clean_none}</p>
           {/if}
@@ -306,14 +317,14 @@
         {#if schedule}
           {#if schedule.supported}
             <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3" id="duplicate-schedule-hint">{i18n.m.duplicates.auto_hint}</p>
-            <label class="mt-3 flex min-h-11 items-center gap-3 text-sm text-ink">
-              <input type="checkbox" class="h-4 w-4 shrink-0 accent-accent" aria-describedby="duplicate-schedule-hint" checked={schedule.enabled}
+            <label class="mt-3 flex hit-target items-center gap-3 text-sm text-ink">
+              <input type="checkbox" class="checkbox shrink-0" aria-describedby="duplicate-schedule-hint" checked={schedule.enabled}
                 disabled={savingSchedule} onchange={event => void setSchedule((event.currentTarget as HTMLInputElement).checked)} />
               {i18n.m.duplicates.auto_toggle}
             </label>
             {#if schedule.enabled && schedule.dryRun}<p class="mt-2 text-sm text-warn" role="status">{i18n.m.duplicates.auto_dry_run}</p>{/if}
             {#if schedule.enabled || schedule.lastRunAt}
-              <p class="mt-2 text-sm text-ink-2" role="status">{lastRunText(schedule)}{#if schedule.enabled && schedule.lastRunAt && schedule.nextRunAfter} {t(i18n.m.duplicates.auto_next, { time: new Date(schedule.nextRunAfter).toLocaleString() })}{/if}</p>
+              <p class="mt-2 text-sm text-ink-2" role="status">{lastRunText(schedule)}{#if schedule.enabled && schedule.lastRunAt && schedule.nextRunAfter} {t(i18n.m.duplicates.auto_next, { time: formatAbsoluteDateTime(schedule.nextRunAfter, i18n.locale) })}{/if}</p>
             {/if}
           {:else}
             <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.auto_unsupported}</p>
@@ -344,8 +355,8 @@
   .duplicate-controls > div { flex-basis:18rem; }
   .duplicate-controls button, .duplicate-pagination button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
   .scope-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:.5rem; }
-  .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border:1px solid var(--line); border-radius:8px; cursor:pointer; }
-  .scope-library:has(input:checked) { background:var(--accent-soft); border-color:var(--accent-line); }
+  .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border-radius:var(--radius-field); background:var(--panel); box-shadow:var(--lift-1); cursor:pointer; }
+  .scope-library:has(input:checked) { background:linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }
   .duplicate-view .badge { min-width:0; max-width:100%; }
   .scan-progress { display:flex; align-items:center; gap:.75rem; }
   .scan-progress .progress-track { height:.5rem; }

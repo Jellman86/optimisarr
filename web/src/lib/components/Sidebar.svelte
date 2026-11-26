@@ -4,10 +4,13 @@
   import { counts } from '../stores/counts.svelte'
   import { api } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { showsActiveWork } from '../route-meta'
   import BrandMark from './BrandMark.svelte'
   import Icon from './Icon.svelte'
   import LanguageSelect from './LanguageSelect.svelte'
   import NowEncoding from './NowEncoding.svelte'
+
+  let { onOpenShortcuts }: { onOpenShortcuts?: () => void } = $props()
 
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
 
@@ -43,18 +46,17 @@
     return queued ? `${activity.activeJobs} / ${queued}` : `${activity.activeJobs}`
   }
 
-  type NavItem = { path: string; label: string; icon: string; enabled: boolean }
+  type NavItem = { path: string; label: string; icon: string }
 
-  // Active items route; disabled items mark roadmap phases not yet built. Labels are
-  // `$derived` so they re-resolve when the language changes.
+  // Labels are `$derived` so they re-resolve when the language changes.
   let navItems: NavItem[] = $derived([
-    { path: '/', label: i18n.m.nav.dashboard, icon: 'M3 12l9-9 9 9M5 10v10h14V10', enabled: true },
-    { path: '/libraries', label: i18n.m.nav.libraries, icon: 'M4 6h16M4 10h16M4 14h10M4 18h10', enabled: true },
-    { path: '/inventory', label: i18n.m.nav.inventory, icon: 'M4 5h16v4H4zM4 11h16v8H4z', enabled: true },
-    { path: '/queue', label: i18n.m.nav.queue, icon: 'M4 6h16M4 12h16M4 18h7', enabled: true },
-    { path: '/quarantine', label: i18n.m.nav.quarantine, icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z', enabled: true },
-    { path: '/schedule', label: i18n.m.nav.schedule, icon: 'M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z', enabled: true },
-    { path: '/settings', label: i18n.m.nav.settings, icon: 'M10.3 4.3a1.7 1.7 0 013.4 0 1.7 1.7 0 002.5 1.1 1.7 1.7 0 012.4 2.4 1.7 1.7 0 001 2.5 1.7 1.7 0 010 3.4 1.7 1.7 0 00-1 2.5 1.7 1.7 0 01-2.4 2.4 1.7 1.7 0 00-2.5 1 1.7 1.7 0 01-3.4 0 1.7 1.7 0 00-2.5-1 1.7 1.7 0 01-2.4-2.4 1.7 1.7 0 00-1-2.5 1.7 1.7 0 010-3.4 1.7 1.7 0 001-2.5A1.7 1.7 0 017.8 5.4a1.7 1.7 0 002.5-1.1zM15 12a3 3 0 11-6 0 3 3 0 016 0z', enabled: true },
+    { path: '/', label: i18n.m.nav.dashboard, icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
+    { path: '/libraries', label: i18n.m.nav.libraries, icon: 'M4 6h16M4 10h16M4 14h10M4 18h10' },
+    { path: '/inventory', label: i18n.m.nav.inventory, icon: 'M4 5h16v4H4zM4 11h16v8H4z' },
+    { path: '/queue', label: i18n.m.nav.queue, icon: 'M4 6h16M4 12h16M4 18h7' },
+    { path: '/quarantine', label: i18n.m.nav.quarantine, icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z' },
+    { path: '/schedule', label: i18n.m.nav.schedule, icon: 'M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z' },
+    { path: '/settings', label: i18n.m.nav.settings, icon: 'M10.3 4.3a1.7 1.7 0 013.4 0 1.7 1.7 0 002.5 1.1 1.7 1.7 0 012.4 2.4 1.7 1.7 0 001 2.5 1.7 1.7 0 010 3.4 1.7 1.7 0 00-1 2.5 1.7 1.7 0 01-2.4 2.4 1.7 1.7 0 00-2.5 1 1.7 1.7 0 01-3.4 0 1.7 1.7 0 00-2.5-1 1.7 1.7 0 01-2.4-2.4 1.7 1.7 0 00-1-2.5 1.7 1.7 0 010-3.4 1.7 1.7 0 001-2.5A1.7 1.7 0 017.8 5.4a1.7 1.7 0 002.5-1.1zM15 12a3 3 0 11-6 0 3 3 0 016 0z' },
   ])
 
   let collapsed = $derived(layout.collapsed)
@@ -72,6 +74,10 @@
   })
   let railCollapsed = $derived(collapsed && !isMobile)
 
+  // Dashboard and Queue already show the work in progress on the page itself; a second copy
+  // in the rail would only repeat it beside the original.
+  let pageShowsActiveWork = $derived(showsActiveWork(router.path))
+
   function isActive(path: string) {
     return path === '/' ? router.path === '/' : router.path.startsWith(path)
   }
@@ -83,7 +89,7 @@
      context above the tray's <main> (itself relative, so it would otherwise paint over the
      language menu where the menu overlaps the tray). -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:relative md:z-10 md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-(--motion-base) md:relative md:z-10 md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
@@ -92,7 +98,7 @@
   <!-- A calm identity above the operational navigation; activity animates the chosen mark. Beside
        the name rather than above it, so the navigation starts high on a laptop screen. -->
   <button
-    class="flex w-full items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'justify-center px-2 pt-5 pb-3' : 'gap-3 px-4 pt-5 pb-0.5'}"
+    class="flex w-full items-center transition-colors focus-ring-inset {railCollapsed ? 'justify-center px-2 pt-5 pb-3' : 'gap-3 px-4 pt-5 pb-0.5'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
@@ -101,7 +107,7 @@
   >
     <BrandMark class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-14 w-14'}" />
     {#if !railCollapsed}
-      <span class="text-[18px] font-bold tracking-tight text-ink">Optimisarr</span>
+      <span class="text-title font-bold tracking-tight text-ink">Optimisarr</span>
     {/if}
   </button>
 
@@ -112,7 +118,7 @@
       href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
       target="_blank"
       rel="noopener noreferrer"
-      class="mb-2 ml-[5rem] mr-3 self-start rounded px-1 font-mono text-[10.5px] text-ink-3 transition-colors hover:text-accent focus-ring"
+      class="mb-2 ml-[5rem] mr-3 self-start rounded px-1 font-mono text-micro text-ink-3 transition-colors hover:text-accent focus-ring"
       title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
     >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
   {/if}
@@ -123,13 +129,11 @@
       {@const showActivity = item.path === '/queue' && activity.activeJobs > 0}
       <button
         class="nav-button relative"
-        class:nav-button-active={item.enabled && isActive(item.path)}
-        class:nav-button-inactive={item.enabled && !isActive(item.path)}
-        class:nav-button-disabled={!item.enabled}
-        disabled={!item.enabled}
-        title={!item.enabled ? t(i18n.m.nav.coming_soon, { label: item.label }) : railCollapsed ? item.label : ''}
+        class:nav-button-active={isActive(item.path)}
+        class:nav-button-inactive={!isActive(item.path)}
+        aria-label={railCollapsed ? (showActivity ? `${item.label} · ${activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}` : item.label) : undefined}
+        title={railCollapsed ? item.label : undefined}
         onclick={() => {
-          if (!item.enabled) return
           router.go(item.path)
           layout.closeMobile()
         }}
@@ -139,9 +143,7 @@
         </svg>
         {#if !railCollapsed}
           <span class="truncate">{item.label}</span>
-          {#if !item.enabled}
-            <span class="badge ml-auto tone-muted">{i18n.m.nav.soon}</span>
-          {:else if !showActivity && badge(item.path)}
+          {#if !showActivity && badge(item.path)}
             <span class="nav-badge">{badge(item.path)}</span>
           {/if}
           {#if showActivity}
@@ -152,7 +154,8 @@
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
-              <span class="text-[11px] font-semibold tabular-nums">{queueActivityLabel()}</span>
+              <span class="sr-only">{activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}:</span>
+              <span class="text-micro font-semibold tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}
         {:else if showActivity}
@@ -168,19 +171,25 @@
 
   <!-- Whatever is left between the navigation and the foot belongs to the work in progress. -->
   <div class="min-h-0 flex-1"></div>
-  <NowEncoding collapsed={railCollapsed} />
+  {#if !pageShowsActiveWork}<NowEncoding collapsed={railCollapsed} />{/if}
 
   </div>
   </div>
 
-  <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
+  <!-- One foot: theme, language, shortcuts, collapse. Ghost buttons, no strips, no rules. -->
   <div class="flex shrink-0 items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme} aria-describedby="sidebar-theme-mode">
       <Icon name={theme.icon} class="h-5 w-5" />
         <span id="sidebar-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
     </button>
     <LanguageSelect compact opensUp />
-    <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>
+    {#if onOpenShortcuts}
+      <!-- Desktop only: a phone has no keyboard to take shortcuts from. -->
+      <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={onOpenShortcuts} title={`${i18n.m.shortcuts.open_button} (?)`} aria-label={i18n.m.shortcuts.open_button} data-open-shortcuts>
+        <Icon name="keyboard" class="h-5 w-5" />
+      </button>
+    {/if}
+    <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={collapsed ? i18n.m.nav.expand_sidebar : i18n.m.nav.collapse_sidebar} aria-label={collapsed ? i18n.m.nav.expand_sidebar : i18n.m.nav.collapse_sidebar} aria-expanded={!collapsed}>
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
       </svg>

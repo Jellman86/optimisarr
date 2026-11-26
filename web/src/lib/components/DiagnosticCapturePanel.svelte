@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api, type DiagnosticCapture } from '../api'
+  import { formatAbsoluteDateTime, formatDateTime } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import ConfigSection from './ConfigSection.svelte'
 
@@ -146,7 +147,8 @@
     finally { busy = false }
   }
 
-  const date = (value: string) => new Date(value).toLocaleString()
+  const date = (value: string) => formatDateTime(value, new Date(), i18n.locale)
+  const absoluteDate = (value: string) => formatAbsoluteDateTime(value, i18n.locale)
   const status = (value: string) => value === 'Recording' ? i18n.m.settings.diagnostics_recording
     : value === 'Expired' ? i18n.m.settings.diagnostics_expired : i18n.m.settings.diagnostics_stopped
 </script>
@@ -162,20 +164,20 @@
         {#if statusCapture}
           <span class="text-xs text-ink-3">{statusCapture.eventsStored.toLocaleString()} / {statusCapture.maximumEvents.toLocaleString()} {i18n.m.settings.diagnostics_events}</span>
         {/if}
-        <button class="btn btn-ghost ml-auto min-h-10 text-xs" disabled={busy || loading} onclick={() => refresh()}>{i18n.m.settings.diagnostics_refresh}</button>
+        <button class="btn btn-sm btn-ghost ml-auto" disabled={busy || loading} onclick={() => refresh()}>{i18n.m.settings.diagnostics_refresh}</button>
       </div>
 
       {#if activeCapture}
-        <div class="rounded-lg border border-accent/25 bg-accent/5 p-4">
+        <div class="callout tone-accent p-4">
           <p class="text-sm text-ink-2">
             {i18n.m.settings.diagnostics_started} {date(activeCapture.startedAt)} ·
-            {activeCapture.expiresAt ? `${i18n.m.settings.diagnostics_expires}: ${date(activeCapture.expiresAt)}` : i18n.m.settings.diagnostics_until_stopped}
+            {activeCapture.expiresAt ? `${i18n.m.settings.diagnostics_expires}: ${absoluteDate(activeCapture.expiresAt)}` : i18n.m.settings.diagnostics_until_stopped}
           </p>
           <p class="mt-1 text-xs text-ink-3">
             {activeCapture.scopedJobId ? `${i18n.m.settings.diagnostics_job} #${activeCapture.scopedJobId}` : i18n.m.settings.diagnostics_all_jobs}
           </p>
-          <button class="btn mt-4 min-h-11" disabled={busy} onclick={() => stop(false)}>{i18n.m.settings.diagnostics_stop}</button>
-          <button class="btn mt-4 ml-2 min-h-11" disabled={busy} onclick={() => stop(true)}>{i18n.m.settings.diagnostics_stop_collect}</button>
+          <button class="btn mt-4" disabled={busy} onclick={() => stop(false)}>{i18n.m.settings.diagnostics_stop}</button>
+          <button class="btn mt-4 ml-2" disabled={busy} onclick={() => stop(true)}>{i18n.m.settings.diagnostics_stop_collect}</button>
         </div>
       {:else}
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -194,11 +196,11 @@
           </div>
         </div>
         <label class="flex cursor-pointer items-start gap-3 text-sm text-ink-2">
-          <input type="checkbox" class="mt-1" bind:checked={includePaths} />
+          <input type="checkbox" class="checkbox mt-0.5 shrink-0" bind:checked={includePaths} />
           <span>{i18n.m.settings.diagnostics_paths}</span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 text-sm text-ink-2">
-          <input type="checkbox" class="mt-1" bind:checked={persistAcrossRestart} />
+          <input type="checkbox" class="checkbox mt-0.5 shrink-0" bind:checked={persistAcrossRestart} />
           <span>{i18n.m.settings.diagnostics_restart}</span>
         </label>
         <div class="grid min-w-0 gap-3 sm:grid-cols-3">
@@ -207,7 +209,7 @@
           <label class="label">{i18n.m.settings.diagnostics_storage}<input class="input mt-2 w-full" type="number" min="1" max="16" bind:value={maximumMiB} /></label>
         </div>
         <p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_participants}: {participants || i18n.m.settings.diagnostics_no_workers}</p>
-        <button class="btn btn-primary min-h-11" disabled={busy || loading} onclick={start}>{i18n.m.settings.diagnostics_start}</button>
+        <button class="btn btn-primary" disabled={busy || loading} onclick={start}>{i18n.m.settings.diagnostics_start}</button>
       {/if}
 
       {#if collecting}<p class="text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_collecting}</p>{/if}
@@ -216,11 +218,11 @@
         <select id="diagnostic-saved" class="input w-full" disabled={busy} bind:value={selection} onchange={() => selectCapture(captures.find(item => item.id === selection) ?? null, true)}>
           {#each captures as item (item.id)}<option value={item.id}>{date(item.startedAt)} · {status(item.status)} · {item.eventsStored.toLocaleString()} {i18n.m.settings.diagnostics_events}</option>{/each}
         </select>
-        <p class="text-xs text-ink-3">{capture.pinned ? i18n.m.settings.diagnostics_pinned : capture.retainUntil ? `${capture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: ${date(capture.retainUntil)}` : ''}{capture.pinned || capture.retainUntil ? ' · ' : ''} {Math.ceil((capture.bytesStored ?? 0) / 1024)} KiB / {Math.round((capture.maximumBytes ?? 4194304) / 1024 / 1024)} MiB</p>
+        <p class="text-xs text-ink-3">{capture.pinned ? i18n.m.settings.diagnostics_pinned : capture.retainUntil ? `${capture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: ${absoluteDate(capture.retainUntil)}` : ''}{capture.pinned || capture.retainUntil ? ' · ' : ''} {Math.ceil((capture.bytesStored ?? 0) / 1024)} KiB / {Math.round((capture.maximumBytes ?? 4194304) / 1024 / 1024)} MiB</p>
         {#if capture.eventLimitReached}<p class="text-sm text-warn" role="status">{i18n.m.settings.diagnostics_cap_reached}</p>{/if}
         <div class="flex flex-wrap gap-2">
-          <button class="btn min-h-11" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>
-          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn min-h-11" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
+          <button class="btn" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>
+          {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn btn-danger" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
         </div>
         {#if capture.pinned}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_pinned_delete_hint}</p>{/if}
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -228,19 +230,19 @@
           <label class="label">{i18n.m.settings.diagnostics_to}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob ?? '').trim()} bind:value={toUtc} /></label>
         </div>
         {#if String(exportJob ?? '').trim()}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_job_range}</p>{/if}
-        <div class="flex min-w-0 flex-wrap items-end gap-3 border-t pt-4" style="border-color: var(--edge)">
+        <div class="hairline-t flex min-w-0 flex-wrap items-end gap-3 pt-4">
           <div class="min-w-40 flex-1">
             <label class="label" for="diagnostic-export-job">{i18n.m.settings.diagnostics_export_job} ({i18n.m.settings.diagnostics_optional})</label>
             <input id="diagnostic-export-job" class="input w-full" disabled={busy} type="number" min="1" step="1" bind:value={exportJob} />
           </div>
-          <button class="btn min-h-11" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
+          <button class="btn" disabled={busy} onclick={download}>{i18n.m.settings.diagnostics_download}</button>
         </div>
       {/if}
       {#if error}<p class="text-sm text-bad" role="alert">{error}</p>{/if}
     </div>
 
     <aside class="evidence-note min-w-0 rounded-lg p-4 text-sm leading-relaxed text-ink-3">
-      <span class="mb-2 block text-xs font-semibold text-accent">{i18n.m.settings.diagnostics_evidence}</span>
+      <span class="mb-2 block text-xs font-semibold text-ink-2">{i18n.m.settings.diagnostics_evidence}</span>
       <p>{i18n.m.settings.diagnostics_disclosure}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_limit}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_retention}</p>
@@ -249,10 +251,7 @@
 </ConfigSection>
 
 <style>
-  :global(#diagnostic-capture) { transition: box-shadow 180ms ease; }
-  :global(#diagnostic-capture:hover), :global(#diagnostic-capture:focus-within) { box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
   .capture-light { width: .55rem; height: .55rem; flex: none; border-radius: 50%; background: var(--ink-4); }
   .capture-light.recording { background: var(--accent); box-shadow: 0 0 0 .25rem color-mix(in srgb, var(--accent) 14%, transparent), 0 0 1rem var(--accent); }
   .evidence-note { background: var(--raised); box-shadow: inset 0 1px 0 var(--edge); }
-  @media (prefers-reduced-motion: reduce) { :global(#diagnostic-capture) { transition: none; } }
 </style>

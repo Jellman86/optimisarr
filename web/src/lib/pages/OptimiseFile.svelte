@@ -10,6 +10,7 @@
   import { codecName, summariseLibrary, vmafLevelName } from '../library-summary'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import Icon from '../components/Icon.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
@@ -136,18 +137,18 @@
   const kept = (tracks: MediaPlanTrack[] | null) => (tracks ?? []).filter((track) => track.kept)
 </script>
 
-<header class="mb-6">
-  <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-    <a class="focus-ring inline-flex min-h-11 min-w-11 items-center rounded px-1 hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a>
-    <span aria-hidden="true">/</span>
-    <span aria-current="page" class="break-words text-ink">{title || i18n.m.onePlan.title}</span>
-  </nav>
-  <h1 class="page-title">{i18n.m.onePlan.title}</h1>
-  <p class="page-subtitle">{t(i18n.m.onePlan.subtitle, { library: libraryName })}</p>
-</header>
+<PageHeader title={i18n.m.onePlan.title} subtitle={t(i18n.m.onePlan.subtitle, { library: libraryName })}>
+  {#snippet eyebrow()}
+    <nav class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+      <a class="focus-ring hit-target-square rounded px-1 hover:text-accent" href="#/inventory">{i18n.m.nav.inventory}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page" class="break-words text-ink">{title || i18n.m.onePlan.title}</span>
+    </nav>
+  {/snippet}
+</PageHeader>
 
 {#if error}
-  <Banner kind="error" class="mb-4">{error}<button class="btn ml-3 min-h-11" onclick={() => load(mediaFileId)}>{i18n.m.setup.retry}</button></Banner>
+  <Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => load(mediaFileId)}>{i18n.m.setup.retry}</button></Banner>
 {:else if loading || !plan}
   <div class="card p-8 text-center text-ink-4" role="status">{i18n.m.common.loading_short}</div>
 {:else}
@@ -176,7 +177,7 @@
       {#if !plan.eligible && library && plan.retryJobId == null}
         <p class="mt-3 text-sm leading-relaxed text-ink-3">
           {t(i18n.m.onePlan.skipped_where, { library: libraryName })}
-          <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a>
+          <a class="focus-ring hit-target rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a>
         </p>
       {/if}
     </section>
@@ -329,7 +330,7 @@
       {#if library}
         <p class="mt-3 text-sm leading-relaxed text-ink-3">
           {t(i18n.m.onePlan.settings_from, { library: libraryName })}
-          <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure`}>{t(i18n.m.onePlan.open_settings, { library: libraryName })}</a>
+          <a class="focus-ring hit-target rounded px-1 font-medium text-accent underline" href={`#/libraries/${library.id}/configure`}>{t(i18n.m.onePlan.open_settings, { library: libraryName })}</a>
         </p>
       {/if}
     </section>
@@ -339,22 +340,22 @@
       {#if queued}
         <p class="callout tone-ok mb-3" role="status" data-plan-queued>
           {queued === 'already' ? i18n.m.inventory.queue_already : i18n.m.inventory.queue_added}
-          <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 font-medium underline" href="#/queue">{i18n.m.onePlan.open_queue}</a>
+          <a class="focus-ring hit-target rounded px-1 font-medium underline" href="#/queue">{i18n.m.onePlan.open_queue}</a>
         </p>
       {/if}
       <div class="flex flex-wrap items-center gap-2">
         {#if plan.retryJobId != null}
-          <button class="btn btn-primary min-h-11" onclick={queue} disabled={queueing || queued !== null} aria-describedby={queued === null ? 'plan-action-note' : undefined} data-plan-try-again>
+          <button class="btn btn-lg btn-primary" onclick={queue} disabled={queueing || queued !== null} aria-describedby={queued === null ? 'plan-action-note' : undefined} data-plan-try-again>
             <Icon name="retry" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.try_again}
           </button>
         {:else}
-          <button class="btn btn-primary min-h-11" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
+          <button class="btn btn-lg btn-primary" onclick={queue} disabled={!plan.eligible || queueing || queued !== null} aria-describedby="plan-action-note">
             <Icon name="plus" class="h-4 w-4" />{queueing ? i18n.m.inventory.queueing : i18n.m.onePlan.queue}
           </button>
         {/if}
         <!-- A file to try again has a real run to look at instead of a sample, so Preview is not offered. -->
         {#if plan.retryJobId == null}
-          <button class="btn min-h-11" onclick={() => (previewing = true)} disabled={!plan.eligible}>
+          <button class="btn btn-lg" onclick={() => (previewing = true)} disabled={!plan.eligible}>
             <Icon name="play" class="h-4 w-4" />{i18n.m.inventory.preview}
           </button>
         {/if}

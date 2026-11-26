@@ -40,10 +40,10 @@
   <aside class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent/30 bg-accent/5 px-4 py-2 text-sm" aria-label={i18n.m.settings.diagnostics_title}>
     {#if busy}<span role="status">{i18n.m.settings.diagnostics_collecting}</span>
     {:else}<span>{capture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off} · {capture.eventsStored.toLocaleString()} {i18n.m.settings.diagnostics_events}{capture.eventLimitReached ? ` · ${i18n.m.settings.diagnostics_cap_reached}` : ''}</span>{/if}
-    <button class="btn btn-ghost min-h-11" disabled={busy} onclick={collect}>{capture.status === 'Recording' ? i18n.m.settings.diagnostics_stop_collect : i18n.m.settings.diagnostics_download}</button>
+    <button class="btn btn-ghost" disabled={busy} onclick={collect}>{capture.status === 'Recording' ? i18n.m.settings.diagnostics_stop_collect : i18n.m.settings.diagnostics_download}</button>
     {#if error}
       <p class="w-full text-sm text-bad" role="alert">{error}</p>
-      <button class="btn btn-ghost min-h-11" onclick={() => { error = '' }}>{i18n.m.common.close}</button>
+      <button class="btn btn-ghost" onclick={() => { error = '' }}>{i18n.m.common.close}</button>
     {/if}
   </aside>
 {/if}

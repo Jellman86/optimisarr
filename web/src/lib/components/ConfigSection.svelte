@@ -22,7 +22,7 @@
   } = $props()
 </script>
 
-<section {id} class="card overflow-hidden" data-config-section={step ?? ''} aria-labelledby={`${id}-heading`}>
+<section {id} class="card scroll-mt-4 overflow-hidden" data-config-section={step ?? ''} aria-labelledby={`${id}-heading`}>
   <header class="flex items-start gap-3 px-4 py-4 hairline-b sm:px-6">
     {#if step !== undefined}
       <span
@@ -33,7 +33,7 @@
       </span>
     {/if}
     <div class="min-w-0">
-      <h2 id={`${id}-heading`} class="text-base font-semibold text-ink">{title}</h2>
+      <h2 id={`${id}-heading`} tabindex="-1" class="text-base font-semibold text-ink outline-none">{title}</h2>
       <p class="mt-0.5 max-w-3xl text-sm leading-relaxed text-ink-3">{description}</p>
     </div>
   </header>

@@ -8,10 +8,18 @@
   let {
     text,
     label,
+    id,
     class: cls = '',
-  }: { text: string; label?: string; class?: string } = $props()
+  }: {
+    text: string
+    label?: string
+    /** Lets the control this explains point `aria-describedby` at the same words. */
+    id?: string
+    class?: string
+  } = $props()
 
-  const tooltipId = $props.id()
+  const generatedId = $props.id()
+  const tooltipId = $derived(id ?? generatedId)
   const accessibleLabel = $derived(label ?? i18n.m.common.more_information)
 </script>
 
@@ -20,7 +28,7 @@
 <span class="group relative -m-[15px] inline-flex align-middle {cls}">
   <button
     type="button"
-    class="inline-flex h-11 w-11 items-center justify-center text-ink-4 transition-colors hover:text-ink-2 focus-visible:text-accent focus-visible:outline-none"
+    class="inline-flex h-11 w-11 items-center justify-center rounded-full text-ink-4 transition-colors hover:text-ink-2 focus-visible:text-accent focus-ring-inset"
     aria-label={accessibleLabel}
     aria-describedby={tooltipId}
     onclick={(e) => {
@@ -40,7 +48,7 @@
   <span
     id={tooltipId}
     role="tooltip"
-    class="tooltip pointer-events-none fixed inset-x-4 bottom-4 z-50 max-h-[calc(100dvh-2rem)] w-auto max-w-none overflow-y-auto overscroll-contain break-words opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 sm:inset-x-auto sm:right-4 sm:w-80"
+    class="tooltip pointer-events-none fixed inset-x-4 bottom-safe-4 z-50 max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-bottom,0px))] w-auto max-w-none overflow-y-auto overscroll-contain break-words opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 sm:inset-x-auto sm:right-4 sm:w-80"
   >
     {text}
   </span>

@@ -293,8 +293,8 @@ test('settings and tool capability cards stay within a small mobile viewport', a
   await page.locator('html').evaluate((element) => {
     element.style.fontSize = '125%'
   })
-  // Seven cards are taller than a phone, so the last one is reached by scrolling — what
-  // matters is that it is reachable and fully inside the column, not that it starts on screen.
+  // Seven rows can be taller than a phone at 125% text, so the last one may be reached by
+  // scrolling — what matters is that it is reachable and inside the column, not that it starts on screen.
   const systemCard = page.getByRole('button', { name: /^System/ })
   await systemCard.scrollIntoViewIfNeeded()
   await expect(systemCard).toBeInViewport()
@@ -337,7 +337,7 @@ test('every settings room reflows without horizontal page overflow', async ({ pa
 
   const rooms = ['Encoding', 'AI super-resolution', 'Files & safety', 'Media servers', 'Download managers', 'Notifications', 'System']
 
-  // The landing grid itself has to fit before any room does.
+  // The landing list itself has to fit before any room does.
   const gridFit = await page.locator('main').evaluate((main) => ({
     scrollWidth: main.scrollWidth,
     clientWidth: main.clientWidth,
@@ -375,9 +375,12 @@ test('information tooltips are translated, populated, and readable in every loca
     // by card position, because the card labels are translated and the order is not the point.
     for (const room of ['encoding', 'files']) {
       await page.goto(`/#/settings/${room}`)
+      await expect(page.locator('main h1')).toBeVisible()
       if (room === 'encoding') await page.locator('.workload-details summary').click()
       const tooltips = page.locator('main [role="tooltip"]')
-      expect(await tooltips.count()).toBeGreaterThan(0)
+      // Files & safety shows each explanation as its row's sentence, so only Encoding still
+      // has to carry tips; every tip that is there must work.
+      if (room === 'encoding') expect(await tooltips.count()).toBeGreaterThan(0)
 
       for (const tooltip of await tooltips.all()) {
         const id = await tooltip.getAttribute('id')
@@ -422,13 +425,142 @@ test('control rooms separate processing from connections and keep complete state
   await expect(page.locator('#max-jobs')).toHaveValue('3')
 })
 
-test('returning from a room restores keyboard focus to its card', async ({ page }) => {
+test('returning from a room restores keyboard focus to its row', async ({ page }) => {
   await mockSettings(page)
   await page.goto('/#/settings')
   await page.getByRole('button', { name: /^Files & safety/ }).click()
   await page.getByRole('button', { name: 'All settings' }).click()
   await expect(page.getByRole('button', { name: /^Files & safety/ })).toBeFocused()
 })
+
+test('the overview is two grouped lists with body-sized state and quiet icons', async ({ page }) => {
+  await mockSettings(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/settings')
+
+  const groups = page.locator('[data-settings-group]')
+  await expect(groups).toHaveCount(2)
+  for (const group of await groups.all()) {
+    await expect(group).toHaveClass(/\bcard\b/)
+    expect(await group.locator(':scope > ul > li > button[data-settings-room]').count()).toBeGreaterThan(0)
+  }
+  await expect(page.locator('[data-settings-room]')).toHaveCount(7)
+
+  // State is read at body size, never as micro-text, and nothing on a row wears the accent
+  // fill: that is kept for the one action that advances the work.
+  const rows = await page.locator('[data-settings-room]').evaluateAll(buttons => {
+    const probe = document.createElement('span')
+    probe.style.background = 'var(--accent-fill)'
+    document.body.append(probe)
+    const accentFill = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return buttons.map(button => ({
+      height: button.getBoundingClientRect().height,
+      stateSize: parseFloat(getComputedStyle(button.querySelector('[data-room-state]')!).fontSize),
+      accentFilled: [button, ...button.querySelectorAll('*')].some(el => getComputedStyle(el).backgroundColor === accentFill),
+    }))
+  })
+  for (const row of rows) {
+    expect(row.height).toBeGreaterThanOrEqual(44)
+    expect(row.stateSize).toBeGreaterThanOrEqual(14)
+    expect(row.accentFilled).toBe(false)
+  }
+
+  // Opening a row gives the room the page under one heading, with the way back above it.
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+  const headings = page.getByRole('heading', { level: 1 })
+  await expect(headings).toHaveCount(1)
+  await expect(headings).toHaveText('Encoding')
+  await expect(page.locator('#room-heading')).toBeFocused()
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(trail.getByRole('button', { name: 'All settings' })).toBeVisible()
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Encoding')
+})
+
+test('Encoding and Files & safety are setting rows that light up when changed and can be put back', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/encoding')
+  for (const label of ['Hardware decoding', 'HDR tone-map engine']) {
+    await expect(page.locator(`[data-setting-row="${label}"]`)).toBeVisible()
+  }
+  const toneMap = page.locator('[data-setting-row="HDR tone-map engine"]')
+  await page.locator('#hdr-tone-map-mode').selectOption('Hardware')
+  await expect(toneMap).toHaveAttribute('data-setting-changed', '')
+  await expect(toneMap.getByText('was Software (compatible)')).toBeVisible()
+  await toneMap.getByRole('button', { name: 'put back' }).click()
+  await expect(page.locator('#hdr-tone-map-mode')).toHaveValue('Software')
+  await expect(toneMap).not.toHaveAttribute('data-setting-changed', '')
+
+  await page.goto('/#/settings/files')
+  for (const label of ['Dry-run mode', 'Allow cross-filesystem replacement', 'Minimum free work disk', 'Cleanup retention']) {
+    await expect(page.locator(`[data-setting-row="${label}"]`)).toBeVisible()
+  }
+  await expect(page.locator('.settings-detail .card .card')).toHaveCount(0)
+
+  const crossFs = page.locator('[data-setting-row="Allow cross-filesystem replacement"]')
+  await page.getByRole('checkbox', { name: 'Allow cross-filesystem replacement', exact: true }).check()
+  await expect(crossFs).toHaveAttribute('data-setting-changed', '')
+  await expect(crossFs.getByText('was Off')).toBeVisible()
+  await crossFs.getByRole('button', { name: 'put back' }).click()
+  await expect(page.getByRole('checkbox', { name: 'Allow cross-filesystem replacement', exact: true })).not.toBeChecked()
+
+  const freeDisk = page.locator('[data-setting-row="Minimum free work disk"]')
+  await page.locator('#free-disk').fill('20')
+  await expect(freeDisk).toHaveAttribute('data-setting-changed', '')
+  const actions = page.locator('[data-settings-actions]')
+  await expect(actions).toHaveClass(/\bsticky-actions\b/)
+  await expect(actions).toContainText('1 unsaved change')
+  await actions.getByRole('button', { name: 'Discard' }).click()
+  await expect(page.locator('#free-disk')).toHaveValue('10')
+  await expect(actions).toHaveCount(0)
+})
+
+test('the settings save bar stays in reach, but scrolls with the page on a short viewport', async ({ page }) => {
+  await mockSettings(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/#/settings/encoding')
+  await page.locator('#max-jobs').fill('2')
+  const actions = page.locator('[data-settings-actions]')
+  await expect(actions).toBeVisible()
+  expect(await actions.evaluate(el => getComputedStyle(el).position)).toBe('sticky')
+  await page.setViewportSize({ width: 812, height: 375 })
+  expect(await actions.evaluate(el => getComputedStyle(el).position)).toBe('static')
+})
+
+for (const width of [320, 375, 2560]) {
+  test(`settings rows stay clean and finger-sized at ${width}px`, async ({ page }) => {
+    await mockSettings(page)
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/#/settings')
+    await expect(page.locator('[data-settings-room]')).toHaveCount(7)
+    expect(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+    const rows = await page.locator('[data-settings-room]').evaluateAll(buttons => buttons.map(button => {
+      const box = button.getBoundingClientRect()
+      const group = button.closest('[data-settings-group]')!.getBoundingClientRect()
+      const title = button.querySelector('.font-semibold')!.getBoundingClientRect()
+      const state = button.querySelector('[data-room-state]')!.getBoundingClientRect()
+      return {
+        height: box.height, inside: box.left >= group.left - 1 && box.right <= group.right + 1,
+        overflow: button.scrollWidth > button.clientWidth, titleRight: title.right, titleTop: title.top,
+        stateLeft: state.left, stateTop: state.top, description: button.querySelector('.text-caption')!.getBoundingClientRect().width,
+      }
+    }))
+    for (const row of rows) {
+      expect(row.height).toBeGreaterThanOrEqual(44)
+      expect(row.inside).toBe(true)
+      expect(row.overflow).toBe(false)
+      if (width >= 2560) {
+        // On an ultrawide screen the state sits beside the words, which keep a readable measure.
+        expect(row.stateLeft).toBeGreaterThan(row.titleRight)
+        expect(row.description).toBeLessThanOrEqual(720)
+      } else {
+        expect(row.stateTop).toBeGreaterThan(row.titleTop)
+      }
+    }
+  })
+}
 
 test('sidebar language menu fits its labels in expanded and collapsed rails', async ({ page }) => {
   await mockSettings(page)
@@ -512,7 +644,7 @@ test('settings child pages use the same content width as their overview', async 
     await page.goto(`/#/settings/${room}`)
     await expect(page.locator('.settings-detail-open')).toBeVisible()
     const body = await page.locator('.settings-detail-open').boundingBox()
-    const heading = await page.locator('.settings-room-heading').boundingBox()
+    const heading = await page.locator('.page-header').boundingBox()
     expect(body!.width, room).toBeGreaterThanOrEqual(main - 2)
     expect(Math.abs(body!.x - heading!.x), room).toBeLessThan(1)
     expect(Math.abs(body!.width - heading!.width), room).toBeLessThan(1)
@@ -1017,4 +1149,39 @@ test('the super-resolution probe shows software Vulkan, driver diagnostics and h
     }))
   await page.getByRole('button', { name: 'Test with a real sample run' }).click()
   await expect(page.locator('.tone-ok')).toContainText('NVIDIA GeForce GTX 1050')
+})
+
+test('typing the saved free-disk headroom back clears the dirty state, and saved notices do not stay sticky across rooms', async ({ page }) => {
+  await mockSettings(page)
+  await page.route('**/api/settings', async (route) => {
+    if (route.request().method() === 'PUT') return json(route, route.request().postDataJSON())
+    return json(route, settings)
+  })
+  await page.goto('/#/settings/files')
+
+  const freeDisk = page.locator('#free-disk')
+  const freeDiskRow = page.locator('[data-setting-row]', { has: freeDisk })
+  await freeDisk.fill('20')
+  await expect(freeDiskRow).toHaveAttribute('data-setting-changed', '')
+  await expect(page.locator('[data-settings-actions]')).toHaveCSS('position', 'sticky')
+
+  await freeDisk.fill('10')
+  await expect(freeDiskRow).not.toHaveAttribute('data-setting-changed', '')
+  await expect(page.locator('[data-settings-actions]')).toHaveCount(0)
+
+  await freeDisk.fill('25')
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect(page.locator('[data-settings-actions]')).toContainText('Settings saved.')
+  await expect(page.locator('[data-settings-actions]')).toHaveCSS('position', 'static')
+
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await expect(page.locator('[data-settings-actions]')).toHaveCount(0)
+})
+
+test('opening remote workers directly shows its own heading even when workers are switched off', async ({ page }) => {
+  await mockSettings(page)
+  await page.route('**/api/settings', route => json(route, { ...settings, remoteWorkersAvailable: true, remoteWorkersEnabled: false }))
+  await page.goto('/#/settings/workers')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Remote workers')
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Remote workers')
 })

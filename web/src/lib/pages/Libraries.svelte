@@ -2,16 +2,22 @@
   import { tick, untrack } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type RuleProfileSpec, type SaveLibrary, type TargetFolderCheck, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
+  import { formatAbsoluteDateTime, formatDateTime } from '../format'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import FilesChoice from '../components/FilesChoice.svelte'
   import Icon from '../components/Icon.svelte'
+  import OkMark from '../components/OkMark.svelte'
+  import InfoTip from '../components/InfoTip.svelte'
   import SettingRow, { type SettingOrigin, type SettingTag } from '../components/SettingRow.svelte'
   import LibrarySummary from '../components/LibrarySummary.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import Chip from '../components/Chip.svelte'
+  import Segmented from '../components/Segmented.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
@@ -28,6 +34,7 @@
   import { encoderFamily, encoderIgnores, encoderName, type EncoderSetting } from '../encoder-support'
 
   let libraries = $state<Library[]>([])
+  let loading = $state(true)
   let options = $state<LibraryOptions>({
     mediaTypes: [],
     ruleProfiles: [],
@@ -902,7 +909,7 @@
   let saving = $state(false)
   const editorBase = $derived(editingId === 0 ? '/libraries/new' : `/libraries/${editingId}/configure`)
   const page = $derived.by((): LibraryPage => {
-    const segment = router.path.slice(editorBase.length + 1)
+    const segment = router.path.slice(editorBase.length + 1).split('#')[0]
     const wanted = (Object.hasOwn(pageNames, segment) ? segment : formerRooms[segment]) as LibraryPage | undefined
     if (wanted && pages.includes(wanted)) return wanted
     // An encode page this kind of library does not have: show the one it does.
@@ -910,6 +917,10 @@
       return (['video', 'audio', 'images'] as const).find((candidate) => pages.includes(candidate)) ?? 'overview'
     }
     return editingId === 0 ? 'files' : 'overview'
+  })
+  const routeAnchor = $derived.by(() => {
+    const hashAt = router.path.indexOf('#')
+    return hashAt >= 0 ? router.path.slice(hashAt + 1) : null
   })
   const editorTitle = $derived(activeTab === 'candidates' ? i18n.m.libraries.tab_candidates : activeTab === 'excluded' ? i18n.m.libraries.tab_excluded : page === 'overview' ? form.name || i18n.m.libraries.add_library : pageNames[page])
   function goPage(next: LibraryPage, anchor?: string) {
@@ -921,28 +932,40 @@
     pendingAnchor = anchor
     void tick().then(scrollToPendingAnchor)
   }
+  function jumpToSection(id: string) {
+    const target = document.getElementById(id)
+    if (!target) return
+    target.scrollIntoView({ block: 'start' })
+    const heading = document.getElementById(`${id}-heading`) ?? target
+    heading.focus({ preventScroll: true })
+  }
   let pendingAnchor: string | null = null
   function scrollToPendingAnchor() {
     if (!pendingAnchor) return
-    const target = document.getElementById(pendingAnchor)
-    if (!target) return
+    const id = pendingAnchor
+    if (!document.getElementById(id)) return
     pendingAnchor = null
-    target.scrollIntoView({ block: 'start' })
+    jumpToSection(id)
   }
   function confirmLeavingEditor(): boolean {
-    const next = window.location.hash.replace(/^#/, '')
+    const next = window.location.hash.replace(/^#/, '').split('#')[0]
     if (next === editorBase || next.startsWith(`${editorBase}/`)) return true
     return confirmDiscardIfDirty()
   }
   // Only the fields unmount between pages. The editor, form and validation stay alive.
   $effect(() => {
     page
+    const fragment = routeAnchor
     activeTab = 'rules'
     if (editingId === null) return
+    if (fragment) pendingAnchor = fragment
     void tick().then(() => {
-      workflowHeading?.focus({ preventScroll: true })
-      if (pendingAnchor) scrollToPendingAnchor()
-      else document.querySelector('main')?.scrollTo({ top: 0 })
+      if (pendingAnchor) {
+        scrollToPendingAnchor()
+      } else {
+        workflowHeading?.focus({ preventScroll: true })
+        document.querySelector('main')?.scrollTo({ top: 0 })
+      }
     })
   })
 
@@ -972,6 +995,8 @@
       ;[libraries, options] = await Promise.all([api.libraries(), api.libraryOptions()])
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.libraries.error_load
+    } finally {
+      loading = false
     }
     // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
     void loadSummaries()
@@ -1086,6 +1111,13 @@
     } finally {
       editorCandidatesLoading = false
     }
+  }
+
+  // The Excluded tab is fetched when it is opened, so it shows exclusions made since the editor loaded.
+  function selectEditorTab(tab: typeof activeTab) {
+    if (tab === activeTab) return
+    activeTab = tab
+    if (tab === 'excluded' && editingId) void loadEditorExclusions(editingId)
   }
 
   async function loadEditorExclusions(libraryId: number) {
@@ -1557,6 +1589,9 @@
       : verificationError === i18n.m.quality_first.audio_no_downmix || verificationError === i18n.m.soundtrack_quality.validation || verificationError === i18n.m.audio_quality.validation ? 'audio'
         : 'checks',
   )
+  const hasValidationError = $derived(
+    !!(audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError) || targetFolderProblem),
+  )
   // The built-in presets side by side, as the server sends them, so none of them is a mystery.
   const presetColumns = $derived(encodeProfiles.flatMap((profile) => options.ruleProfileSpecs.filter((spec) => spec.profile === profile)))
   const presetRows = $derived<{ label: string; value: (spec: RuleProfileSpec) => string }[]>([
@@ -1581,46 +1616,46 @@
   ])
 </script>
 
+{#snippet addLibraryButton()}
+  <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
+    <Icon name="plus" class="h-4 w-4" />
+    {i18n.m.libraries.add_library}
+  </button>
+{/snippet}
+
 {#if editingId === null}
-  <header class="mb-6 flex items-start justify-between gap-4">
-    <div>
-      <h1 class="page-title">{i18n.m.nav.libraries}</h1>
-      <p class="page-subtitle">{i18n.m.libraries.subtitle}</p>
-    </div>
-    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
-      <Icon name="plus" class="h-4 w-4" />
-      {i18n.m.libraries.add_library}
-    </button>
-  </header>
+  <!-- Add library is the list's one primary action. With no libraries yet the empty state
+       carries it instead, so the page never shows the same accent fill twice. -->
+  <PageHeader title={i18n.m.nav.libraries} subtitle={i18n.m.libraries.subtitle} actions={libraries.length > 0 ? addLibraryButton : undefined} />
 {:else}
-  <header class="mb-6">
-    <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
-      <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
-      <span aria-hidden="true">/</span>
-      {#if page !== 'overview' || activeTab !== 'rules'}
-        <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+  <PageHeader title={editorTitle} bind:headingEl={workflowHeading} headingProps={{ 'data-workflow-heading': true }}>
+    {#snippet eyebrow()}
+      <nav class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+        <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
         <span aria-hidden="true">/</span>
-      {/if}
-      <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
-    </nav>
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
-        <p class="page-subtitle break-words" data-library-facts>
-          {form.path}{#if savedLibrary}{' · '}{plural(savedLibrary.fileCount, i18n.m.libraryEditor.files_count_one, i18n.m.libraryEditor.files_count_other, savedLibrary.fileCount.toLocaleString())}{#if summaries[savedLibrary.id]}{' · '}{t(i18n.m.libraryEditor.can_optimise, { count: summaries[savedLibrary.id].eligible.toLocaleString() })}{/if}{/if}
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
-        {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
-          <button class="btn min-h-11" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
-            <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
-            {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
-          </button>
+        {#if page !== 'overview' || activeTab !== 'rules'}
+          <button class="focus-ring hit-target-square rounded px-1 hover:text-accent" onclick={() => goPage('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+          <span aria-hidden="true">/</span>
         {/if}
-      </div>
-    </div>
-  </header>
+        <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
+      </nav>
+    {/snippet}
+    {#snippet description()}
+      <p class="page-subtitle break-words" data-library-facts>
+        {form.path}{#if savedLibrary}{' · '}{plural(savedLibrary.fileCount, i18n.m.libraryEditor.files_count_one, i18n.m.libraryEditor.files_count_other, savedLibrary.fileCount.toLocaleString())}{#if summaries[savedLibrary.id]}{' · '}{t(i18n.m.libraryEditor.can_optimise, { count: summaries[savedLibrary.id].eligible.toLocaleString() })}{/if}{/if}
+      </p>
+    {/snippet}
+    {#snippet actions()}
+      <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
+      {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
+        {#if isDirty}<span id="scan-unsaved" class="text-xs text-ink-3" data-scan-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
+        <button class="btn" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} aria-describedby={isDirty ? 'scan-unsaved' : undefined}>
+          <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
+          {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
+        </button>
+      {/if}
+    {/snippet}
+  </PageHeader>
 {/if}
 
 {#if error}
@@ -1677,7 +1712,7 @@
   {#if editingId && editingId > 0}
     <SettingRow label={i18n.m.calibration.eyebrow} sentence={i18n.m.calibration.intro}
       disabledReason={isDirty ? i18n.m.libraryEditor.save_first : null}>
-      <button type="button" class="btn min-h-11" disabled={isDirty} onclick={() => router.go(`/libraries/${editingId}/quality-check`)}>{i18n.m.calibration.eyebrow}</button>
+      <button type="button" class="btn" disabled={isDirty} onclick={() => router.go(`/libraries/${editingId}/quality-check`)}>{i18n.m.calibration.eyebrow}</button>
     </SettingRow>
   {/if}
 {/snippet}
@@ -1696,7 +1731,7 @@
     <SettingRow label={i18n.m.libraryEditor.folder} sentence={i18n.m.libraryEditor.folder_sentence} controlId="lib-path">
       <div class="flex gap-2">
         <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-        <button type="button" class="btn min-h-11 flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
+        <button type="button" class="btn flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
       </div>
     </SettingRow>
     <SettingRow label={i18n.m.libraries.media_type} sentence={i18n.m.libraryWorkflow.type_hint} controlId="lib-type">
@@ -1724,7 +1759,7 @@
       <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
            under an HEVC target). Off by default; the size-saving check still protects the original. -->
       <SettingRow label={i18n.m.libraries.same_codec_label} sentence={i18n.m.libraries.same_codec_hint} more={i18n.m.libraries.same_codec_tip}>
-        <label class="flex min-h-11 cursor-pointer items-center justify-end gap-2 text-sm">
+        <label class="flex hit-target cursor-pointer items-center justify-end gap-2 text-sm">
           <input type="checkbox" class="checkbox" aria-label={i18n.m.libraries.same_codec_label} checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
         </label>
         {#if sameCodecGb !== ''}
@@ -1745,7 +1780,7 @@
         <div class="flex flex-wrap gap-2" role="group" aria-label={i18n.m.libraries.skip_codecs}>
           {#each offeredSourceCodecs as codec (codec)}
             <button type="button" aria-pressed={skippedCodecs.includes(codec)} onclick={() => toggleSkippedCodec(codec)}
-              class="choice min-h-11 rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec) ? 'choice-selected' : 'text-ink-2'}">{codec}</button>
+              class="choice hit-target justify-center rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec) ? 'choice-selected' : 'text-ink-2'}">{codec}</button>
           {/each}
         </div>
       </SettingRow>
@@ -1763,354 +1798,345 @@
 {/snippet}
 
 {#snippet videoPage()}
-  <div class="xl:grid xl:grid-cols-[10rem_minmax(0,1fr)] xl:items-start xl:gap-6">
-    <nav class="sticky top-2 mb-4 hidden self-start xl:block" aria-label={i18n.m.libraryEditor.on_this_page}>
-      <ul class="space-y-1 text-sm">
-        {#each videoSections as section (section.id)}
-          <li><button type="button" class="focus-ring min-h-11 w-full rounded-lg px-3 text-left text-ink-2 hover:bg-raised" onclick={() => document.getElementById(section.id)?.scrollIntoView({ block: 'start' })}>{section.title}</button></li>
-        {/each}
-      </ul>
-    </nav>
-    <div class="min-w-0 space-y-5">
-      <ConfigSection id="library-optimisation" title={i18n.m.libraryEditor.what_title} description={i18n.m.libraryEditor.what_intro}>
-        <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
-             shorter cards with a block of dead space under their text. -->
-        <fieldset class="grid items-start gap-2 grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))]">
-          <legend class="sr-only">{i18n.m.libraryEditor.what_title}</legend>
-          {#each [
-            { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
-            { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
-            { value: 'track-cleanup', label: i18n.m.libraries.track_cleanup_label, hint: i18n.m.libraries.track_cleanup_hint },
-          ] as mode}
-            <label class="choice min-h-24 rounded-lg p-3 {processingMode === mode.value ? 'choice-selected' : ''}">
-              <span class="flex items-start gap-2">
-                <input type="radio" name="processing-mode" class="mt-0.5 accent-accent-fill" value={mode.value}
-                  checked={processingMode === mode.value} onchange={() => setProcessingMode(mode.value as ProcessingMode)}
-                  onclick={() => {
-                    // Choosing the mode a library already has applies it again, which is how a codec
-                    // left on a clean-up library is cleared. A radio that is already on fires no change.
-                    if (processingMode === mode.value && mode.value !== 'encode') setProcessingMode(mode.value as ProcessingMode)
-                  }} />
-                <span class="min-w-0 break-words">
-                  <span class="block text-sm font-medium text-ink">{mode.label}</span>
-                  <span class="mt-1 block text-xs font-normal leading-relaxed text-ink-3">{mode.hint}</span>
-                </span>
+  <div class="min-w-0 space-y-5">
+    <ConfigSection id="library-optimisation" title={i18n.m.libraryEditor.what_title} description={i18n.m.libraryEditor.what_intro}>
+      <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
+           shorter cards with a block of dead space under their text. -->
+      <fieldset class="grid items-start gap-2 grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))]">
+        <legend class="sr-only">{i18n.m.libraryEditor.what_title}</legend>
+        {#each [
+          { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
+          { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
+          { value: 'track-cleanup', label: i18n.m.libraries.track_cleanup_label, hint: i18n.m.libraries.track_cleanup_hint },
+        ] as mode}
+          <label class="choice min-h-24 rounded-lg p-3 {processingMode === mode.value ? 'choice-selected' : ''}">
+            <span class="flex items-start gap-2">
+              <input type="radio" name="processing-mode" class="mt-0.5 accent-accent-fill" value={mode.value}
+                checked={processingMode === mode.value} onchange={() => setProcessingMode(mode.value as ProcessingMode)}
+                onclick={() => {
+                  // Choosing the mode a library already has applies it again, which is how a codec
+                  // left on a clean-up library is cleared. A radio that is already on fires no change.
+                  if (processingMode === mode.value && mode.value !== 'encode') setProcessingMode(mode.value as ProcessingMode)
+                }} />
+              <span class="min-w-0 break-words">
+                <span class="block text-sm font-medium text-ink">{mode.label}</span>
+                <span class="mt-1 block text-xs font-normal leading-relaxed text-ink-3">{mode.hint}</span>
               </span>
-            </label>
-          {/each}
-        </fieldset>
+            </span>
+          </label>
+        {/each}
+      </fieldset>
 
-        {#if trackCleanupNeedsLanguages}
-          <p class="callout tone-warn mt-3 text-xs">
-            {i18n.m.libraryEditor.cleanup_needs_languages}
-            <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium underline" onclick={() => goPage('audio', 'library-languages')}>{pageNames.audio}</button>
-          </p>
-        {/if}
+      {#if trackCleanupNeedsLanguages}
+        <p class="callout tone-warn mt-3 text-xs">
+          {i18n.m.libraryEditor.cleanup_needs_languages}
+          <button type="button" class="focus-ring hit-target rounded px-1 font-medium underline" onclick={() => goPage('audio', 'library-languages')}>{pageNames.audio}</button>
+        </p>
+      {/if}
 
-        {#if !isNoEncodeProfile}
-          <div class="mt-5 border-t border-line pt-4">
-            <SettingRow label={i18n.m.libraryEditor.preset_label} sentence={i18n.m.libraryEditor.preset_sentence} stacked>
-              <div class="flex flex-wrap items-center gap-2" role="group" aria-label={i18n.m.libraryEditor.preset_label}>
-                {#each encodeProfiles as profile}
-                  <button type="button" class="choice min-h-11 rounded-full px-4 text-sm font-medium {form.ruleProfile === profile ? 'choice-selected' : 'text-ink-2'}"
-                    aria-pressed={form.ruleProfile === profile} onclick={() => choosePreset(profile)}>
-                    {presetName(profile, i18n.m)}
-                    <span class="ml-1.5 font-mono text-xs font-normal text-ink-3">{specFor(profile).codec}</span>
-                  </button>
-                {/each}
-              </div>
-              <p class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-3">
-                <span class="badge tone-accent" data-preset-state>{presetState}</span>
-                <span>{presetSummaries[form.ruleProfile] ?? ''}</span>
-              </p>
-              <!-- A preset is only mysterious until its values are on the page. These are the server's own. -->
-              <details class="preset-table mt-1" data-preset-table>
-                <summary class="focus-ring inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
-                  <Icon name="info" class="h-3.5 w-3.5" />{i18n.m.libraryEditor.preset_table}
-                </summary>
-                <div class="overflow-x-auto">
-                  <table class="w-full min-w-[34rem] text-left text-xs">
-                    <thead>
-                      <tr class="text-ink-3">
-                        <td></td>
-                        {#each presetColumns as column (column.profile)}<th scope="col" class="px-2 py-2 font-semibold {column.profile === form.ruleProfile ? 'text-accent' : ''}">{presetName(column.profile, i18n.m)}</th>{/each}
+      {#if !isNoEncodeProfile}
+        <div class="mt-5 hairline-t pt-4">
+          <SettingRow label={i18n.m.libraryEditor.preset_label} sentence={i18n.m.libraryEditor.preset_sentence} stacked>
+            <div class="flex flex-wrap items-center gap-2" role="group" aria-label={i18n.m.libraryEditor.preset_label}>
+              {#each encodeProfiles as profile}
+                <button type="button" class="choice hit-target justify-center rounded-full px-4 text-sm font-medium {form.ruleProfile === profile ? 'choice-selected' : 'text-ink-2'}"
+                  aria-pressed={form.ruleProfile === profile} onclick={() => choosePreset(profile)}>
+                  {presetName(profile, i18n.m)}
+                  <span class="ml-1.5 font-mono text-xs font-normal text-ink-3">{specFor(profile).codec}</span>
+                </button>
+              {/each}
+            </div>
+            <p class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-3">
+              <span class="badge tone-neutral" data-preset-state>{presetState}</span>
+              <span>{presetSummaries[form.ruleProfile] ?? ''}</span>
+            </p>
+            <!-- A preset is only mysterious until its values are on the page. These are the server's own. -->
+            <details class="preset-table mt-1" data-preset-table>
+              <summary class="focus-ring hit-target cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
+                <Icon name="info" class="h-3.5 w-3.5" />{i18n.m.libraryEditor.preset_table}
+              </summary>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[34rem] text-left text-xs">
+                  <thead>
+                    <tr class="text-ink-3">
+                      <td></td>
+                      {#each presetColumns as column (column.profile)}<th scope="col" class="px-2 py-2 font-semibold {column.profile === form.ruleProfile ? 'rounded-t bg-accent-soft text-ink' : ''}">{presetName(column.profile, i18n.m)}</th>{/each}
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line-soft text-ink-2">
+                    {#each presetRows as presetRow (presetRow.label)}
+                      <tr>
+                        <th scope="row" class="py-2 pr-2 font-medium text-ink-3">{presetRow.label}</th>
+                        {#each presetColumns as column (column.profile)}<td class="px-2 py-2">{presetRow.value(column)}</td>{/each}
                       </tr>
-                    </thead>
-                    <tbody class="divide-y divide-line-soft text-ink-2">
-                      {#each presetRows as presetRow (presetRow.label)}
-                        <tr>
-                          <th scope="row" class="py-2 pr-2 font-medium text-ink-3">{presetRow.label}</th>
-                          {#each presetColumns as column (column.profile)}<td class="px-2 py-2">{presetRow.value(column)}</td>{/each}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-                <p class="mt-2 max-w-prose text-xs leading-relaxed text-ink-3">{i18n.m.libraryEditor.preset_leaves}</p>
-              </details>
-            </SettingRow>
-          </div>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              <p class="mt-2 max-w-prose text-xs leading-relaxed text-ink-3">{i18n.m.libraryEditor.preset_leaves}</p>
+            </details>
+          </SettingRow>
+        </div>
+      {/if}
+    </ConfigSection>
+
+    {#if !isTrackCleanupProfile}
+      <ConfigSection id="library-format" title={i18n.m.libraryEditor.format_title} description={i18n.m.libraryEditor.format_intro}>
+        {#if !isRemuxProfile}
+          <SettingRow label={i18n.m.libraryEditor.codec_label} sentence={i18n.m.libraryEditor.codec_sentence} controlId="lib-codec"
+            origin={presetRaw ? presetOrigin('targetVideoCodec', codecName(presetRaw.codec), () => (form.targetVideoCodec = null)) : null}>
+            <select id="lib-codec" class="input" value={form.targetVideoCodec ?? presetRaw?.codec ?? ''}
+              onchange={(event) => (form.targetVideoCodec = event.currentTarget.value === presetRaw?.codec ? null : event.currentTarget.value)}>
+              {#each options.videoCodecs as codec}<option value={codec}>{codecName(codec)}</option>{/each}
+            </select>
+          </SettingRow>
         {/if}
+        <SettingRow label={i18n.m.libraries.container} sentence={i18n.m.libraryEditor.container_sentence} more={i18n.m.libraryEditor.container_more} controlId="lib-container"
+          tags={[{ text: form.targetContainer === 'source' ? i18n.m.librarySummary.tag_renames_some : i18n.m.librarySummary.tag_renames }]}
+          origin={presetRaw?.container && form.targetContainer !== 'source' ? presetOrigin('targetContainer', presetRaw.container.toUpperCase(), () => (form.targetContainer = null)) : null}>
+          <select id="lib-container" class="input" value={form.targetContainer ?? presetRaw?.container ?? ''}
+            onchange={(event) => (form.targetContainer = event.currentTarget.value === presetRaw?.container ? null : event.currentTarget.value)}>
+            <option value="source">{i18n.m.libraries.container_source}</option>
+            {#each options.containers as container}<option value={container}>{container.toUpperCase()}</option>{/each}
+          </select>
+        </SettingRow>
+      </ConfigSection>
+    {/if}
+
+    {#if isRemuxProfile}
+      <!-- A clean-up does not touch the picture, but the server still skips by height and by
+           HDR, so both stay in reach. -->
+      <ConfigSection id="library-remux-skips" title={i18n.m.libraryEditor.remux_skips_title} description={i18n.m.libraryEditor.remux_skips_intro}>
+        <SettingRow label={i18n.m.libraries.skip_above} sentence={i18n.m.libraryEditor.remux_tall_sentence} more={i18n.m.libraries.skip_above_tip} controlId="lib-maxheight">
+          <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+            {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.hdr_label} sentence={i18n.m.libraryEditor.remux_hdr_sentence} more={i18n.m.libraries.hdr_dv_tip} controlId="lib-hdr">
+          <select id="lib-hdr" class="input" value={form.hdrHandling ?? presetRaw?.hdrHandling ?? ''}
+            onchange={(event) => (form.hdrHandling = event.currentTarget.value === presetRaw?.hdrHandling ? null : event.currentTarget.value)}>
+            <!-- Nothing is re-encoded, so converting to SDR is not on offer; a saved value still shows. -->
+            {#each options.hdrHandlings.filter((hdr) => hdr !== 'TonemapToSdr' || form.hdrHandling === hdr) as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
+          </select>
+        </SettingRow>
+      </ConfigSection>
+    {/if}
+    {#if !isNoEncodeProfile}
+      <ConfigSection id="library-quality" title={i18n.m.libraries.quality} description={i18n.m.libraryEditor.quality_intro}>
+        <SettingRow label={i18n.m.quality_first.strategy_title} sentence={i18n.m.libraryEditor.quality_how_sentence} more={i18n.m.libraries.quality_strategy_adaptive_cost} controlId="lib-quality-mode"
+          tags={qualityMode === 'target' ? [{ text: i18n.m.libraries.experimental, tone: 'accent' }] : []}>
+          <select id="lib-quality-mode" class="input" value={qualityMode} onchange={(event) => setQualityMode(event.currentTarget.value as QualityMode)}>
+            <option value="target">{i18n.m.libraryEditor.quality_how_target}</option>
+            <option value="fixed-checked">{i18n.m.libraryEditor.quality_how_fixed_checked}</option>
+            <option value="fixed-unchecked">{i18n.m.libraryEditor.quality_how_fixed_unchecked}</option>
+          </select>
+        </SettingRow>
+
+        <SettingRow label={i18n.m.libraryEditor.target_label} sentence={i18n.m.libraryEditor.target_sentence} more={i18n.m.settings.vmaf_hint} controlId="lib-vmaf-policy"
+          disabledReason={vmafMode === 'off' ? i18n.m.libraryEditor.target_unused : null}>
+          <select id="lib-vmaf-policy" class="input" value={vmafMode === 'off' ? 'lossless' : vmafMode} disabled={vmafMode === 'off'}
+            onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}>
+            {#each vmafPresets as level}<option value={level.mode}>{t(i18n.m.libraryEditor.level_score, { level: level.name(i18n.m), score: level.harmonic })}</option>{/each}
+            <option value="custom">{i18n.m.libraries.stop_custom}</option>
+          </select>
+          {#if vmafMode === 'custom'}
+            <div class="mt-3 grid gap-3 sm:grid-cols-3">
+              <div>
+                <label class="label" for="lib-vmaf-harmonic">{i18n.m.libraryEditor.floor_whole}</label>
+                <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
+              </div>
+              <div>
+                <label class="label" for="lib-vmaf-fifth">{i18n.m.libraryEditor.floor_weakest}</label>
+                <input id="lib-vmaf-fifth" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafMin} />
+              </div>
+              <div>
+                <label class="label" for="lib-vmaf-catastrophic">{i18n.m.libraryEditor.floor_worst}</label>
+                <input id="lib-vmaf-catastrophic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafCatastrophicMin} />
+              </div>
+            </div>
+          {:else if vmafMode !== 'off'}
+            <div class="mt-2 flex flex-wrap gap-1.5 text-xs" data-vmaf-floors>
+              <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_whole} {form.minVmafHarmonicMean}</span>
+              <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_weakest} {form.minVmafMin}</span>
+              <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_worst} {form.minVmafCatastrophicMin}</span>
+            </div>
+          {/if}
+          {#if vmafError}<p id="lib-vmaf-error" class="mt-2 text-xs text-bad" role="alert">{vmafError}</p>{/if}
+        </SettingRow>
+
+        {@const presetCrf = presetRaw?.crf ?? 24}
+        {@const crf = form.qualityCrf ?? presetCrf}
+        <SettingRow label={qualityMode === 'target' ? i18n.m.libraryEditor.crf_label_start : i18n.m.libraries.quality_crf}
+          sentence={qualityMode === 'target' ? i18n.m.libraryEditor.crf_sentence_target : i18n.m.libraryEditor.crf_sentence_fixed} controlId="lib-crf"
+          origin={presetOrigin('qualityCrf', String(presetCrf), () => (form.qualityCrf = null))}>
+          <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
+            <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
+            <input id="lib-crf" class="min-w-0 w-full accent-accent-fill" type="range" min="14" max="40" step="1" value={crf}
+              oninput={(event) => (form.qualityCrf = Number(event.currentTarget.value) === presetCrf ? null : Number(event.currentTarget.value))} />
+            <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
+            <span class="badge w-10 justify-center tone-accent" data-crf-value>{crf}</span>
+          </div>
+          {#if options.hardwareQualityHeadroom > 0}
+            <p class="mt-2 text-xs leading-relaxed text-ink-3">{t(i18n.m.libraries.quality_hardware_note, { hardware: Math.max(0, crf - options.hardwareQualityHeadroom), offset: options.hardwareQualityHeadroom })}</p>
+          {/if}
+        </SettingRow>
+
+        <SettingRow label={i18n.m.libraryEditor.sampling_label} sentence={i18n.m.libraryEditor.sampling_sentence}
+          more={`${i18n.m.settings.vmaf_clip_hint} ${i18n.m.settings.vmaf_subsample_hint}`} controlId="lib-vmaf-sampling"
+          disabledReason={vmafMode === 'off' ? i18n.m.libraryEditor.target_unused : null}>
+          <select id="lib-vmaf-sampling" class="input" value={vmafMode === 'off' ? 'samples' : samplingChoice} disabled={vmafMode === 'off'}
+            onchange={(event) => setSampling(event.currentTarget.value)}>
+            <option value="samples">{i18n.m.queue.vmaf_sampling_three}</option>
+            <option value="full">{i18n.m.libraryEditor.sampling_full}</option>
+            <option value="full-3">{i18n.m.libraryEditor.sampling_full_third}</option>
+            {#if vmafMode !== 'off' && samplingChoice === 'custom'}
+              <option value="custom">{t(form.clipVmafEnabled ? i18n.m.libraryEditor.sampling_custom_samples : i18n.m.libraryEditor.sampling_custom_full, { interval: form.vmafFrameSubsample ?? 1 })}</option>
+            {/if}
+          </select>
+        </SettingRow>
+
+        {#if showVideoOptions && !isNoEncodeProfile}{@render qualityCheckRow()}{/if}
       </ConfigSection>
 
-      {#if !isTrackCleanupProfile}
-        <ConfigSection id="library-format" title={i18n.m.libraryEditor.format_title} description={i18n.m.libraryEditor.format_intro}>
-          {#if !isRemuxProfile}
-            <SettingRow label={i18n.m.libraryEditor.codec_label} sentence={i18n.m.libraryEditor.codec_sentence} controlId="lib-codec"
-              origin={presetRaw ? presetOrigin('targetVideoCodec', codecName(presetRaw.codec), () => (form.targetVideoCodec = null)) : null}>
-              <select id="lib-codec" class="input" value={form.targetVideoCodec ?? presetRaw?.codec ?? ''}
-                onchange={(event) => (form.targetVideoCodec = event.currentTarget.value === presetRaw?.codec ? null : event.currentTarget.value)}>
-                {#each options.videoCodecs as codec}<option value={codec}>{codecName(codec)}</option>{/each}
-              </select>
-            </SettingRow>
-          {/if}
-          <SettingRow label={i18n.m.libraries.container} sentence={i18n.m.libraryEditor.container_sentence} more={i18n.m.libraryEditor.container_more} controlId="lib-container"
-            tags={[{ text: form.targetContainer === 'source' ? i18n.m.librarySummary.tag_renames_some : i18n.m.librarySummary.tag_renames }]}
-            origin={presetRaw?.container && form.targetContainer !== 'source' ? presetOrigin('targetContainer', presetRaw.container.toUpperCase(), () => (form.targetContainer = null)) : null}>
-            <select id="lib-container" class="input" value={form.targetContainer ?? presetRaw?.container ?? ''}
-              onchange={(event) => (form.targetContainer = event.currentTarget.value === presetRaw?.container ? null : event.currentTarget.value)}>
-              <option value="source">{i18n.m.libraries.container_source}</option>
-              {#each options.containers as container}<option value={container}>{container.toUpperCase()}</option>{/each}
-            </select>
-          </SettingRow>
-        </ConfigSection>
-      {/if}
+      <ConfigSection id="library-picture" title={i18n.m.libraryEditor.picture_title} description={i18n.m.libraryEditor.picture_intro}>
+        <SettingRow label={i18n.m.libraryEditor.tall_label} sentence={i18n.m.libraryEditor.tall_sentence} more={`${i18n.m.libraries.video_downscale_to_tip} ${i18n.m.libraries.skip_above_tip}`}
+          tags={form.videoDownscaleHeight ? pictureChanged : []}>
+          <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to}</label>
+          <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
+            <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
+            {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
+          </select>
+          <label class="label mt-3" for="lib-maxheight">{i18n.m.libraries.skip_above}</label>
+          <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+            {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.fps_label} sentence={i18n.m.libraryEditor.fps_sentence} more={i18n.m.libraries.video_fps_cap_tip} controlId="lib-fps-cap"
+          tags={form.maxFrameRate ? pictureChanged : []}>
+          <select id="lib-fps-cap" class="input" bind:value={form.maxFrameRate}>
+            {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraries.crop_bars_label} sentence={i18n.m.libraryEditor.crop_sentence}
+          more={`${i18n.m.libraries.crop_bars_tip} ${i18n.m.libraries.crop_bars_on_detail}`} tags={form.cropBlackBars ? pictureChanged : []}>
+          <Toggle bare bind:checked={form.cropBlackBars} label={i18n.m.libraries.crop_bars_label} />
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.hdr_label} sentence={i18n.m.libraryEditor.hdr_sentence} more={i18n.m.libraries.hdr_dv_tip} controlId="lib-hdr"
+          tags={(form.hdrHandling ?? presetRaw?.hdrHandling) === 'TonemapToSdr' ? pictureChanged : []}
+          origin={presetRaw ? presetOrigin('hdrHandling', hdrLabel(presetRaw.hdrHandling), () => (form.hdrHandling = null)) : null}>
+          <select id="lib-hdr" class="input" value={form.hdrHandling ?? presetRaw?.hdrHandling ?? ''}
+            onchange={(event) => (form.hdrHandling = event.currentTarget.value === presetRaw?.hdrHandling ? null : event.currentTarget.value)}>
+            {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
+          </select>
+        </SettingRow>
+        <!-- Dolby Vision is left untouched by default: a re-encode drops the DV layer and a Profile 5
+             source comes out green and pink. Opt in only if losing the DV presentation is acceptable. -->
+        <SettingRow label={i18n.m.libraryEditor.dv_label} sentence={i18n.m.libraryEditor.dv_sentence} more={i18n.m.libraries.dolby_vision_tip} controlId="lib-dolby-vision"
+          tags={form.optimiseDolbyVision ? pictureChanged : []}>
+          <select id="lib-dolby-vision" class="input" value={form.optimiseDolbyVision ? 'reencode' : 'skip'} onchange={(event) => (form.optimiseDolbyVision = event.currentTarget.value === 'reencode')}>
+            <option value="skip">{i18n.m.libraryEditor.dv_skip}</option>
+            <option value="reencode">{i18n.m.libraryEditor.dv_reencode}</option>
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraryEditor.interlaced_label} sentence={i18n.m.libraryEditor.interlaced_sentence} more={i18n.m.libraries.deinterlace_tip} controlId="lib-deinterlace"
+          tags={form.deinterlaceVideo ? pictureChanged : []}>
+          <select id="lib-deinterlace" class="input" value={form.deinterlaceVideo ? 'deinterlace' : 'leave'} onchange={(event) => (form.deinterlaceVideo = event.currentTarget.value === 'deinterlace')}>
+            <option value="leave">{i18n.m.libraryEditor.interlaced_leave}</option>
+            <option value="deinterlace">{i18n.m.libraryEditor.interlaced_deinterlace}</option>
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraries.noise_label} sentence={i18n.m.libraryEditor.noise_sentence} more={i18n.m.libraries.noise_tip} controlId="lib-noise"
+          tags={form.noiseReduction !== 'Off' ? pictureChanged : []}>
+          <select id="lib-noise" class="input" bind:value={form.noiseReduction}>
+            <option value="Off">{i18n.m.libraries.noise_off}</option>
+            <option value="Light">{i18n.m.libraries.noise_light}</option>
+            <option value="Strong">{i18n.m.libraries.noise_strong}</option>
+          </select>
+        </SettingRow>
+      </ConfigSection>
 
-      {#if isRemuxProfile}
-        <!-- A clean-up does not touch the picture, but the server still skips by height and by
-             HDR, so both stay in reach. -->
-        <ConfigSection id="library-remux-skips" title={i18n.m.libraryEditor.remux_skips_title} description={i18n.m.libraryEditor.remux_skips_intro}>
-          <SettingRow label={i18n.m.libraries.skip_above} sentence={i18n.m.libraryEditor.remux_tall_sentence} more={i18n.m.libraries.skip_above_tip} controlId="lib-maxheight">
-            <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
-              {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraryEditor.hdr_label} sentence={i18n.m.libraryEditor.remux_hdr_sentence} more={i18n.m.libraries.hdr_dv_tip} controlId="lib-hdr">
-            <select id="lib-hdr" class="input" value={form.hdrHandling ?? presetRaw?.hdrHandling ?? ''}
-              onchange={(event) => (form.hdrHandling = event.currentTarget.value === presetRaw?.hdrHandling ? null : event.currentTarget.value)}>
-              <!-- Nothing is re-encoded, so converting to SDR is not on offer; a saved value still shows. -->
-              {#each options.hdrHandlings.filter((hdr) => hdr !== 'TonemapToSdr' || form.hdrHandling === hdr) as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
-            </select>
-          </SettingRow>
-        </ConfigSection>
-      {/if}
-      {#if !isNoEncodeProfile}
-        <ConfigSection id="library-quality" title={i18n.m.libraries.quality} description={i18n.m.libraryEditor.quality_intro}>
-          <SettingRow label={i18n.m.quality_first.strategy_title} sentence={i18n.m.libraryEditor.quality_how_sentence} more={i18n.m.libraries.quality_strategy_adaptive_cost} controlId="lib-quality-mode"
-            tags={qualityMode === 'target' ? [{ text: i18n.m.libraries.experimental, tone: 'accent' }] : []}>
-            <select id="lib-quality-mode" class="input" value={qualityMode} onchange={(event) => setQualityMode(event.currentTarget.value as QualityMode)}>
-              <option value="target">{i18n.m.libraryEditor.quality_how_target}</option>
-              <option value="fixed-checked">{i18n.m.libraryEditor.quality_how_fixed_checked}</option>
-              <option value="fixed-unchecked">{i18n.m.libraryEditor.quality_how_fixed_unchecked}</option>
-            </select>
-          </SettingRow>
-
-          <SettingRow label={i18n.m.libraryEditor.target_label} sentence={i18n.m.libraryEditor.target_sentence} more={i18n.m.settings.vmaf_hint} controlId="lib-vmaf-policy"
-            disabledReason={vmafMode === 'off' ? i18n.m.libraryEditor.target_unused : null}>
-            <select id="lib-vmaf-policy" class="input" value={vmafMode === 'off' ? 'lossless' : vmafMode} disabled={vmafMode === 'off'}
-              onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}>
-              {#each vmafPresets as level}<option value={level.mode}>{t(i18n.m.libraryEditor.level_score, { level: level.name(i18n.m), score: level.harmonic })}</option>{/each}
-              <option value="custom">{i18n.m.libraries.stop_custom}</option>
-            </select>
-            {#if vmafMode === 'custom'}
-              <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                <div>
-                  <label class="label" for="lib-vmaf-harmonic">{i18n.m.libraryEditor.floor_whole}</label>
-                  <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
-                </div>
-                <div>
-                  <label class="label" for="lib-vmaf-fifth">{i18n.m.libraryEditor.floor_weakest}</label>
-                  <input id="lib-vmaf-fifth" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafMin} />
-                </div>
-                <div>
-                  <label class="label" for="lib-vmaf-catastrophic">{i18n.m.libraryEditor.floor_worst}</label>
-                  <input id="lib-vmaf-catastrophic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafCatastrophicMin} />
-                </div>
-              </div>
-            {:else if vmafMode !== 'off'}
-              <div class="mt-2 flex flex-wrap gap-1.5 text-xs" data-vmaf-floors>
-                <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_whole} {form.minVmafHarmonicMean}</span>
-                <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_weakest} {form.minVmafMin}</span>
-                <span class="badge tone-neutral">{i18n.m.libraryEditor.floor_worst} {form.minVmafCatastrophicMin}</span>
-              </div>
+      <ConfigSection id="library-encoder" title={i18n.m.libraryEditor.encoder_title}
+        description={encoder ? t(i18n.m.libraryEditor.encoder_intro_known, { encoder: encoderName(encoder) }) : i18n.m.libraryEditor.encoder_intro_unknown}>
+        <SettingRow label={i18n.m.libraries.encoder_preset} sentence={i18n.m.libraryEditor.effort_sentence} more={i18n.m.libraries.encoder_preset_tip} controlId="lib-preset">
+          <select id="lib-preset" class="input" aria-invalid={encoderEffortError ? 'true' : 'false'}
+            aria-describedby={encoderEffortError ? 'lib-encoder-effort-error' : undefined} bind:value={form.encoderPreset}>
+            <option value={null}>{i18n.m.libraries.encoder_default}</option>
+            {#if (encoderEffortError || encoderEffortIsLegacy) && form.encoderPreset}
+              <option value={form.encoderPreset}>
+                {encoderEffortIsLegacy ? t(i18n.m.libraries.encoder_effort_legacy, { value: form.encoderPreset }) : form.encoderPreset}
+              </option>
             {/if}
-            {#if vmafError}<p id="lib-vmaf-error" class="mt-2 text-xs text-bad" role="alert">{vmafError}</p>{/if}
-          </SettingRow>
+            {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
+          </select>
+          {#if encoderEffortError}<p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>{/if}
+        </SettingRow>
+        <SettingRow label={i18n.m.libraries.max_bitrate} sentence={i18n.m.libraryEditor.max_bitrate_sentence} more={i18n.m.libraries.max_bitrate_tip} controlId="lib-maxbitrate"
+          disabledReason={ignoredReason('maxBitrate')} reasonLink={ignoredReason('maxBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
+          <input id="lib-maxbitrate" class="input" type="number" min="100" max="200000" placeholder={i18n.m.libraries.max_bitrate_none}
+            disabled={!!ignoredReason('maxBitrate')} bind:value={form.maxBitrateKbps}
+            oninput={(event) => { if (event.currentTarget.value === '') form.minBitrateKbps = null }} />
+        </SettingRow>
+        <SettingRow label={i18n.m.libraries.content_tune} sentence={i18n.m.libraryEditor.tune_sentence} more={i18n.m.libraries.content_tune_tip} controlId="lib-tune"
+          disabledReason={ignoredReason('contentTune')} reasonLink={ignoredReason('contentTune') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
+          <select id="lib-tune" class="input" disabled={!!ignoredReason('contentTune')} bind:value={form.contentTune}>
+            <option value="None">{i18n.m.libraries.encoder_default}</option>
+            <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
+            <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
+          </select>
+        </SettingRow>
+        <SettingRow label={i18n.m.libraries.adaptive_quantisation} sentence={i18n.m.libraryEditor.aq_sentence} more={i18n.m.libraries.adaptive_quantisation_tip}
+          disabledReason={ignoredReason('adaptiveQuantisation')} reasonLink={ignoredReason('adaptiveQuantisation') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
+          <Toggle bare bind:checked={form.strongerAdaptiveQuantisation} label={i18n.m.libraries.adaptive_quantisation} disabled={!!ignoredReason('adaptiveQuantisation')} />
+        </SettingRow>
+        <!-- A floor only means something inside the window a cap defines. It stays in view, at
+             the bottom, so the reason it does nothing is said rather than left to be guessed. -->
+        {@const floorReason = ignoredReason('minBitrate') ?? (form.maxBitrateKbps == null ? i18n.m.libraryEditor.min_bitrate_needs_cap : null)}
+        <SettingRow label={i18n.m.libraries.min_bitrate} sentence={i18n.m.libraryEditor.min_bitrate_sentence} more={i18n.m.libraries.min_bitrate_tip} controlId="lib-minbitrate"
+          disabledReason={floorReason} reasonLink={ignoredReason('minBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
+          <input id="lib-minbitrate" class="input" type="number" min="100" max={form.maxBitrateKbps ?? undefined} placeholder={i18n.m.libraries.min_bitrate_none}
+            disabled={!!floorReason} bind:value={form.minBitrateKbps} />
+        </SettingRow>
+        {#if !encoder}<p class="mt-4 text-xs leading-relaxed text-ink-3">{i18n.m.libraries.encoder_tuning_support}</p>{/if}
+      </ConfigSection>
 
-          {@const presetCrf = presetRaw?.crf ?? 24}
-          {@const crf = form.qualityCrf ?? presetCrf}
-          <SettingRow label={qualityMode === 'target' ? i18n.m.libraryEditor.crf_label_start : i18n.m.libraries.quality_crf}
-            sentence={qualityMode === 'target' ? i18n.m.libraryEditor.crf_sentence_target : i18n.m.libraryEditor.crf_sentence_fixed} controlId="lib-crf"
-            origin={presetOrigin('qualityCrf', String(presetCrf), () => (form.qualityCrf = null))}>
-            <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
-              <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" class="min-w-0 w-full accent-accent-fill" type="range" min="14" max="40" step="1" value={crf}
-                oninput={(event) => (form.qualityCrf = Number(event.currentTarget.value) === presetCrf ? null : Number(event.currentTarget.value))} />
-              <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-              <span class="badge w-10 justify-center tone-accent" data-crf-value>{crf}</span>
-            </div>
-            {#if options.hardwareQualityHeadroom > 0}
-              <p class="mt-2 text-xs leading-relaxed text-ink-3">{t(i18n.m.libraries.quality_hardware_note, { hardware: Math.max(0, crf - options.hardwareQualityHeadroom), offset: options.hardwareQualityHeadroom })}</p>
+      <!-- AI super-resolution is experimental and per library: an opted-in library never changes how
+           another library's jobs run. While the feature is off in Settings the switch stays in view,
+           disabled, with where to turn it on; a saved choice is kept unchanged. -->
+      <ConfigSection id="library-super-resolution" title={i18n.m.libraries.super_resolution_section} description={i18n.m.libraries.super_resolution_section_desc}>
+        <SettingRow label={i18n.m.libraries.super_resolution_label} sentence={i18n.m.libraryEditor.upscale_sentence}
+          more={`${i18n.m.libraries.super_resolution_tip} ${i18n.m.libraries.super_resolution_hint}`}
+          tags={form.superResolutionEnabled && superResolutionOn ? pictureChanged : []}
+          disabledReason={superResolutionOn ? null : i18n.m.libraryEditor.upscale_off_reason}
+          reasonLink={superResolutionOn ? null : settingsLink('super-resolution', i18n.m.settings.room_super_resolution)}>
+          <Toggle bare bind:checked={form.superResolutionEnabled} label={i18n.m.libraries.super_resolution_label} disabled={!superResolutionOn} />
+        </SettingRow>
+        {#if superResolutionOn && form.superResolutionEnabled}
+          <SettingRow label={i18n.m.libraries.super_resolution_model} sentence={i18n.m.libraries.super_resolution_model_tip} controlId="library-sr-model">
+            <select id="library-sr-model" class="input" value={form.superResolutionModel ?? ''} onchange={event => chooseSuperResolutionModel(event.currentTarget.value)}>
+              <option value="">{i18n.m.libraries.super_resolution_model_cugan}</option>
+              <option value="realesrgan-x4plus">{i18n.m.libraries.super_resolution_model_live}</option>
+              <option value="realesrgan-x4plus-anime">{i18n.m.libraries.super_resolution_model_drawn}</option>
+              <option value="realesr-animevideov3">{i18n.m.libraries.super_resolution_model_video}</option>
+            </select>
+            {#if form.superResolutionModel === 'realesr-animevideov3'}
+              <label class="label mt-3" for="library-sr-scale">{i18n.m.libraries.super_resolution_scale}</label>
+              <select id="library-sr-scale" class="input" bind:value={form.superResolutionScale}>
+                <option value={2}>{i18n.m.settings.sr_scale_2}</option>
+                <option value={3}>{i18n.m.settings.sr_scale_3}</option>
+                <option value={4}>{i18n.m.settings.sr_scale_4}</option>
+              </select>
             {/if}
           </SettingRow>
-
-          <SettingRow label={i18n.m.libraryEditor.sampling_label} sentence={i18n.m.libraryEditor.sampling_sentence}
-            more={`${i18n.m.settings.vmaf_clip_hint} ${i18n.m.settings.vmaf_subsample_hint}`} controlId="lib-vmaf-sampling"
-            disabledReason={vmafMode === 'off' ? i18n.m.libraryEditor.target_unused : null}>
-            <select id="lib-vmaf-sampling" class="input" value={vmafMode === 'off' ? 'samples' : samplingChoice} disabled={vmafMode === 'off'}
-              onchange={(event) => setSampling(event.currentTarget.value)}>
-              <option value="samples">{i18n.m.queue.vmaf_sampling_three}</option>
-              <option value="full">{i18n.m.libraryEditor.sampling_full}</option>
-              <option value="full-3">{i18n.m.libraryEditor.sampling_full_third}</option>
-              {#if vmafMode !== 'off' && samplingChoice === 'custom'}
-                <option value="custom">{t(form.clipVmafEnabled ? i18n.m.libraryEditor.sampling_custom_samples : i18n.m.libraryEditor.sampling_custom_full, { interval: form.vmafFrameSubsample ?? 1 })}</option>
-              {/if}
+          <SettingRow label={i18n.m.libraries.super_resolution_quality} sentence={i18n.m.libraries.super_resolution_review_note} more={i18n.m.libraries.super_resolution_quality_tip} controlId="library-sr-quality">
+            <select id="library-sr-quality" class="input" bind:value={form.superResolutionQualityCheck}>
+              <option value="BrokenFramesOnly">{i18n.m.libraries.super_resolution_quality_broken}</option>
+              <option value="FullGate">{i18n.m.libraries.super_resolution_quality_full}</option>
+              <option value="Off">{i18n.m.libraries.super_resolution_quality_off}</option>
             </select>
           </SettingRow>
-
-          {#if showVideoOptions && !isNoEncodeProfile}{@render qualityCheckRow()}{/if}
-        </ConfigSection>
-
-        <ConfigSection id="library-picture" title={i18n.m.libraryEditor.picture_title} description={i18n.m.libraryEditor.picture_intro}>
-          <SettingRow label={i18n.m.libraryEditor.tall_label} sentence={i18n.m.libraryEditor.tall_sentence} more={`${i18n.m.libraries.video_downscale_to_tip} ${i18n.m.libraries.skip_above_tip}`}
-            tags={form.videoDownscaleHeight ? pictureChanged : []}>
-            <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to}</label>
-            <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
-              <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
-              {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
-            </select>
-            <label class="label mt-3" for="lib-maxheight">{i18n.m.libraries.skip_above}</label>
-            <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
-              {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraryEditor.fps_label} sentence={i18n.m.libraryEditor.fps_sentence} more={i18n.m.libraries.video_fps_cap_tip} controlId="lib-fps-cap"
-            tags={form.maxFrameRate ? pictureChanged : []}>
-            <select id="lib-fps-cap" class="input" bind:value={form.maxFrameRate}>
-              {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraries.crop_bars_label} sentence={i18n.m.libraryEditor.crop_sentence}
-            more={`${i18n.m.libraries.crop_bars_tip} ${i18n.m.libraries.crop_bars_on_detail}`} tags={form.cropBlackBars ? pictureChanged : []}>
-            <Toggle bare bind:checked={form.cropBlackBars} label={i18n.m.libraries.crop_bars_label} />
-          </SettingRow>
-          <SettingRow label={i18n.m.libraryEditor.hdr_label} sentence={i18n.m.libraryEditor.hdr_sentence} more={i18n.m.libraries.hdr_dv_tip} controlId="lib-hdr"
-            tags={(form.hdrHandling ?? presetRaw?.hdrHandling) === 'TonemapToSdr' ? pictureChanged : []}
-            origin={presetRaw ? presetOrigin('hdrHandling', hdrLabel(presetRaw.hdrHandling), () => (form.hdrHandling = null)) : null}>
-            <select id="lib-hdr" class="input" value={form.hdrHandling ?? presetRaw?.hdrHandling ?? ''}
-              onchange={(event) => (form.hdrHandling = event.currentTarget.value === presetRaw?.hdrHandling ? null : event.currentTarget.value)}>
-              {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
-            </select>
-          </SettingRow>
-          <!-- Dolby Vision is left untouched by default: a re-encode drops the DV layer and a Profile 5
-               source comes out green and pink. Opt in only if losing the DV presentation is acceptable. -->
-          <SettingRow label={i18n.m.libraryEditor.dv_label} sentence={i18n.m.libraryEditor.dv_sentence} more={i18n.m.libraries.dolby_vision_tip} controlId="lib-dolby-vision"
-            tags={form.optimiseDolbyVision ? pictureChanged : []}>
-            <select id="lib-dolby-vision" class="input" value={form.optimiseDolbyVision ? 'reencode' : 'skip'} onchange={(event) => (form.optimiseDolbyVision = event.currentTarget.value === 'reencode')}>
-              <option value="skip">{i18n.m.libraryEditor.dv_skip}</option>
-              <option value="reencode">{i18n.m.libraryEditor.dv_reencode}</option>
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraryEditor.interlaced_label} sentence={i18n.m.libraryEditor.interlaced_sentence} more={i18n.m.libraries.deinterlace_tip} controlId="lib-deinterlace"
-            tags={form.deinterlaceVideo ? pictureChanged : []}>
-            <select id="lib-deinterlace" class="input" value={form.deinterlaceVideo ? 'deinterlace' : 'leave'} onchange={(event) => (form.deinterlaceVideo = event.currentTarget.value === 'deinterlace')}>
-              <option value="leave">{i18n.m.libraryEditor.interlaced_leave}</option>
-              <option value="deinterlace">{i18n.m.libraryEditor.interlaced_deinterlace}</option>
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraries.noise_label} sentence={i18n.m.libraryEditor.noise_sentence} more={i18n.m.libraries.noise_tip} controlId="lib-noise"
-            tags={form.noiseReduction !== 'Off' ? pictureChanged : []}>
-            <select id="lib-noise" class="input" bind:value={form.noiseReduction}>
-              <option value="Off">{i18n.m.libraries.noise_off}</option>
-              <option value="Light">{i18n.m.libraries.noise_light}</option>
-              <option value="Strong">{i18n.m.libraries.noise_strong}</option>
-            </select>
-          </SettingRow>
-        </ConfigSection>
-
-        <ConfigSection id="library-encoder" title={i18n.m.libraryEditor.encoder_title}
-          description={encoder ? t(i18n.m.libraryEditor.encoder_intro_known, { encoder: encoderName(encoder) }) : i18n.m.libraryEditor.encoder_intro_unknown}>
-          <SettingRow label={i18n.m.libraries.encoder_preset} sentence={i18n.m.libraryEditor.effort_sentence} more={i18n.m.libraries.encoder_preset_tip} controlId="lib-preset">
-            <select id="lib-preset" class="input" aria-invalid={encoderEffortError ? 'true' : 'false'}
-              aria-describedby={encoderEffortError ? 'lib-encoder-effort-error' : undefined} bind:value={form.encoderPreset}>
-              <option value={null}>{i18n.m.libraries.encoder_default}</option>
-              {#if (encoderEffortError || encoderEffortIsLegacy) && form.encoderPreset}
-                <option value={form.encoderPreset}>
-                  {encoderEffortIsLegacy ? t(i18n.m.libraries.encoder_effort_legacy, { value: form.encoderPreset }) : form.encoderPreset}
-                </option>
-              {/if}
-              {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
-            </select>
-            {#if encoderEffortError}<p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>{/if}
-          </SettingRow>
-          <SettingRow label={i18n.m.libraries.max_bitrate} sentence={i18n.m.libraryEditor.max_bitrate_sentence} more={i18n.m.libraries.max_bitrate_tip} controlId="lib-maxbitrate"
-            disabledReason={ignoredReason('maxBitrate')} reasonLink={ignoredReason('maxBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
-            <input id="lib-maxbitrate" class="input" type="number" min="100" max="200000" placeholder={i18n.m.libraries.max_bitrate_none}
-              disabled={!!ignoredReason('maxBitrate')} bind:value={form.maxBitrateKbps}
-              oninput={(event) => { if (event.currentTarget.value === '') form.minBitrateKbps = null }} />
-          </SettingRow>
-          <SettingRow label={i18n.m.libraries.content_tune} sentence={i18n.m.libraryEditor.tune_sentence} more={i18n.m.libraries.content_tune_tip} controlId="lib-tune"
-            disabledReason={ignoredReason('contentTune')} reasonLink={ignoredReason('contentTune') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
-            <select id="lib-tune" class="input" disabled={!!ignoredReason('contentTune')} bind:value={form.contentTune}>
-              <option value="None">{i18n.m.libraries.encoder_default}</option>
-              <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
-              <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
-            </select>
-          </SettingRow>
-          <SettingRow label={i18n.m.libraries.adaptive_quantisation} sentence={i18n.m.libraryEditor.aq_sentence} more={i18n.m.libraries.adaptive_quantisation_tip}
-            disabledReason={ignoredReason('adaptiveQuantisation')} reasonLink={ignoredReason('adaptiveQuantisation') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
-            <Toggle bare bind:checked={form.strongerAdaptiveQuantisation} label={i18n.m.libraries.adaptive_quantisation} disabled={!!ignoredReason('adaptiveQuantisation')} />
-          </SettingRow>
-          <!-- A floor only means something inside the window a cap defines. It stays in view, at
-               the bottom, so the reason it does nothing is said rather than left to be guessed. -->
-          {@const floorReason = ignoredReason('minBitrate') ?? (form.maxBitrateKbps == null ? i18n.m.libraryEditor.min_bitrate_needs_cap : null)}
-          <SettingRow label={i18n.m.libraries.min_bitrate} sentence={i18n.m.libraryEditor.min_bitrate_sentence} more={i18n.m.libraries.min_bitrate_tip} controlId="lib-minbitrate"
-            disabledReason={floorReason} reasonLink={ignoredReason('minBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
-            <input id="lib-minbitrate" class="input" type="number" min="100" max={form.maxBitrateKbps ?? undefined} placeholder={i18n.m.libraries.min_bitrate_none}
-              disabled={!!floorReason} bind:value={form.minBitrateKbps} />
-          </SettingRow>
-          {#if !encoder}<p class="mt-4 text-xs leading-relaxed text-ink-3">{i18n.m.libraries.encoder_tuning_support}</p>{/if}
-        </ConfigSection>
-
-        <!-- AI super-resolution is experimental and per library: an opted-in library never changes how
-             another library's jobs run. While the feature is off in Settings the switch stays in view,
-             disabled, with where to turn it on; a saved choice is kept unchanged. -->
-        <ConfigSection id="library-super-resolution" title={i18n.m.libraries.super_resolution_section} description={i18n.m.libraries.super_resolution_section_desc}>
-          <SettingRow label={i18n.m.libraries.super_resolution_label} sentence={i18n.m.libraryEditor.upscale_sentence}
-            more={`${i18n.m.libraries.super_resolution_tip} ${i18n.m.libraries.super_resolution_hint}`}
-            tags={form.superResolutionEnabled && superResolutionOn ? pictureChanged : []}
-            disabledReason={superResolutionOn ? null : i18n.m.libraryEditor.upscale_off_reason}
-            reasonLink={superResolutionOn ? null : settingsLink('super-resolution', i18n.m.settings.room_super_resolution)}>
-            <Toggle bare bind:checked={form.superResolutionEnabled} label={i18n.m.libraries.super_resolution_label} disabled={!superResolutionOn} />
-          </SettingRow>
-          {#if superResolutionOn && form.superResolutionEnabled}
-            <SettingRow label={i18n.m.libraries.super_resolution_model} sentence={i18n.m.libraries.super_resolution_model_tip} controlId="library-sr-model">
-              <select id="library-sr-model" class="input" value={form.superResolutionModel ?? ''} onchange={event => chooseSuperResolutionModel(event.currentTarget.value)}>
-                <option value="">{i18n.m.libraries.super_resolution_model_cugan}</option>
-                <option value="realesrgan-x4plus">{i18n.m.libraries.super_resolution_model_live}</option>
-                <option value="realesrgan-x4plus-anime">{i18n.m.libraries.super_resolution_model_drawn}</option>
-                <option value="realesr-animevideov3">{i18n.m.libraries.super_resolution_model_video}</option>
-              </select>
-              {#if form.superResolutionModel === 'realesr-animevideov3'}
-                <label class="label mt-3" for="library-sr-scale">{i18n.m.libraries.super_resolution_scale}</label>
-                <select id="library-sr-scale" class="input" bind:value={form.superResolutionScale}>
-                  <option value={2}>{i18n.m.settings.sr_scale_2}</option>
-                  <option value={3}>{i18n.m.settings.sr_scale_3}</option>
-                  <option value={4}>{i18n.m.settings.sr_scale_4}</option>
-                </select>
-              {/if}
-            </SettingRow>
-            <SettingRow label={i18n.m.libraries.super_resolution_quality} sentence={i18n.m.libraries.super_resolution_review_note} more={i18n.m.libraries.super_resolution_quality_tip} controlId="library-sr-quality">
-              <select id="library-sr-quality" class="input" bind:value={form.superResolutionQualityCheck}>
-                <option value="BrokenFramesOnly">{i18n.m.libraries.super_resolution_quality_broken}</option>
-                <option value="FullGate">{i18n.m.libraries.super_resolution_quality_full}</option>
-                <option value="Off">{i18n.m.libraries.super_resolution_quality_off}</option>
-              </select>
-            </SettingRow>
-          {/if}
-        </ConfigSection>
-      {/if}
-    </div>
+        {/if}
+      </ConfigSection>
+    {/if}
   </div>
 {/snippet}
 
@@ -2210,7 +2236,7 @@
         {:else if audioLanguageInput.codes.length > 0}
           <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
-            {#each audioLanguageInput.codes as code (code)}<span class="badge tone-accent font-mono uppercase">{code}</span>{/each}
+            {#each audioLanguageInput.codes as code (code)}<Chip tone="accent" mono class="uppercase">{code}</Chip>{/each}
           </div>
         {/if}
       </SettingRow>
@@ -2229,7 +2255,7 @@
         {:else if subtitleLanguageInput.codes.length > 0}
           <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
-            {#each subtitleLanguageInput.codes as code (code)}<span class="badge tone-accent font-mono uppercase">{code}</span>{/each}
+            {#each subtitleLanguageInput.codes as code (code)}<Chip tone="accent" mono class="uppercase">{code}</Chip>{/each}
           </div>
         {/if}
       </SettingRow>
@@ -2356,7 +2382,7 @@
   <SettingRow {label} sentence={i18n.m.libraryEditor.set_elsewhere}>
     <div class="flex flex-wrap items-center justify-end gap-2">
       <span class="badge tone-neutral" data-check-value>{value}</span>
-      <button type="button" class="btn min-h-11" onclick={() => goPage(target, anchor)}>{pageNames[target]}</button>
+      <button type="button" class="btn" onclick={() => goPage(target, anchor)}>{pageNames[target]}</button>
     </div>
   </SettingRow>
 {/snippet}
@@ -2371,7 +2397,7 @@
       {/each}
     </ul>
     {#if showVideoOptions || showAudioOptions}
-      <div class="mt-4 border-t border-line pt-4">
+      <div class="mt-4 hairline-t pt-4">
         <SettingRow label={i18n.m.settings.duration_tolerance} sentence={i18n.m.settings.duration_tolerance_tip} controlId="lib-duration-tolerance">
           <div class="flex min-w-0 items-center gap-2">
             <input id="lib-duration-tolerance" class="input min-w-0 flex-1" type="number" min="0" step="0.1"
@@ -2519,7 +2545,7 @@
           {/each}
         </div>
         {#if form.videoQualityStrategy === 'AdaptiveVmaf' && form.workPlacement !== 'LocalOnly'}
-          <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">{i18n.m.libraries.placement_adaptive_note}</div>
+          <div class="surface-sunken mt-3 p-3 text-xs leading-relaxed text-ink-2">{i18n.m.libraries.placement_adaptive_note}</div>
         {/if}
       </SettingRow>
     {:else if showVideoOptions && form.workPlacement !== 'Anywhere'}
@@ -2546,15 +2572,18 @@
 {#snippet overviewPage()}
   <LibrarySummary lines={summaryLines} unsaved={isDirty} onedit={(topic: SummaryTopic) => goPage(topic)} />
   {#if editingId !== null && editingId > 0}
-    <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
-      <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
-      <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+    <section class="card flex flex-wrap items-center gap-4 p-5 sm:p-6">
+      <div class="min-w-0 max-w-[72ch] flex-[1_1_16rem] text-sm"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {#if isDirty}<span id="duplicates-unsaved" class="text-xs text-ink-3" data-duplicates-unsaved>{i18n.m.libraries.save_changes_first}</span>{/if}
+        <button type="button" class="btn" disabled={isDirty || saving} aria-describedby={isDirty ? 'duplicates-unsaved' : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+      </div>
     </section>
   {/if}
 {/snippet}
 
 {#snippet configForm()}
-  <fieldset class="min-w-0 space-y-5" disabled={saving} data-library-workflow data-library-page={page}>
+  <fieldset class="min-w-0 space-y-5" disabled={saving} data-library-page={page}>
     {#if page === 'overview'}{@render overviewPage()}
     {:else if page === 'files'}{@render filesPage()}
     {:else if page === 'video'}{@render videoPage()}
@@ -2563,56 +2592,87 @@
     {:else if page === 'checks'}{@render checksPage()}
     {:else}{@render schedulePage()}{/if}
   </fieldset>
-  {#if audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError) || targetFolderProblem}
-    <div class="callout tone-warn mt-5" role="alert">
-      <p class="text-sm font-medium">{i18n.m.libraryWorkflow.review_errors}</p>
-      <div class="mt-2 flex flex-wrap gap-2">
-        {#if audioLanguageError || subtitleLanguageError}<button class="btn min-h-11" onclick={() => goPage('audio', 'library-languages')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
-        {#if encoderEffortError}<button class="btn min-h-11" onclick={() => goPage('video', 'library-encoder')}>{encoderEffortError}</button>{/if}
-        {#if !isNoEncodeProfile && vmafError}<button class="btn min-h-11" onclick={() => goPage('video', 'library-quality')}>{vmafError}</button>{/if}
-        {#if verificationError}<button class="btn min-h-11" onclick={() => goPage(verificationErrorPage)}>{verificationError}</button>{/if}
-        {#if targetFolderProblem}<button class="btn min-h-11" onclick={() => goPage('schedule', 'library-files-choice')}>{targetFolderProblem}</button>{/if}
-      </div>
-    </div>
-  {/if}
   <!-- Actions stay in the document flow until there is something to save. A dirty form pins them
-       on normal-height screens; short landscape viewports deliberately keep them static so the
-       action bar cannot consume most of the editor. -->
+       with the shared sticky bar (carrying any validation alert with it so a disabled Save button
+       is never unexplained), while a short landscape viewport keeps it static. -->
   <div
     data-library-actions
-    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} card z-10 mt-4 flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6"
+    class="card mt-4 flex flex-wrap items-center gap-x-2 gap-y-3 px-4 py-3 sm:px-6 {isDirty ? 'sticky-actions' : ''}"
   >
-    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave || saving}>
+    {#if hasValidationError}
+      <div class="callout tone-warn w-full" role="alert" data-save-blocker>
+        <p class="text-sm font-medium">{i18n.m.libraryWorkflow.review_errors}</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {#if audioLanguageError || subtitleLanguageError}<button class="btn" onclick={() => goPage('audio', 'library-languages')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
+          {#if encoderEffortError}<button class="btn" onclick={() => goPage('video', 'library-encoder')}>{encoderEffortError}</button>{/if}
+          {#if !isNoEncodeProfile && vmafError}<button class="btn" onclick={() => goPage('video', 'library-quality')}>{vmafError}</button>{/if}
+          {#if verificationError}<button class="btn" onclick={() => goPage(verificationErrorPage)}>{verificationError}</button>{/if}
+          {#if targetFolderProblem}<button class="btn" onclick={() => goPage('schedule', 'library-files-choice')}>{targetFolderProblem}</button>{/if}
+        </div>
+      </div>
+    {/if}
+    <button class="btn btn-lg btn-primary" onclick={save} disabled={!canSave || saving}>
       <Icon name="check" class="h-4 w-4" />
       {saving ? i18n.m.settings.saving : i18n.m.libraries.save}
     </button>
-    <button class="btn min-h-11" onclick={cancelEdit} disabled={saving}>
+    <button class="btn btn-lg" onclick={cancelEdit} disabled={saving}>
       <Icon name="x" class="h-4 w-4" />
       {i18n.m.libraries.cancel}
     </button>
-    <p class="ml-auto text-xs text-ink-3">{#if isDirty}<span class="mb-1 block text-warn">{i18n.m.libraries.unsaved}</span>{/if}{i18n.m.libraryEditor.saved_together}</p>
+    {#if isDirty && !hasValidationError && (!form.name || !form.path)}
+      <button type="button" data-save-blocker class="focus-ring hit-target ml-auto rounded px-1 text-left text-xs font-medium text-warn underline" onclick={() => goPage('files', 'library-details')}>
+        {!form.name ? i18n.m.libraryWorkflow.name_hint : i18n.m.libraryEditor.folder_sentence}
+      </button>
+    {:else}
+      <p class="ml-auto text-xs text-ink-3">{#if isDirty}<span class="mb-1 block text-warn">{i18n.m.libraries.unsaved}</span>{/if}{i18n.m.libraryEditor.saved_together}</p>
+    {/if}
   </div>
 {/snippet}
 
 {#if editingId !== null}
   {#if editingId !== 0}
-    <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
-      <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.nav.settings}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
-      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}><span>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading}{' '}({editorEligibleCount}){/if}</span></button>
-      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}><span>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading}{' '}({editorExclusions.length}){/if}</span></button>
-    </nav>
+    {#snippet unsavedMark()}<span class="ml-1 text-warn" title={i18n.m.libraries.unsaved_title} aria-hidden="true">●</span><span class="sr-only"> ({i18n.m.libraries.unsaved_title})</span>{/snippet}
+    <Segmented as="nav" class="mb-4" label={i18n.m.libraries.configure} value={activeTab} onselect={selectEditorTab} items={[
+      { value: 'rules', label: i18n.m.nav.settings, suffix: isDirty ? unsavedMark : undefined },
+      { value: 'candidates', label: i18n.m.libraries.tab_candidates, count: editorCandidatesLoading ? undefined : editorEligibleCount },
+      { value: 'excluded', label: i18n.m.libraries.tab_excluded, count: editorExclusionsLoading ? undefined : editorExclusions.length },
+    ]} />
   {/if}
 
   {#if activeTab === 'rules' || editingId === 0}
-    <!-- Every page is one step from every other; the one being read is filled. -->
-    <nav class="mb-6 flex flex-wrap gap-2" aria-label={i18n.m.libraryEditor.pages_label}>
-      {#each pages as candidate (candidate)}
-        <button type="button" class="choice min-h-11 rounded-full px-4 text-sm font-medium {page === candidate ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}"
-          aria-current={page === candidate ? 'page' : undefined} onclick={() => goPage(candidate)}>{pageNames[candidate]}</button>
-      {/each}
-    </nav>
-    <div class="space-y-4">
-      {@render configForm()}
+    <!-- One rail for the whole editor: every page is one step from every other, the one being read
+         is lit, and the sections of the page being read sit under it. When the editor has room it
+         stays beside the form; narrower, it wraps above it and the section links step aside. The
+         room is measured in the editor's own text size, so enlarged text gets the form back. -->
+    <div class="@container" data-library-workflow>
+      <div class="@3xl:grid @3xl:grid-cols-[13.5rem_minmax(0,1fr)] @3xl:items-start @3xl:gap-6">
+        <nav class="sticky-rail mb-6 @3xl:sticky @3xl:top-4 @3xl:mb-0 @3xl:max-h-[calc(100dvh-3.75rem)] @3xl:overflow-y-auto @3xl:self-start @3xl:-mx-1.5 @3xl:px-1.5 @3xl:py-1.5" aria-label={i18n.m.libraryEditor.pages_label}>
+          <ul class="flex flex-wrap gap-2 @3xl:flex-col @3xl:gap-1">
+            {#each pages as candidate (candidate)}
+              <li>
+                <button type="button"
+                  class="nav-button pointer-coarse:min-h-(--control-lg) max-sm:min-h-(--control-lg) @max-3xl:w-auto @max-3xl:rounded-full @max-3xl:px-4 {page === candidate ? 'nav-button-active' : 'nav-button-inactive @max-3xl:bg-lit @max-3xl:hover:bg-raised'}"
+                  aria-current={page === candidate ? 'page' : undefined} onclick={() => goPage(candidate)}>{pageNames[candidate]}</button>
+                {#if candidate === 'video' && page === 'video' && videoSections.length > 1}
+                  <nav class="mt-1 mb-2 hidden @3xl:block" aria-label={i18n.m.libraryEditor.on_this_page}>
+                    <ul class="ml-3 space-y-0.5">
+                      {#each videoSections as section (section.id)}
+                        <!-- Real hash route for new-tab/copy-link; plain clicks scroll and move focus in place. -->
+                        <li><a href={`#${editorBase}/video#${section.id}`}
+                          class="focus-ring flex min-h-8 items-center rounded-lg px-3 py-1 text-sm text-ink-3 transition-colors hover:bg-lit hover:text-ink pointer-coarse:min-h-(--control-lg)"
+                          onclick={(event) => { event.preventDefault(); jumpToSection(section.id) }}>{section.title}</a></li>
+                      {/each}
+                    </ul>
+                  </nav>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </nav>
+        <div class="min-w-0 space-y-4">
+          {@render configForm()}
+        </div>
+      </div>
     </div>
   {:else if activeTab === 'candidates'}
     {#if editorCandidatesError}<Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>{/if}
@@ -2644,7 +2704,7 @@
     {#if editorExclusionsLoading}
       <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else if editorExclusions.length === 0}
-      <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-ink-4">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
+      <div class="surface-sunken p-8 text-center text-sm text-ink-4">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
     {:else}
       {#if exclusionSelection.count > 0}
         <SelectionToolbar count={exclusionSelection.count} total={exclusionIds.length} onclear={() => exclusionSelection.clear()}>
@@ -2653,7 +2713,7 @@
           {/snippet}
         </SelectionToolbar>
       {/if}
-      <div class="divide-y divide-line-soft rounded-lg border border-line divide-line">
+      <div class="card divide-y divide-line-soft overflow-hidden">
         <div class="flex items-center gap-3 bg-raised px-3 py-2">
           <SelectionCheckbox
             checked={exclusionSelection.isEverySelected(exclusionIds)}
@@ -2673,27 +2733,31 @@
             />
             <div class="min-w-0 flex-1">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
-              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · <time datetime={ex.createdAt} title={formatAbsoluteDateTime(ex.createdAt, i18n.locale)}>{formatDateTime(ex.createdAt, new Date(), i18n.locale)}</time></div>
             </div>
-            <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
+            <button class="btn btn-sm btn-ghost flex-shrink-0" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
         {/each}
       </div>
     {/if}
   {/if}
+{:else if loading && libraries.length === 0}
+  <div class="card p-8 text-center text-ink-4" role="status">{i18n.m.common.loading_short}</div>
 {:else if libraries.length > 0}
   <!-- One card per library, as many to a row as fit at a readable width. Each leads with the number that matters (how many
        files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
-       the primary button. Exact-copy review is a secondary entry; enqueue, configure and
-       delete sit in the menu. -->
+       the card's first action but a default button: Add library is the page's one accent fill.
+       Exact-copy review is a secondary entry; enqueue, configure and delete sit in the menu. -->
   <div class="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,34rem),1fr))]">
     {#each libraries as library (library.id)}
       {@const summary = summaries[library.id]}
       {@const a = access[library.id]}
       {@const busy = busyId === library.id}
-      <div class="card flex flex-col gap-3.5 p-5 {library.enabled ? '' : 'opacity-60'}" data-library-card={library.id}>
+      <!-- Dim the card's own content rather than the card container so overlays (ActionMenu, InfoTip)
+           stay at full opacity and contrast when opened on a disabled library. -->
+      <div class="card flex flex-col gap-3.5 p-5" data-library-card={library.id}>
         <div class="flex items-center justify-between gap-3">
-          <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <div class="flex min-w-0 flex-wrap items-center gap-2 {library.enabled ? '' : 'opacity-60'}">
             <span class="truncate text-base font-semibold text-ink">{library.name}</span>
             <span class="badge tone-info">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
             {#if library.priority !== 0}
@@ -2710,36 +2774,42 @@
             label={t(i18n.m.libraries.more_actions, { name: library.name })}
             disabled={busy}
             items={[
-              { label: i18n.m.libraries.enqueue, icon: 'plus', title: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
+              { label: i18n.m.libraries.enqueue, icon: 'plus', description: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
               { label: i18n.m.libraries.configure, icon: 'sliders', onSelect: () => router.go(`/libraries/${library.id}/configure`) },
               { label: i18n.m.libraries.delete, icon: 'trash', danger: true, onSelect: () => remove(library) },
             ]}
           />
         </div>
         {#if refusedSaveFolders[library.id]}
-          <p class="text-xs leading-relaxed text-warn" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
+          <p class="text-xs leading-relaxed text-warn {library.enabled ? '' : 'opacity-60'}" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
         {/if}
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>
-          <span class="text-sm text-ink-3">{i18n.m.libraries.files_label}</span>
+          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink {library.enabled ? '' : 'opacity-60'}">{library.fileCount.toLocaleString()}</span>
+          <span class="text-sm text-ink-3 {library.enabled ? '' : 'opacity-60'}">{i18n.m.libraries.files_label}</span>
           {#if summary}
-            <!-- The one place the summary lights up: only when something is actually waiting. -->
+            <!-- A fact, not a link, so it stays in ink: work waiting reads heavier than none. -->
             {#if summary.eligible > 0}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <Icon name="plus" class="h-3.5 w-3.5" />
-                {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+              <span class="ml-auto inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink {library.enabled ? '' : 'opacity-60'}" data-library-ready>
+                  <Icon name="plus" class="h-3.5 w-3.5 text-ink-3" />
+                  {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+                </span>
+                {#if summary.skipped > 0}<InfoTip label={t(i18n.m.common.about_information, { label: t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() }) })} text={t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() })} />{/if}
               </span>
             {:else}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-ink-3" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
-                <Icon name="check" class="h-3.5 w-3.5" />
-                {i18n.m.libraries.all_optimal}
+              <span class="ml-auto inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-1.5 text-xs text-ink-2 {library.enabled ? '' : 'opacity-60'}" data-library-optimal>
+                  <OkMark class="h-3 w-3" />
+                  {i18n.m.libraries.all_optimal}
+                </span>
+                {#if summary.skipped > 0}<InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.all_optimal })} text={t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() })} />{/if}
               </span>
             {/if}
           {/if}
         </div>
 
-        <div class="flex flex-col gap-1.5 text-xs text-ink-3">
+        <div class="flex flex-col gap-1.5 text-xs text-ink-3 {library.enabled ? '' : 'opacity-60'}">
           <div class="flex items-center gap-2"><Icon name="folder" class="h-3.5 w-3.5 flex-shrink-0" /><span class="truncate font-mono">{library.path}</span></div>
           <!-- The rule profile is a video preset; it is meaningless for Music/Photo libraries. -->
           {#if isVideoType(library.mediaType)}
@@ -2750,32 +2820,29 @@
 
         <!-- Access is only worth a line when it is a problem; a healthy path says nothing. -->
         {#if a && !a.ok}
-          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'}">
+          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'} {library.enabled ? '' : 'opacity-60'}">
             <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <span>{accessMessage(a)}</span>
           </div>
         {/if}
 
         <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
-        <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
+        <div class="hairline-t mt-auto flex flex-wrap items-center gap-2 pt-3 {library.enabled ? '' : 'opacity-60'}">
+          <button class="btn" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
-          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
+          <a class="btn btn-ghost" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
-            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+            <time class="ml-auto text-xs tabular-nums text-ink-4" datetime={library.lastAutoEnqueueAt} title={formatAbsoluteDateTime(library.lastAutoEnqueueAt, i18n.locale)}>{t(i18n.m.libraries.last_run, { date: formatDateTime(library.lastAutoEnqueueAt, new Date(), i18n.locale) })}</time>
           {/if}
         </div>
       </div>
     {/each}
   </div>
-{:else}
+{:else if !error}
   <EmptyState icon="folder" title={i18n.m.libraries.empty_title} hint={i18n.m.libraries.empty_hint}>
-    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
-      <Icon name="plus" class="h-4 w-4" />
-      {i18n.m.libraries.add_library}
-    </button>
+    {@render addLibraryButton()}
   </EmptyState>
 {/if}
 
@@ -2798,39 +2865,10 @@
 </ConfirmDialog>
 
 <style>
-  /* Match Settings' readable labels and comfortable control targets while retaining
-     the shared card surfaces, theme tokens and full-width room layout. */
-  [data-library-workflow] :global(.label) {
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--ink-2);
-  }
-  [data-library-workflow] :global(.input) {
-    min-height: 2.75rem;
-  }
   .preset-table > summary {
     list-style: none;
   }
   .preset-table > summary::-webkit-details-marker {
     display: none;
-  }
-  [data-library-workflow] :global([data-config-section]) {
-    transition: box-shadow 180ms ease;
-  }
-  [data-library-workflow] :global([data-config-section]:hover),
-  [data-library-workflow] :global([data-config-section]:focus-within) {
-    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    [data-library-workflow] :global([data-config-section]) { transition: none; }
-  }
-
-  @media (min-height: 501px) {
-    .library-action-bar-dirty {
-      position: sticky;
-      bottom: 0;
-    }
   }
 </style>

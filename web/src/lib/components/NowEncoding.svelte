@@ -11,6 +11,7 @@
   import { jobPercent } from '../job-presentation'
   import { leadActivity, type LeadPhase } from '../lead-job'
   import Icon from './Icon.svelte'
+  import Chip from './Chip.svelte'
   import Thumbnail from './Thumbnail.svelte'
 
   let { collapsed = false }: { collapsed?: boolean } = $props()
@@ -61,6 +62,7 @@
     <a
       href="#/queue"
       class="mx-auto mb-2 flex w-10 flex-col gap-1.5 rounded-lg focus-ring"
+      aria-label={`${heading}: ${title}, ${where}${percent === null ? '' : `, ${percent}%`}`}
       title={`${heading} · ${title} · ${where}${percent === null ? '' : ` · ${percent}%`}`}
       onclick={() => layout.closeMobile()}
     >
@@ -81,23 +83,23 @@
         <span class="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" aria-hidden="true"></span>
         <span class="label mb-0">{heading}</span>
         {#if finishing}
-          <span class="ml-auto text-[11px] tabular-nums text-ink-3">{i18n.m.app.finishing}</span>
+          <span class="ml-auto text-micro tabular-nums text-ink-3">{i18n.m.app.finishing}</span>
         {:else if eta != null}
-          <span class="ml-auto text-[11px] tabular-nums text-ink-3">{t(i18n.m.app.time_left, { time: formatDuration(eta) })}</span>
+          <span class="ml-auto text-micro tabular-nums text-ink-3">{t(i18n.m.app.time_left, { time: formatDuration(eta) })}</span>
         {/if}
       </span>
 
       <span class="flex items-center gap-2.5">
         <Thumbnail mediaFileId={job.mediaFileId} size="md" />
         <span class="flex min-w-0 flex-col gap-1">
-          <span class="line-clamp-2 text-[13px] font-semibold leading-snug text-ink">{title}</span>
-          <span class="flex min-w-0 items-start gap-1.5 text-[11.5px] leading-snug text-ink-2" title={where}>
-            <Icon name={placeIcon} class="mt-px h-3.5 w-3.5 flex-none text-accent" />
+          <span class="line-clamp-2 text-label font-semibold leading-snug text-ink">{title}</span>
+          <span class="flex min-w-0 items-start gap-1.5 text-caption leading-snug text-ink-2" title={where}>
+            <Icon name={placeIcon} class="mt-px h-3.5 w-3.5 flex-none text-ink-3" />
             <span class="line-clamp-2 min-w-0 break-words">{where}</span>
           </span>
           {#if job.videoEncoder}
             <span class="flex">
-              <span class="badge font-mono {activity.hardwareActive ? 'tone-ok' : 'tone-neutral'}">{job.videoEncoder}</span>
+              <Chip mono>{job.videoEncoder}</Chip>
             </span>
           {/if}
         </span>
@@ -111,7 +113,7 @@
         {/if}
       </span>
 
-      <span class="flex items-center gap-3 text-[11px] tabular-nums text-ink-3">
+      <span class="flex items-center gap-3 text-micro tabular-nums text-ink-3">
         {#if percent !== null}<span class="font-semibold text-ink">{percent}%</span>{/if}
         {#if speed != null}<span>{speed.toFixed(1)}×</span>{/if}
         {#if queued > 0}<span class="ml-auto">{t(i18n.m.app.queued_count, { count: queued.toLocaleString() })}</span>{/if}

@@ -13,17 +13,20 @@
   import type { Snippet } from 'svelte'
   import { i18n } from '../i18n/i18n.svelte'
   import Icon from './Icon.svelte'
+  import InfoTip from './InfoTip.svelte'
 
   let {
     label,
     sentence,
     controlId = undefined,
+    tip = '',
     tags = [],
     more = '',
     origin = null,
     disabledReason = null,
     reasonLink = null,
     stacked = false,
+    changed = false,
     children,
   }: {
     label: string
@@ -31,6 +34,8 @@
     sentence: string
     /** The id of the one control this row labels. Omit for a group that labels its own parts. */
     controlId?: string
+    /** A short aside beside the label, for detail that would crowd the sentence. */
+    tip?: string
     tags?: SettingTag[]
     /** The longer explanation, shown only when asked for. */
     more?: string
@@ -41,20 +46,25 @@
     reasonLink?: { label: string; onclick: () => void } | null
     /** Put the control under the text at every width, for controls that need the full row. */
     stacked?: boolean
+    /** The value differs from what is saved: the row is lit until it is saved or put back. */
+    changed?: boolean
     children: Snippet
   } = $props()
 
   const id = $props.id()
 </script>
 
-<div class="setting-row" data-setting-row={label} data-setting-disabled={disabledReason ? '' : undefined}>
+<div class="setting-row" class:setting-row-changed={changed} data-setting-row={label} data-setting-disabled={disabledReason ? '' : undefined} data-setting-changed={changed ? '' : undefined}>
   <div class="setting-grid {stacked ? 'setting-grid-stacked' : ''}">
   <div class="setting-text">
-    {#if controlId}
-      <label class="setting-label" for={controlId}>{label}</label>
-    {:else}
-      <span class="setting-label" id={`${id}-label`}>{label}</span>
-    {/if}
+    <div class="flex items-center gap-1.5">
+      {#if controlId}
+        <label class="setting-label" for={controlId}>{label}</label>
+      {:else}
+        <span class="setting-label" id={`${id}-label`}>{label}</span>
+      {/if}
+      {#if tip}<InfoTip text={tip} />{/if}
+    </div>
     <p class="mt-1 text-sm leading-relaxed text-ink-3" id={`${id}-sentence`}>{sentence}</p>
     {#if tags.length > 0}
       <div class="mt-2 flex flex-wrap gap-1.5">
@@ -68,13 +78,13 @@
         {#if origin.changed}<span class="badge tone-accent">{i18n.m.settingRow.changed_by_you}</span>{/if}
         <span>{origin.text}</span>
         {#if origin.changed && origin.onreset}
-          <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium text-accent underline" onclick={origin.onreset}>{i18n.m.settingRow.reset}</button>
+          <button type="button" class="focus-ring hit-target rounded px-1 font-medium text-accent underline" onclick={origin.onreset}>{i18n.m.settingRow.reset}</button>
         {/if}
       </p>
     {/if}
     {#if more}
       <details class="setting-more mt-1">
-        <summary class="focus-ring inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
+        <summary class="focus-ring hit-target cursor-pointer items-center gap-1.5 rounded text-xs font-medium text-accent">
           <Icon name="info" class="h-3.5 w-3.5" />
           <span class="when-closed">{i18n.m.settingRow.more}</span>
           <span class="when-open">{i18n.m.settingRow.less}</span>
@@ -89,7 +99,7 @@
       <p class="mt-2 text-xs leading-relaxed text-ink-3" data-setting-reason>
         {disabledReason}
         {#if reasonLink}
-          <button type="button" class="focus-ring min-h-11 rounded px-1 font-medium text-accent underline" onclick={reasonLink.onclick}>{reasonLink.label}</button>
+          <button type="button" class="focus-ring hit-target rounded px-1 font-medium text-accent underline" onclick={reasonLink.onclick}>{reasonLink.label}</button>
         {/if}
       </p>
     {/if}
@@ -109,9 +119,21 @@
   .setting-row:last-child {
     padding-bottom: 0;
   }
+  /* The lit fill reaches a little past the text on both sides, without moving it. */
+  .setting-row-changed {
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
+    border-top-color: transparent;
+    border-radius: 0.625rem;
+    background: var(--accent-soft);
+  }
+  .setting-row-changed:first-child { margin-top: -0.75rem; padding-top: 0.75rem; }
+  .setting-row-changed:last-child { margin-bottom: -0.75rem; padding-bottom: 0.75rem; }
   /* Text and control sit side by side only when the row itself has room for both, not when the
      window does: beside a sidebar a wide screen can still leave a narrow page, and the text must
-     never be squeezed into a sliver beside its control. The control keeps a readable width. */
+     never be squeezed into a sliver beside its control. The control keeps a readable width, and
+     the sentence a readable measure in its own characters, so on an ultrawide screen the control
+     follows its words instead of the card's far edge. The row itself still spans the card. */
   .setting-grid {
     display: flex;
     flex-wrap: wrap;
@@ -121,6 +143,8 @@
   .setting-text {
     flex: 999 1 20rem;
     min-width: 0;
+    max-width: 72ch;
+    font-size: var(--text-body);
   }
   .setting-control {
     flex: 1 1 18rem;
@@ -132,9 +156,10 @@
     flex-wrap: nowrap;
     align-items: stretch;
   }
-  .setting-grid-stacked > .setting-text,
-  .setting-grid-stacked > .setting-control {
+  .setting-grid-stacked > * {
     flex: none;
+  }
+  .setting-grid-stacked > .setting-control {
     max-width: none;
   }
   .setting-label {

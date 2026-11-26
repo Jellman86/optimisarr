@@ -9,6 +9,7 @@
   import AutoAcceptConfirm from './AutoAcceptConfirm.svelte'
   import FolderPicker from './FolderPicker.svelte'
   import Icon from './Icon.svelte'
+  import OkMark from './OkMark.svelte'
 
   let {
     autoReplace = $bindable(false),
@@ -127,7 +128,7 @@
     {#each options as option (option.value)}
       {@const selected = choice === option.value}
       <div class="choice rounded-xl p-4 {selected ? 'choice-selected' : ''}">
-        <label class="flex min-h-11 cursor-pointer items-start gap-3">
+        <label class="flex hit-target cursor-pointer items-start gap-3">
           <input
             type="radio"
             name={`${id}-files-choice`}
@@ -148,7 +149,7 @@
         </label>
 
         {#if selected}
-          <dl class="mt-3 grid gap-2 border-t border-line pt-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]" aria-label={i18n.m.filesChoice.where_title}>
+          <dl class="hairline-t mt-3 grid gap-2 pt-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]" aria-label={i18n.m.filesChoice.where_title}>
             <dt class="font-medium text-ink-2">{i18n.m.filesChoice.original}</dt>
             <dd class="leading-relaxed text-ink-2">
               {#if option.value === 'elsewhere'}
@@ -182,7 +183,7 @@
                   aria-invalid={folderRefused ? 'true' : undefined}
                   aria-describedby={`${id}-target-state`}
                 />
-                <button type="button" class="btn min-h-11 flex-shrink-0" onclick={(event) => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
+                <button type="button" class="btn flex-shrink-0" onclick={(event) => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
               </div>
               <div id={`${id}-target-state`} class="mt-2 text-xs leading-relaxed" aria-live="polite" data-target-folder-state={check?.reason ?? (checking ? 'checking' : 'none')}>
                 {#if !targetFolder?.trim()}
@@ -192,8 +193,8 @@
                 {:else if checkFailed}
                   <p class="text-ink-3">{i18n.m.filesChoice.folder_unchecked}</p>
                 {:else if check && folderMessage}
-                  <p class="flex items-start gap-1.5 {check.allowed ? 'text-ok' : 'text-bad'}">
-                    <Icon name={check.allowed ? 'check' : 'warning'} class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <p class="flex items-start gap-1.5 {check.allowed ? 'text-ink-2' : 'text-bad'}">
+                    {#if check.allowed}<OkMark class="mt-0.5" />{:else}<Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />{/if}
                     <span>{folderMessage}</span>
                   </p>
                   {#if check.allowed && exampleRelativePath && targetFolder}
