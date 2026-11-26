@@ -195,6 +195,7 @@ export const ja: Messages = {
     distance_note: "各チャンネルにサンプルの最大距離を表示します。距離が小さいほど音声が近いことを示します。聴感評価や合格基準ではありません。",
   },
   common: {
+    live_updates_paused: 'リアルタイム更新に再接続しています。それまでは、このページを数秒ごとに更新します。',
     loading: "Optimisarrをロード中...",
     loading_short: "読み込み中…",
     checking: "チェック中...",

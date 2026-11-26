@@ -1003,6 +1003,12 @@ p {
   .data-table-state {
     @apply grid justify-items-center gap-4 px-6 py-12 text-center text-body text-ink-3;
   }
+  .data-table-skeleton-row {
+    @apply flex min-h-16 items-center justify-between gap-3 px-4;
+    border-bottom: 1px solid var(--divide-soft);
+  }
+  .data-table-compact .data-table-skeleton-row { min-height: 3.25rem; }
+  .data-table-skeleton-row:last-child { border-bottom: 0; }
   .data-table-footer {
     @apply mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-caption text-ink-3;
   }

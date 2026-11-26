@@ -2,6 +2,8 @@
   import InfoTip from '../components/InfoTip.svelte'
   import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
+  import { flip } from 'svelte/animate'
+  import { prefersReducedMotion } from 'svelte/motion'
   import { modal } from '../modal'
   import DetailDialog from '../components/DetailDialog.svelte'
   import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
@@ -12,7 +14,7 @@
   import MediaCompare from '../components/MediaCompare.svelte'
   import { api, type BatchFailure, type BulkReplacementResult, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type SoundtrackSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatAbsoluteDateTime, formatDateTime, formatSize, sizeChangePercent } from '../format'
-  import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
+  import type { JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { jobFailureStory } from '../i18n/jobErrors'
   import { router } from '../stores/ui.svelte'
@@ -180,19 +182,16 @@
   $effect(() => {
     void load()
     void loadReplacementSettings()
-    const connection = createJobsConnection({
+    const unsubscribe = activity.subscribe({
       onChanged: () => void load(),
       onProgress: applyProgress,
     })
-    connection.start().catch(() => {
-      /* fall back to the safety poll below if the socket can't connect */
-    })
-    const timer = setInterval(load, 10000)
+    const timer = setInterval(() => { if (!document.hidden) void load() }, 10000)
     return () => {
       disposed = true
       requestId++
       clearInterval(timer)
-      void connection.stop()
+      unsubscribe()
     }
   })
 
@@ -781,6 +780,9 @@
       ]} />
     {/snippet}
   </PageHeader>
+  {#if activeTab === 'queue' && (activity.connectionStatus === 'reconnecting' || activity.connectionStatus === 'polling')}
+    <p class="mb-3 text-caption text-ink-3" role="status">{i18n.m.common.live_updates_paused}</p>
+  {/if}
   {#if activeTab === 'failures'}
     <FailuresPanel />
   {:else}
@@ -1233,7 +1235,7 @@
           <tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col" class="w-[37%] sm:w-1/4">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column hidden w-[17%] sm:table-cell">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column hidden w-[15%] sm:table-cell"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr>
         {/snippet}
         {#each pagedJobs as job (job.id)}
-          <tr class:selected-row={selectedJobId === job.id}>
+          <tr class:selected-row={selectedJobId === job.id} animate:flip={{ duration: prefersReducedMotion.current ? 0 : 180 }}>
             <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
             <td><button id={`queue-job-${job.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} size="xs" /><span class="min-w-0"><strong class="block text-caption font-medium text-ink group-hover:text-accent sm:text-label">{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small class="mt-1.5 block text-micro text-ink-3">{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
             <td><span class="badge whitespace-normal {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="mt-1.5 block text-micro text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>

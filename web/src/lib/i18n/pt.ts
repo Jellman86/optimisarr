@@ -195,6 +195,7 @@ export const pt: Messages = {
     distance_note: "Cada canal mostra a maior distância entre as amostras. Distâncias menores indicam áudio mais parecido. Não são uma nota de escuta nem um limite de aprovação.",
   },
   common: {
+    live_updates_paused: 'As atualizações em tempo real estão a ligar-se novamente. Até lá, esta página é atualizada a cada poucos segundos.',
     loading: "Carregando Optimisarr...",
     loading_short: "Carregando…",
     checking: "Verificando...",

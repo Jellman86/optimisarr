@@ -19,5 +19,7 @@ export default defineConfig({
     command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
+    // Unmocked requests must fail as they do in CI, never reach a real server on this machine.
+    env: { OPTIMISARR_API: 'http://127.0.0.1:9' },
   },
 })

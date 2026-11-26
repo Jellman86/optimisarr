@@ -523,18 +523,59 @@ test('remote work animates the slices; reduced motion holds a twisted still', as
 
 async function mockJobsHub(page: Page) {
   let notify = () => {}
+  let handshake = () => {}
+  const ready = new Promise<void>(resolve => { handshake = resolve })
   await page.route('**/hubs/jobs/negotiate?*', route => json(route, {
     negotiateVersion: 1, connectionId: 'brand-test', connectionToken: 'brand-test',
     availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
   }))
   await page.routeWebSocket('**/hubs/jobs?*', socket => {
     socket.onMessage(message => {
-      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+      if (!String(message).includes('"protocol"')) return
+      socket.send('{}\u001e')
+      handshake()
     })
     notify = () => socket.send(JSON.stringify({ type: 1, target: 'jobsChanged', arguments: [] }) + '\u001e')
   })
-  return () => notify()
+  // Events sent before the handshake completes are dropped, so a test can wait for `ready`.
+  return Object.assign(() => notify(), { ready })
 }
+
+test('a job event refreshes the dashboard list before its next poll', async ({ page }) => {
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const list = page.locator('main').getByRole('region', { name: 'In flight' })
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
+  await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
+
+  fixture.jobs = [liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'New feature.mkv' })]
+  await notify.ready
+  notify()
+  await expect(list.getByText('New feature', { exact: true })).toBeVisible()
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toHaveCount(0)
+})
+
+test('a burst of job events folds into one follow-up dashboard refresh', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  const held: Route[] = []
+  await page.route('**/api/results/daily*', route => { held.push(route) })
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  await expect.poll(() => held.length).toBe(1)
+  await notify.ready
+
+  for (let event = 0; event < 4; event++) notify()
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(1)
+
+  await json(held[0], [])
+  await expect.poll(() => held.length).toBe(2)
+  await json(held[1], [])
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(2)
+})
 
 test('job events change the cube state while suspended work keeps moving illumination', async ({ page }) => {
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
@@ -544,6 +585,7 @@ test('job events change the cube state while suspended work keeps moving illumin
   const mark = page.locator('aside canvas').first()
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   fixture.queue = { runningJobs: 1, suspendedEncodeCount: 1, runningEncodesSuspended: true }
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
@@ -591,6 +633,7 @@ test('reduced-motion sessions never load graphics code', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
   expect(graphics).toEqual([])
@@ -624,6 +667,7 @@ test('the icon stops scheduling paints offscreen and resumes a slow drift when i
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   fixture.queue = { runningJobs: 0 }
   fixture.jobs = []
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
   await page.waitForTimeout(550)
@@ -692,6 +736,7 @@ test('idle geometry stays fixed and work/theme changes reuse the same meshes', a
   expect((await graphics()).light).not.toEqual(resting.light)
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
   await expect.poll(async () => (await graphics()).angle, { timeout: 15_000 }).toBeGreaterThan(.05)
@@ -743,6 +788,7 @@ test('the sidebar recovers artwork when the next job follows one without a poste
   await expect(page.locator('aside [data-thumbnail]')).toBeVisible()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCount(0)
   fixture.jobs = [liveJob({ id: 8, mediaFileId: 8, relativePath: 'New film.mkv' })]
+  await notify.ready
   notify()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveJSProperty('naturalWidth', 192)
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCSS('opacity', '1')
@@ -785,6 +831,7 @@ test('a lost graphics context falls back once and still follows theme and activi
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
   const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
@@ -832,6 +879,7 @@ test('stellar activity settles back to idle and retains its renderer through the
   await expect(mark).toHaveAttribute('data-brand-mode', 'cycle')
   fixture.queue = { runningJobs: 0 }
   fixture.jobs = []
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-brand-mode', 'settle')
   await expect(mark).toHaveAttribute('data-brand-mode', 'rest', { timeout: 15_000 })
