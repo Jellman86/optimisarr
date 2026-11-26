@@ -3,8 +3,8 @@
   import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { flip } from 'svelte/animate'
-  import { prefersReducedMotion } from 'svelte/motion'
   import { modal } from '../modal'
+  import { motionMs } from '../motion'
   import DetailDialog from '../components/DetailDialog.svelte'
   import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
   import WorkingJob from '../components/WorkingJob.svelte'
@@ -1235,7 +1235,7 @@
           <tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col" class="data-table-primary">{i18n.m.queue.col_file}</th><th scope="col" class="w-[37%] sm:w-1/4">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column hidden w-[17%] sm:table-cell">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column hidden w-[15%] sm:table-cell"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr>
         {/snippet}
         {#each pagedJobs as job (job.id)}
-          <tr class:selected-row={selectedJobId === job.id} animate:flip={{ duration: prefersReducedMotion.current ? 0 : 180 }}>
+          <tr class:selected-row={selectedJobId === job.id} animate:flip={{ duration: motionMs('base') }}>
             <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
             <td class="data-table-primary"><button id={`queue-job-${job.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} size="xs" /><span class="min-w-0"><strong class="block text-label font-medium text-ink group-hover:text-accent">{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small class="mt-1.5 block text-micro text-ink-3">{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
             <td><span class="badge whitespace-normal {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="mt-1.5 block text-micro text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="mt-1.5 block text-micro text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
@@ -1333,7 +1333,7 @@
   .replacement-confirmation { width: min(42rem, calc(100vw - 2rem)); padding: 1.5rem; overflow-y: auto; overflow-wrap: anywhere; }
   .replacement-confirmation:has([data-replacement-compare]) { width: min(64rem, calc(100vw - 2rem)); }
   #queue-list-title { scroll-margin-block-start: .75rem; }
-  .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
+  .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform var(--motion-base) var(--motion-ease-standard), box-shadow var(--motion-base) var(--motion-ease-standard); }
   .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }
   .queue-review-alert > :global(svg) { flex: none; }
   .queue-review-alert span { min-width: 0; flex: 1; display: grid; gap: .25rem; }
@@ -1357,13 +1357,12 @@
      page's own fill, and the table header stacks directly beneath it. Vertical padding keeps focus
      rings clear of the scrollport edge and wrapped rows clear of the table header. */
   @media(min-width: 640px) and (min-height: 540px) { #queue-list { --data-table-sticky-top: var(--queue-toolbar-height); }.queue-toolbar { position: sticky; top: 0; z-index: 20; background: var(--ground); }[data-queue-filters] { padding-block: .375rem; }#queue-list :global(tbody :is(tr, button, a, input)) { scroll-margin-block-start: calc(var(--queue-toolbar-height) + 2.75rem); } }
-  .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms; }
-  .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity 180ms ease, transform 180ms ease, visibility 0s; }
+  .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity var(--motion-base) var(--motion-ease-standard), transform var(--motion-base) var(--motion-ease-standard), visibility 0s linear var(--motion-base); }
+  .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity var(--motion-base) var(--motion-ease-standard), transform var(--motion-base) var(--motion-ease-standard), visibility 0s; }
   .queue-toolbar-hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-.25rem); }
   .queue-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-toolbar-actions .btn { font-size: .75rem; }
   /* Clearing failed and cancelled jobs is quiet until it is pointed at, then it says what it does. */
   .queue-clear-errors { color: var(--ink-3); }.queue-clear-errors:hover { color: var(--bad); background: var(--bad-soft); }
   @media(max-width: 639px) { .queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; } }
   @media(max-width: 639px) { .attempt-card-top { align-items: flex-start; flex-direction: column; } }
-  @media(prefers-reduced-motion: reduce) { .queue-toolbar-layer, .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: none; } }
 </style>

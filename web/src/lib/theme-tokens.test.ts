@@ -210,6 +210,21 @@ function countStrokedEdges(text: string): number {
 function countMinH11Overrides(text: string): number {
   return text.match(/(?<![\w-])min-h-11(?![\w.-])/g)?.length ?? 0
 }
+// A duration spelled out by hand (`duration-200`, `transition: opacity 180ms`, `{ duration: 180 }`)
+// keeps its speed when the motion tokens change and keeps moving when reduced motion is asked
+// for. Keyframe loop periods (`animation: … 1.8s infinite`) are not counted: they are the shape
+// of one indicator, and each already stops under reduced motion.
+const cssTime = /(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s(?![\w-])/g
+function countRawDurations(text: string): number {
+  let count = text.match(/(?<![\w-])(?:duration|delay)-(?:\d+|\[)/g)?.length ?? 0
+  for (const match of text.matchAll(/(?<![\w-])transition(?:-duration|-delay)?\s*:([^;}]*)/g)) {
+    count += match[1].match(cssTime)?.filter((time) => parseFloat(time) !== 0).length ?? 0
+  }
+  for (const match of text.matchAll(/(?<![\w-])(?:duration|delay):\s*([^,}]*)/g)) {
+    count += match[1].match(/(?<![\w.])[1-9]\d*(?![\w.])/g)?.length ?? 0
+  }
+  return count
+}
 function countStyleLines(text: string): number {
   let lines = 0
   for (const match of text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
@@ -226,13 +241,30 @@ test('drift counters handle typed lengths, fractional heights and one-line style
   assert.equal(countStyleLines('<style></style><style>\n</style>'), 0)
   assert.equal(countStyleLines('<style>.a { color: red; }</style>'), 1)
   assert.equal(countStyleLines('<style>\n  .a {}\n  .b {}\n</style>'), 2)
+  assert.equal(countRawDurations('transition-colors duration-200 duration-(--motion-base) md:duration-150'), 2)
+  assert.equal(countRawDurations('a { transition: opacity 180ms ease, visibility 0s linear .4s; }'), 2)
+  assert.equal(countRawDurations('a { transition: opacity var(--motion-base) var(--motion-ease-standard); }'), 0)
+  assert.equal(countRawDurations('animate:flip={{ duration: reduced ? 0 : 180 }} {{ duration: motionMs(\'base\') }}'), 1)
+  assert.equal(countRawDurations('a { animation: pulse 1.8s ease-in-out infinite; } { durationSeconds: 12 }'), 0)
+})
+
+// Every transition takes its speed from the motion tokens, so the whole app speeds up, slows
+// down or stands still together. app.css is included: it is where the tokens are defined, and
+// its shared primitives are held to them as well.
+test('transitions take their durations from the motion tokens', () => {
+  const files = [...sources(root), join(root, 'app.css')]
+  const offenders = files
+    .map((file) => ({ name: relative(root, file), n: countRawDurations(readFileSync(file, 'utf8')) }))
+    .filter(({ n }) => n > 0)
+    .map(({ name, n }) => `${name}: ${n}`)
+  assert.deepEqual(offenders, [], `raw durations found; use var(--motion-fast|base|slow) or motionMs():\n${offenders.join('\n')}`)
 })
 
 const budgets = {
   'arbitrary font sizes (text-[…px|rem])': { budget: 0, count: countArbitraryFontSizes },
   'stroked edges (border-line)': { budget: 30, count: countStrokedEdges },
   'per-control height overrides (min-h-11)': { budget: 0, count: countMinH11Overrides },
-  'lines of page-scoped CSS (<style>)': { budget: 595, count: countStyleLines },
+  'lines of page-scoped CSS (<style>)': { budget: 587, count: countStyleLines },
 }
 
 for (const [drift, { budget, count }] of Object.entries(budgets)) {

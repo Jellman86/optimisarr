@@ -988,6 +988,10 @@ test('an idle in-flight panel shows the last finished title instead of an empty 
   await expect(last).toContainText('S02E07 · The Long Tide')
   await expect(last).toContainText('1.2 GB → 352 MB −71%')
   await expect(last).toContainText('TV · Mac Studio · 3 hours ago')
+  // A dashboard panel is not a detail header: the poster identifies the title on its own,
+  // with no artwork glow behind it.
+  await expect(last.locator('[data-thumbnail]')).toBeVisible()
+  await expect(last.locator('.poster-glow')).toHaveCount(0)
 })
 
 test('the idle in-flight panel reads a grown file the same way the results table does', async ({ page }) => {

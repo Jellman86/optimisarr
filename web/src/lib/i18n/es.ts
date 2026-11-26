@@ -198,6 +198,8 @@ export const es: Messages = {
     live_updates_paused: 'Las actualizaciones en directo se están reconectando. Mientras tanto, esta página se actualiza cada pocos segundos.',
     loading: 'Cargando Optimisarr...',
     loading_short: 'Cargando…',
+    page_load_failed: "No se pudo cargar esta página. Si Optimisarr se actualizó después de abrir esta pestaña, recarga para obtener la versión actual.",
+    reload_page: "Recargar",
     checking: 'Comprobando...',
     continue: 'Continuar',
     cancel: 'Cancelar',

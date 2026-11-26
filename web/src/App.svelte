@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, untrack, type Component } from 'svelte'
   import { i18n } from './lib/i18n/i18n.svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
@@ -10,17 +10,6 @@
   import Sidebar from './lib/components/Sidebar.svelte'
   import BrandMark from './lib/components/BrandMark.svelte'
   import Icon from './lib/components/Icon.svelte'
-  import Dashboard from './lib/pages/Dashboard.svelte'
-  import Libraries from './lib/pages/Libraries.svelte'
-  import QualityLab from './lib/pages/QualityLab.svelte'
-  import Inventory from './lib/pages/Inventory.svelte'
-  import OptimiseFile from './lib/pages/OptimiseFile.svelte'
-  import ExactDuplicates from './lib/pages/ExactDuplicates.svelte'
-  import Queue from './lib/pages/Queue.svelte'
-  import Quarantine from './lib/pages/Quarantine.svelte'
-  import Schedule from './lib/pages/Schedule.svelte'
-  import Settings from './lib/pages/Settings.svelte'
-  import Setup from './lib/pages/Setup.svelte'
   import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
   import ShortcutsDialog from './lib/components/ShortcutsDialog.svelte'
@@ -34,24 +23,49 @@
     openFocusedRow,
     toggleFocusedRowSelection,
   } from './lib/keyboard'
-  import { APP_TITLE, pageTitle } from './lib/route-meta'
+  import { APP_TITLE, pageNameFor, pageTitle, type PageName } from './lib/route-meta'
 
-  // Map the active route to its page component.
-  let page = $derived.by(() => {
-    const path = router.path
-    if (/^\/libraries\/\d+\/quality-check$/.test(path)) return QualityLab
-    if (/^\/libraries\/\d+\/duplicates$/.test(path)) return ExactDuplicates
-    if (path.startsWith('/libraries')) return Libraries
-    // Inventory absorbed the Candidates view; the old /candidates route still lands there.
-    if (/^\/inventory\/optimise\/\d+$/.test(path)) return OptimiseFile
-    if (path === '/inventory/duplicates') return ExactDuplicates
-    if (path.startsWith('/inventory') || path.startsWith('/candidates')) return Inventory
-    if (path.startsWith('/queue')) return Queue
-    if (path.startsWith('/quarantine')) return Quarantine
-    if (path.startsWith('/schedule')) return Schedule
-    // Tools moved into Settings; the old route still lands there (opens the Tools tab).
-    if (path.startsWith('/tools') || path.startsWith('/settings')) return Settings
-    return Dashboard
+  // Each page is its own chunk, fetched the first time it is visited, so opening the app parses
+  // the shell and one page rather than all of them. Setup is loaded the same way: most visits
+  // never see it.
+  type Loadable = PageName | 'setup'
+  const pageLoaders: Record<Loadable, () => Promise<{ default: Component }>> = {
+    dashboard: () => import('./lib/pages/Dashboard.svelte'),
+    libraries: () => import('./lib/pages/Libraries.svelte'),
+    qualityLab: () => import('./lib/pages/QualityLab.svelte'),
+    exactDuplicates: () => import('./lib/pages/ExactDuplicates.svelte'),
+    inventory: () => import('./lib/pages/Inventory.svelte'),
+    optimiseFile: () => import('./lib/pages/OptimiseFile.svelte'),
+    queue: () => import('./lib/pages/Queue.svelte'),
+    quarantine: () => import('./lib/pages/Quarantine.svelte'),
+    schedule: () => import('./lib/pages/Schedule.svelte'),
+    settings: () => import('./lib/pages/Settings.svelte'),
+    setup: () => import('./lib/pages/Setup.svelte'),
+  }
+  let loadedPages = $state.raw<Partial<Record<Loadable, Component>>>({})
+  let failedPages = $state.raw<ReadonlySet<Loadable>>(new Set())
+
+  function loadPage(name: Loadable) {
+    // A failed page stays failed until a reload: importing it again can render it without the
+    // stylesheet whose earlier request failed, because the browser does not retry that link.
+    if (loadedPages[name] || failedPages.has(name)) return
+    pageLoaders[name]().then(
+      (module) => { loadedPages = { ...loadedPages, [name]: module.default } },
+      // Most often the server was updated while this tab stayed open, and the chunk this build
+      // names is gone. Say so instead of waiting forever; a reload fetches the current build.
+      () => { failedPages = new Set([...failedPages, name]) },
+    )
+  }
+
+  let pageName = $derived(pageNameFor(router.path))
+  let Page = $derived(loadedPages[pageName])
+  let SetupPage = $derived(loadedPages.setup)
+
+  // The page's code is fetched while sign-in and the setup check are still answering, so it is
+  // usually ready by the time the shell can show it.
+  $effect(() => {
+    const name: Loadable = setup.required ? 'setup' : pageName
+    untrack(() => loadPage(name))
   })
 
   // What identifies "a different page" for the purposes of remounting. It is deliberately
@@ -80,8 +94,10 @@
   // screen-reader user hears where they landed instead of staying on the link they left. The
   // first page shown is left alone: the browser already starts there, and grabbing focus on
   // load would draw a ring nobody asked for. A page that moved focus itself (to its own heading
-  // or a field) keeps it.
+  // or a field) keeps it. A page not visited before arrives a moment after its route, so focus
+  // waits until that page has rendered rather than landing when the address changed.
   let shownPageKey: string | null = null
+  let focusPendingFor: string | null = null
   let focusedBeforeNav: Element | null = null
   $effect.pre(() => {
     const key = pageKey
@@ -92,19 +108,22 @@
   $effect(() => {
     const key = pageKey
     const main = mainEl
+    const rendered = Page !== undefined
     if (!main) {
       shownPageKey = null
+      focusPendingFor = null
       focusedBeforeNav = null
       return
     }
-    if (shownPageKey === null || key === shownPageKey) {
-      shownPageKey = key
-      return
+    if (shownPageKey !== null && key !== shownPageKey) {
+      main.scrollTo({ top: 0 })
+      focusPendingFor = key
     }
     shownPageKey = key
+    if (focusPendingFor !== key || !rendered) return
+    focusPendingFor = null
     const focusedBefore = focusedBeforeNav
     focusedBeforeNav = null
-    main.scrollTo({ top: 0 })
     void tick().then(() => {
       if (!main.isConnected || key !== pageKey) return
       const focused = document.activeElement
@@ -306,7 +325,23 @@
     </div>
   </div>
 {:else if setup.required}
-  <Setup />
+  {#if SetupPage}
+    <SetupPage />
+  {:else if failedPages.has('setup')}
+    <div class="flex h-dvh items-center justify-center bg-ground p-4 text-ink">
+      <div class="card flex w-full max-w-md flex-col items-center gap-4 p-6 text-center" role="alert">
+        <p class="text-body text-ink-2">{i18n.m.common.page_load_failed}</p>
+        <button type="button" class="btn btn-primary" onclick={() => location.reload()}>{i18n.m.common.reload_page}</button>
+      </div>
+    </div>
+  {:else}
+    <div class="flex h-dvh items-center justify-center bg-ground p-4 text-ink">
+      <div class="flex items-center gap-3 text-ink-3">
+        <BrandMark class="h-8 w-8" />
+        <span class="text-sm font-semibold">{i18n.m.setup.loading}</span>
+      </div>
+    </div>
+  {/if}
 {:else}
   <!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
        and content clear of the notch and home indicator. -->
@@ -362,8 +397,18 @@
         <StatusStrip />
         <DiagnosticCaptureBanner />
         {#key pageKey}
-          {@const Page = page}
-          <Page />
+          {#if Page}
+            <Page />
+          {:else if failedPages.has(pageName)}
+            <div class="page-pending" role="alert">
+              <p class="max-w-md text-body text-ink-2">{i18n.m.common.page_load_failed}</p>
+              <button type="button" class="btn btn-primary" onclick={() => location.reload()}>{i18n.m.common.reload_page}</button>
+            </div>
+          {:else}
+            <div class="page-pending" role="status">
+              <span class="page-pending-label text-body text-ink-3">{i18n.m.common.loading_short}</span>
+            </div>
+          {/if}
         {/key}
       </div>
     </main>

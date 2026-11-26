@@ -89,7 +89,7 @@
      context above the tray's <main> (itself relative, so it would otherwise paint over the
      language menu where the menu overlaps the tray). -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:relative md:z-10 md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-(--motion-base) md:relative md:z-10 md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >

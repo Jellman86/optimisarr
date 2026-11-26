@@ -198,6 +198,8 @@ export const zh: Messages = {
     live_updates_paused: '实时更新正在重新连接。在此之前，此页面每隔几秒刷新一次。',
     loading: "正在加载 Optimisarr...",
     loading_short: "加载中…",
+    page_load_failed: "此页面无法加载。如果在打开此标签页后 Optimisarr 已更新，请重新加载以获取当前版本。",
+    reload_page: "重新加载",
     checking: "检查...",
     continue: "继续",
     cancel: "取消",

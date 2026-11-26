@@ -2,7 +2,9 @@
   // The title's own poster, blurred into the surface behind it, the way a "now playing" view
   // takes its colour from the artwork. It is ambience for recognition only: it never carries
   // state, it sits behind the content so text is always on the solid surface above it, and a
-  // title with no artwork simply leaves the surface plain.
+  // title with no artwork simply leaves the surface plain. It belongs only behind the header of
+  // one title's detail view (a job, a quarantine review), where the page is about that title;
+  // in a list, panel or card it would be decoration, and the poster alone identifies the title.
   let { mediaFileId }: { mediaFileId: number } = $props()
   let failed = $state(false)
   let loaded = $state(false)
@@ -49,7 +51,7 @@
     filter: blur(56px) saturate(1.5);
     transform: scale(1.35);
     opacity: 0;
-    transition: opacity 0.4s ease;
+    transition: opacity var(--motion-slow) var(--motion-ease-enter);
   }
   img.loaded {
     opacity: 0.2;

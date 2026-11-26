@@ -375,6 +375,7 @@ test('information tooltips are translated, populated, and readable in every loca
     // by card position, because the card labels are translated and the order is not the point.
     for (const room of ['encoding', 'files']) {
       await page.goto(`/#/settings/${room}`)
+      await expect(page.locator('main h1')).toBeVisible()
       if (room === 'encoding') await page.locator('.workload-details summary').click()
       const tooltips = page.locator('main [role="tooltip"]')
       // Files & safety shows each explanation as its row's sentence, so only Encoding still

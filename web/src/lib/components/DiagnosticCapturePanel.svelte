@@ -251,10 +251,9 @@
 </ConfigSection>
 
 <style>
-  :global(#diagnostic-capture) { transition: box-shadow 180ms ease; }
+  :global(#diagnostic-capture) { transition: box-shadow var(--motion-base) var(--motion-ease-standard); }
   :global(#diagnostic-capture:hover), :global(#diagnostic-capture:focus-within) { box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
   .capture-light { width: .55rem; height: .55rem; flex: none; border-radius: 50%; background: var(--ink-4); }
   .capture-light.recording { background: var(--accent); box-shadow: 0 0 0 .25rem color-mix(in srgb, var(--accent) 14%, transparent), 0 0 1rem var(--accent); }
   .evidence-note { background: var(--raised); box-shadow: inset 0 1px 0 var(--edge); }
-  @media (prefers-reduced-motion: reduce) { :global(#diagnostic-capture) { transition: none; } }
 </style>

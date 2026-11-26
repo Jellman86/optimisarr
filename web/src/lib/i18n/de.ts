@@ -200,6 +200,8 @@ export const de: Messages = {
     live_updates_paused: 'Live-Updates werden neu verbunden. Bis dahin wird diese Seite alle paar Sekunden aktualisiert.',
     loading: 'Optimisarr wird geladen …',
     loading_short: 'Wird geladen …',
+    page_load_failed: "Diese Seite konnte nicht geladen werden. Wurde Optimisarr aktualisiert, nachdem du diesen Tab geöffnet hast, lade neu, um die aktuelle Version zu erhalten.",
+    reload_page: "Neu laden",
     checking: 'Wird geprüft …',
     continue: 'Weiter',
     cancel: 'Abbrechen',

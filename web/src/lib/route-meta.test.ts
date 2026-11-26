@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { en } from './i18n/en.ts'
-import { APP_TITLE, pageTitle, settingsRoomFromPath, showsActiveWork } from './route-meta.ts'
+import { APP_TITLE, pageNameFor, pageTitle, settingsRoomFromPath, showsActiveWork } from './route-meta.ts'
 
 test('every top-level page names itself before the application', () => {
   assert.equal(pageTitle('/', en), 'Dashboard · Optimisarr')
@@ -87,4 +87,23 @@ test('active work is already shown on Dashboard, Queue and fallback routes', () 
   assert.equal(showsActiveWork('/settings'), false)
   assert.equal(showsActiveWork('/settings/encoding'), false)
   assert.equal(showsActiveWork('/tools'), false)
+})
+
+test('each route loads the page that renders it, and old routes land where their view moved', () => {
+  assert.equal(pageNameFor('/'), 'dashboard')
+  assert.equal(pageNameFor('/nowhere'), 'dashboard')
+  assert.equal(pageNameFor('/libraries'), 'libraries')
+  assert.equal(pageNameFor('/libraries/new/files'), 'libraries')
+  assert.equal(pageNameFor('/libraries/7/configure'), 'libraries')
+  assert.equal(pageNameFor('/libraries/7/quality-check'), 'qualityLab')
+  assert.equal(pageNameFor('/libraries/7/duplicates'), 'exactDuplicates')
+  assert.equal(pageNameFor('/inventory'), 'inventory')
+  assert.equal(pageNameFor('/candidates'), 'inventory')
+  assert.equal(pageNameFor('/inventory/duplicates'), 'exactDuplicates')
+  assert.equal(pageNameFor('/inventory/optimise/42'), 'optimiseFile')
+  assert.equal(pageNameFor('/queue/failures'), 'queue')
+  assert.equal(pageNameFor('/quarantine/12'), 'quarantine')
+  assert.equal(pageNameFor('/schedule'), 'schedule')
+  assert.equal(pageNameFor('/settings/encoding'), 'settings')
+  assert.equal(pageNameFor('/tools'), 'settings')
 })

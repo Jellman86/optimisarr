@@ -54,7 +54,7 @@ The colour token system, safety copy, and automated test discipline are already 
 6. **One accent fill per view:** reserved for the single action that advances the work. Active tabs, selected rows, and "on" states use lit fills.
 7. **Controls:** three heights (28 inline in a row, 36 default, 44 in forms/dialogs and automatically on `pointer: coarse`); four radii (pill for buttons/chips, 8 for fields, 14 for panels, 18 for dialogs).
 8. **Disclosure ladder:** always-visible sentence -> warning tag -> inline "More about this" -> child page. Dialogs inspect one item; confirmations only for destructive or bulk actions; no bottom sheets.
-9. **Motion:** 120ms hover/press, 180ms layout/disclosure, 240ms entering dialogs, one ease-out curve. Colour never fades on availability changes; nothing loops except live indicators; reduced motion keeps state without movement.
+9. **Motion:** three tokens, `--motion-fast` 120ms (hover/press), `--motion-base` 180ms (layout/disclosure) and `--motion-slow` 300ms (entering surfaces), with standard, enter and exit curves. Colour never fades on availability changes; nothing loops except live indicators; reduced motion keeps state without movement.
 10. **Data:** relative dates under 24 hours, absolute without seconds after; sizes always show before, after, and percent together; missing values use an accessible "not available" dash.
 
 ---
@@ -86,7 +86,7 @@ The colour token system, safety copy, and automated test discipline are already 
 - **3.1 Keyboard (P1):** `g`+letter navigation, `/` search focus, `j`/`k` row movement, `x` select, Enter open, `?` shortcuts sheet (all 9 locales), optional non-destructive route/library palette.
 - **3.2 Realtime continuity (P1):** SignalR-driven list updates with polling fallback, keyed 180ms row transitions, quiet staleness/reconnecting indicator, sized skeletons.
 - **3.3 Phone and accessibility completion (P1):** `DataTable` two-line phone rows, single-line phone status strip, sticky safe-area bottom bars, replace essential `title=` with visible text or `InfoTip`, 40%-expansion pseudo-locale audit.
-- **3.4 Motion, brand, and bundle weight (P2):** motion tokens, restrict `PosterGlow` to detail headers, lazy-load pages to clear the 500 kB chunk advisory, regenerate dark and light docs captures.
+- **3.4 Motion, brand, and bundle weight (P2):** motion tokens, restrict `PosterGlow` to detail headers, lazy-load pages to clear the 500 kB chunk advisory, regenerate the docs captures (dark; light on request).
 
 ---
 

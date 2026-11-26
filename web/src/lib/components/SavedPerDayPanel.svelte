@@ -227,7 +227,7 @@
     min-width: 0;
     flex: 1 1 0;
     align-items: flex-end;
-    transition: opacity 120ms ease;
+    transition: opacity var(--motion-fast) var(--motion-ease-standard);
   }
   .saved-day-dim {
     opacity: 0.45;

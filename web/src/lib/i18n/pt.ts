@@ -198,6 +198,8 @@ export const pt: Messages = {
     live_updates_paused: 'As atualizações em tempo real estão a ligar-se novamente. Até lá, esta página é atualizada a cada poucos segundos.',
     loading: "Carregando Optimisarr...",
     loading_short: "Carregando…",
+    page_load_failed: "Não foi possível carregar esta página. Se o Optimisarr foi atualizado depois de abrir este separador, recarregue para obter a versão atual.",
+    reload_page: "Recarregar",
     checking: "Verificando...",
     continue: "Continuar",
     cancel: "Cancelar",

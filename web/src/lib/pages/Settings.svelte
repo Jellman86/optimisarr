@@ -1044,7 +1044,7 @@ let settings = $state<Settings>({
                   <button
                     type="button"
                     id={`settings-room-${room.key}`}
-                    class="focus-ring-inset flex min-h-(--control-lg) w-full items-start gap-3 px-4 py-3.5 text-left transition-colors duration-120 hover:bg-lit group-first:rounded-t-panel group-last:rounded-b-panel motion-reduce:transition-none sm:px-6 @2xl:items-center"
+                    class="focus-ring-inset flex min-h-(--control-lg) w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-lit group-first:rounded-t-panel group-last:rounded-b-panel sm:px-6 @2xl:items-center"
                     data-settings-room={room.key}
                     onclick={() => openRoomAt(room.key)}
                   >
