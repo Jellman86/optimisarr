@@ -385,7 +385,7 @@
 {/if}
 
 {#if loading || (kind !== 'duplicate' && (replacements.length > 0 || duplicates.length === 0))}
-  <DataTable rowCount={replacements.length} {loading} error={loadError} label={i18n.m.nav.quarantine} density="compact" scroll="contained" bind:scroller={tableScrollEl} data-quarantine-list class="quarantine-table" footer={replacements.length > 0 ? replacementCount : undefined}>
+  <DataTable rowCount={replacements.length} {loading} error={loadError} label={i18n.m.nav.quarantine} density="compact" scroll="contained" bind:scroller={tableScrollEl} data-quarantine-list data-keyboard-list class="quarantine-table" footer={replacements.length > 0 ? replacementCount : undefined}>
     {#snippet head()}
       <tr>
         <th scope="col" class="w-28 sm:w-32">{i18n.m.quarantine.col_status}</th>
@@ -413,7 +413,7 @@
           <div class="flex items-center gap-3">
           <Thumbnail mediaFileId={r.mediaFileId} alt="" />
           <div class="min-w-0">
-          <a id={`replacement-${r.id}`} class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
+          <a id={`replacement-${r.id}`} data-row-primary class="focus-ring flex hit-target items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
           {#if r.status === 'Purged'}
             <div class="text-caption text-ink-3">{i18n.m.quarantine.original_purged}</div>
           {:else if r.status === 'Replaced'}

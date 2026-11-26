@@ -360,7 +360,7 @@
       {#if !bulkBusy}<button type="button" class="btn ml-2" onclick={resumeProbeBatch}>{i18n.m.setup.retry}</button>{/if}
     </p>
   {/if}
-  <DataTable density="compact" rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
+  <DataTable data-keyboard-list density="compact" rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
     {#snippet head()}
       <tr>
         <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
@@ -373,7 +373,7 @@
     {#each rows as row (row.file.id)}{@const file = row.file}
       <tr class:selected-row={selected?.file.id === file.id}>
         <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
-        <td><button id={`inventory-file-${file.id}`} class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
+        <td><button id={`inventory-file-${file.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
           <Thumbnail mediaFileId={file.id} size="xs" />
           <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="sm:hidden">{' · '}{formatSize(file.sizeBytes)}</span></span></span>
         </button></td>

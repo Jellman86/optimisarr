@@ -504,6 +504,14 @@ p {
     box-shadow: inset 0 -1px 0 var(--divide-soft);
   }
 
+  /* A key to press, drawn as a small raised cap. Its edge is an inset hairline, like every
+     other divider, so a row of keys never adds to the line box it sits in. */
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 font-mono text-micro font-semibold text-ink-2;
+    background: var(--raised);
+    box-shadow: inset 0 0 0 1px var(--divide), inset 0 -1px 0 var(--divide);
+  }
+
   /* Tones: what a state means, as a tinted fill and an ink to read on it. One
      class colours a badge, a chip, a callout or a whole card the same way, so
      "failed" is the same colour wherever it is said. */
@@ -1137,3 +1145,16 @@ main:has(.sticky-actions) {
 }
 .app-modal[open] { display: grid; }
 .app-modal::backdrop { background: rgb(0 0 0 / .32); backdrop-filter: blur(3px); }
+
+/* The keyboard sheet lists its groups in two columns; each line is divided from the one above
+   by a hairline rather than a stroke. */
+.shortcut-row + .shortcut-row { box-shadow: inset 0 1px 0 var(--divide-soft); }
+
+/* Quick Jump hangs from near the top rather than centring, so the field stays still while the
+   list under it grows and shrinks with what is typed. */
+.quick-jump-dialog {
+  width: 36rem;
+  margin-top: min(12vh, 6rem);
+  max-height: min(34rem, calc(100dvh - 2rem - min(12vh, 6rem)));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}

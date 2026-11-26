@@ -10,6 +10,8 @@
   import LanguageSelect from './LanguageSelect.svelte'
   import NowEncoding from './NowEncoding.svelte'
 
+  let { onOpenShortcuts }: { onOpenShortcuts?: () => void } = $props()
+
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
 
   // The running backend's version — the same source as the optimisation marker stamped into files —
@@ -172,13 +174,19 @@
   </div>
   </div>
 
-  <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
+  <!-- One foot: theme, language, shortcuts, collapse. Ghost buttons, no strips, no rules. -->
   <div class="flex shrink-0 items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme} aria-describedby="sidebar-theme-mode">
       <Icon name={theme.icon} class="h-5 w-5" />
         <span id="sidebar-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
     </button>
     <LanguageSelect compact opensUp />
+    {#if onOpenShortcuts}
+      <!-- Desktop only: a phone has no keyboard to take shortcuts from. -->
+      <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={onOpenShortcuts} title={`${i18n.m.shortcuts.open_button} (?)`} aria-label={i18n.m.shortcuts.open_button} data-open-shortcuts>
+        <Icon name="keyboard" class="h-5 w-5" />
+      </button>
+    {/if}
     <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />

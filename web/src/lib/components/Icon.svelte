@@ -44,6 +44,8 @@
     snail: 'M3 17h9a5 5 0 10-5-5 3 3 0 103 3M14 9l2-3M17 8l2-2',
     // A no-entry sign: a circle struck through with a diagonal — "never do this".
     ban: 'M5.64 5.64l12.72 12.72M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    // A keyboard: the board's outline, a row of keys, and the space bar.
+    keyboard: 'M4 6h16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8',
   }
 </script>
 
