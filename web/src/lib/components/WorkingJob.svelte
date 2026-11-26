@@ -8,15 +8,15 @@
   import JobStages from './JobStages.svelte'
   import Chip from './Chip.svelte'
   import Icon from './Icon.svelte'
-  import PosterGlow from './PosterGlow.svelte'
   let { job, queue, telemetry, compact = false, selected = false, onopen }: {
     job: Job; queue: QueueStatus | null; telemetry?: Telemetry; compact?: boolean; selected?: boolean; onopen: (event: MouseEvent) => void
   } = $props()
-  let title = $derived(job.relativePath?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ') || t(i18n.m.queue.job_fallback, { id: job.id }))
+  let title = $derived(job.relativePath?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ').trim() || t(i18n.m.queue.job_fallback, { id: job.id }))
   let paused = $derived(isJobSuspended(job, queue))
   let location = $derived(jobLocation(job))
   let locationLabel = $derived(location === 'worker' ? job.workerName ?? '?' : location === 'transfer' ? i18n.m.queue.location_transfer : i18n.m.dashboard.this_server)
   let phase = $derived(verificationPhase(job))
+  let isLive = $derived(!paused && phase !== 'waiting')
   let status = $derived(paused ? i18n.m.queue.now_paused : job.status === 'Leased'
     ? (job.remoteStage === 'Encoding' ? t(i18n.m.queue.now_remote, { worker: job.workerName ?? '?' }) : job.remoteStage === 'Delivering' ? t(i18n.m.queue.remote_returning, { worker: job.workerName ?? '?' }) : t(i18n.m.queue.remote_job, { worker: job.workerName ?? '?' }))
     : job.finalizing ? i18n.m.queue.phase_finalizing
@@ -25,29 +25,28 @@
     : job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying)
 </script>
 
-<article class="working-job card" class:compact class:selected aria-label={title}>
-  {#if !compact}<PosterGlow mediaFileId={job.mediaFileId} />{/if}
-  <button class="working-poster focus-ring" onclick={onopen} aria-label={title} aria-haspopup="dialog"><Thumbnail mediaFileId={job.mediaFileId} size={compact ? 'md' : 'poster'} /></button>
-  <div class="working-content">
-    <div class="working-top"><span class="working-status" class:paused>{status}</span><Chip class="max-w-48" truncate title={locationLabel}>{locationLabel}</Chip>{#if job.videoEncoder}<Chip mono class="break-all">{job.videoEncoder}</Chip>{/if}</div>
-    {#if job.retryReason === 'SoftwareDecode'}<p class="working-retry">{i18n.m.queue.retry_software_title} · {t(i18n.m.queue.attempt_number, { number: job.executionAttempt ?? 1 })}</p>{/if}
-    <h3><button class="working-title focus-ring" onclick={onopen} aria-haspopup="dialog">{title}</button></h3>
-    {#if job.enqueueReason}<p class="working-reason">{job.enqueueReason}</p>{/if}
-    <JobProgress {job} {queue} {telemetry} {compact} />
-    {#if !compact}<JobStages {job} {queue} />{/if}
+<!-- Two rows beside a small poster: what is happening and to which file, then how far along it
+     is. The list below is the page, so a running job takes a strip, not a screen. -->
+<article class="working-job card grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2 px-4 py-3" class:selected aria-label={title}>
+  <button type="button" class="row-span-2 rounded-[5px] focus-ring max-sm:self-start" onclick={onopen} aria-label={title} aria-haspopup="dialog"><Thumbnail mediaFileId={job.mediaFileId} size={compact ? 'sm' : 'md'} /></button>
+  <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+    <span class={['inline-flex min-w-0 max-w-full items-center gap-1.5 text-caption font-semibold [overflow-wrap:anywhere]', paused ? 'text-warn' : isLive ? 'text-accent' : 'text-ink-2']}>
+      <span class={['h-2 w-2 flex-none rounded-full', paused ? 'bg-warn' : isLive ? 'animate-pulse bg-accent' : 'bg-ink-4']} aria-hidden="true"></span>
+      <span class="min-w-0">{status}</span>
+    </span>
+    <h3 class={['min-w-0 flex-[1_1_12rem] font-semibold text-ink [overflow-wrap:anywhere]', compact ? 'text-label' : 'text-title']}><button type="button" class="line-clamp-2 rounded text-left focus-ring hover:text-accent" onclick={onopen} aria-haspopup="dialog">{title}</button></h3>
+    <span class="flex min-w-0 flex-wrap items-center gap-1.5"><Chip class="max-w-48" truncate title={locationLabel}>{locationLabel}</Chip>{#if job.videoEncoder}<Chip mono class="break-all">{job.videoEncoder}</Chip>{/if}</span>
+    <button type="button" id={`working-job-${job.id}`} class="btn btn-sm btn-ghost ml-auto text-accent" aria-haspopup="dialog" aria-controls={selected ? 'queue-job-dialog' : undefined} onclick={onopen}>{i18n.m.queue.view_job}<Icon name="arrow-right" /></button>
   </div>
-  <div class="working-footer"><button id={`working-job-${job.id}`} class="btn btn-ghost" aria-haspopup="dialog" aria-controls={selected ? 'queue-job-dialog' : undefined} onclick={onopen}>{i18n.m.queue.view_job}<Icon name="arrow-right" /></button></div>
+  <div class={['grid min-w-0 grid-cols-1 items-center gap-x-6 gap-y-1.5', !compact && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]']}>
+    {#if job.retryReason === 'SoftwareDecode'}<p class="col-span-full text-caption text-warn">{i18n.m.queue.retry_software_title} · {t(i18n.m.queue.attempt_number, { number: job.executionAttempt ?? 1 })}</p>
+    {:else if job.retryReason === 'AvoidIntelQsv'}<p class="col-span-full text-caption text-warn">{i18n.m.queue.retry_qsv_title} · {t(i18n.m.queue.attempt_number, { number: job.executionAttempt ?? 1 })}</p>{/if}
+    {#if job.enqueueReason}<p class="col-span-full text-caption text-ink-3 [overflow-wrap:anywhere]">{job.enqueueReason}</p>{/if}
+    <JobProgress {job} {queue} {telemetry} {compact} inline />
+    {#if !compact}<JobStages {job} {queue} class="" />{/if}
+  </div>
 </article>
 
 <style>
-  .working-job { position: relative; isolation: isolate; display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 1.25rem 1.5rem; padding: 1.5rem; }
-  .working-job > :not(:global(.poster-glow)) { position: relative; z-index: 1; }
-  .working-job.selected { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }.working-poster { align-self: start; border-radius: .625rem; overflow: hidden; box-shadow: 0 8px 24px -8px rgba(0, 0, 0, .45), var(--lift-1); }.working-content { min-width: 0; }
-  .working-top { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .625rem; }.working-status { font-size: .75rem; font-weight: 600; color: var(--accent); margin-right: auto; }.working-status.paused { color: var(--warn); }
-  .working-title { text-align: left; border-radius: .25rem; }.working-title:hover { color: var(--accent); }
-  .working-retry { margin: -.25rem 0 .625rem; color: var(--warn); font-size: .6875rem; }
-  h3 { color: var(--ink); font-size: 1.375rem; line-height: 1.3; letter-spacing: -.025em; font-weight: 600; overflow-wrap: anywhere; margin-bottom: 1rem; }.working-reason { font-size: .75rem; color: var(--ink-3); margin: -.5rem 0 1rem; }
-  .working-footer { grid-column: 1/-1; display: flex; justify-content: flex-end; align-items: center; gap: 1rem; padding-top: .75rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-3); }.working-footer .btn { color: var(--accent); font-size: .75rem; min-height: 2.5rem; }
-  .compact { grid-template-columns: 2.75rem minmax(0, 1fr) auto; padding: 1rem 1.25rem; gap: .75rem 1rem; }.compact h3 { font-size: .9375rem; margin-bottom: .75rem; }.compact .working-footer { grid-column: 3; grid-row: 1; align-self: center; border: 0; padding: 0; }.compact .working-top { margin-bottom: .375rem; }
-  @media(max-width: 639px) { .working-job { padding: 1rem; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 1rem; }.working-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; } h3 { font-size: 1.125rem; }.working-footer { gap: .5rem; }.working-top { align-items: flex-start; }.compact { grid-template-columns: 2.75rem minmax(0, 1fr); }.compact .working-poster :global([data-thumbnail]) { width: 2.75rem; height: 4rem; }.compact .working-footer { grid-column: 2; grid-row: auto; justify-content: flex-end; } }
+  .working-job.selected { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }
 </style>

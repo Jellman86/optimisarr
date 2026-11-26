@@ -238,10 +238,10 @@
          own box outside this scroll container and stretched the document past the viewport. -->
     <main
       bind:this={mainEl}
-      class="relative min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
+      class="relative min-w-0 flex-1 overflow-y-auto scroll-pb-24 px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
-      <div class="page-frame">
+      <div class="page-frame pt-4 sm:pt-6 lg:pt-8">
         <StatusStrip />
         <DiagnosticCaptureBanner />
         {#key pageKey}
