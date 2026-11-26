@@ -558,6 +558,12 @@ language: {
     saved_per_day_average: "{size} par jour en moyenne",
     chart_today: 'Aujourd’hui',
     originals_now: 'Originaux {original} · maintenant {optimised}',
+    in_flight_quality_mode: 'Mode de qualité',
+    fleet_col_machine: 'Hôte',
+    fleet_col_load: 'Charge',
+    fleet_col_free_space: 'Espace libre',
+    saved_per_day_step_hint: 'Utilisez les flèches gauche et droite pour consulter chaque jour.',
+    saved_per_day_peak: 'Pic {date} : {size}',
   },
   schedule: {
     error_load: 'Impossible de charger le planning',

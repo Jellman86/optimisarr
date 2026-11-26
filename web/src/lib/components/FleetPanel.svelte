@@ -10,7 +10,14 @@
     workers = [],
     workersAvailable = false,
     runningLocally = 0,
-  }: { workers?: Worker[]; workersAvailable?: boolean; runningLocally?: number } = $props()
+    localFreeBytes = null,
+  }: {
+    workers?: Worker[]
+    workersAvailable?: boolean
+    runningLocally?: number
+    /** Free space on this server's work disk, when the queue status knows it. */
+    localFreeBytes?: number | null
+  } = $props()
 
   // A machine that cannot measure itself reports nothing, and is drawn as reporting nothing.
   // "Idle" and "no answer" are different answers to give someone deciding where work should go —
@@ -57,19 +64,38 @@
   let total = $derived(active.length + 1)
 </script>
 
+<!-- A size on its own line on a phone, or under a column header on a wider screen, is labelled
+     either way: the column header is drawing, and each cell carries its own name for a reader. -->
+{#snippet freeSpace(bytes: number | null)}
+  <div class="flex items-baseline gap-1.5 text-xs tabular-nums text-ink-3 @md:block @md:text-right">
+    <span class="text-micro @md:sr-only">{i18n.m.dashboard.fleet_col_free_space}</span>
+    {#if bytes != null}
+      <span class="text-ink-2">{formatSize(bytes)}</span>
+    {:else}
+      <span aria-hidden="true">—</span><span class="sr-only">{i18n.m.common.unknown}</span>
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet reporting()}
   <span class="text-xs text-ink-3">
     {t(i18n.m.dashboard.fleet_reporting, { online: online.toLocaleString(), total: total.toLocaleString() })}
   </span>
 {/snippet}
 
-<div class="card h-full">
-  <PanelHeader title={i18n.m.dashboard.fleet} trailing={workersAvailable ? reporting : undefined} />
+<section class="@container card h-full" aria-labelledby="fleet-heading">
+  <PanelHeader as="h2" id="fleet-heading" title={i18n.m.dashboard.fleet} trailing={workersAvailable ? reporting : undefined} />
+
+  <div class="hairline-b hidden grid-cols-[minmax(0,1fr)_150px_100px] gap-3 px-4 py-2 text-micro font-semibold text-ink-3 @md:grid" aria-hidden="true" data-fleet-columns>
+    <span>{i18n.m.dashboard.fleet_col_machine}</span>
+    <span>{i18n.m.dashboard.fleet_col_load}</span>
+    <span class="text-right">{i18n.m.dashboard.fleet_col_free_space}</span>
+  </div>
 
   <ul class="m-0 list-none divide-y divide-line-soft p-0">
     <!-- This server is a row in the same list, with the same fields. Once a sidecar can take work,
          the container is one machine among several rather than the subject of the page. -->
-    <li class="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_150px_100px] sm:items-center">
+    <li class="grid gap-3 px-4 py-3 @md:grid-cols-[minmax(0,1fr)_150px_100px] @md:items-center">
       <div class="min-w-0">
         <div class="flex items-center gap-2 text-sm font-semibold text-ink">
           <span class="h-1.5 w-1.5 flex-none rounded-full bg-ok" aria-hidden="true"></span>
@@ -83,7 +109,7 @@
         <div class="mb-1 flex items-center gap-2">
           <span class="w-7">CPU</span>
           <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-sunken"><span class="block h-full rounded-full bg-ink-3" style="width: {localCpu ?? 0}%"></span></span>
-          <span class="w-8 text-right tabular-nums">{localCpu != null ? `${localCpu}%` : '—'}</span>
+          <span class="w-8 text-right tabular-nums">{#if localCpu != null}{localCpu}%{:else}<span aria-hidden="true">—</span><span class="sr-only">{i18n.m.common.unknown}</span>{/if}</span>
         </div>
         {#if localGpu != null}
           <div class="flex items-center gap-2">
@@ -95,13 +121,13 @@
           <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
         {/if}
       </div>
-      <div class="text-xs tabular-nums text-ink-3 sm:text-right"></div>
+      {@render freeSpace(localFreeBytes)}
     </li>
 
     {#each active as worker (worker.id)}
       {@const cpu = fraction(worker.cpuBusyFraction)}
       {@const gpu = fraction(worker.gpuBusyFraction)}
-      <li class="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_150px_100px] sm:items-center">
+      <li class="grid gap-3 px-4 py-3 @md:grid-cols-[minmax(0,1fr)_150px_100px] @md:items-center">
         <div class="min-w-0">
           <div class="flex items-center gap-2 text-sm font-semibold text-ink">
             <span
@@ -139,9 +165,7 @@
             <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
           {/if}
         </div>
-        <div class="text-xs tabular-nums text-ink-3 sm:text-right">
-          {worker.online ? formatSize(worker.freeScratchBytes) : '—'}
-        </div>
+        {@render freeSpace(worker.online ? worker.freeScratchBytes : null)}
       </li>
     {/each}
   </ul>
@@ -149,7 +173,7 @@
   {#if workersAvailable && active.length === 0}
     <div class="hairline-t px-4 py-3 text-sm text-ink-3">
       {i18n.m.dashboard.fleet_no_workers}
-      <button class="text-accent hover:underline" onclick={() => router.go('/workers')}>{i18n.m.dashboard.fleet_pair}</button>
+      <button type="button" class="rounded-sm text-accent hover:underline focus-ring" onclick={() => router.go('/settings/workers')}>{i18n.m.dashboard.fleet_pair}</button>
     </div>
   {/if}
-</div>
+</section>

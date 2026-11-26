@@ -566,6 +566,12 @@ export const de: Messages = {
     saved_per_day_average: "Ø {size} pro Tag",
     chart_today: 'Heute',
     originals_now: 'Originale {original} · jetzt {optimised}',
+    in_flight_quality_mode: 'Qualitätsmodus',
+    fleet_col_machine: 'Rechner',
+    fleet_col_load: 'Auslastung',
+    fleet_col_free_space: 'Freier Speicher',
+    saved_per_day_step_hint: 'Mit den Pfeiltasten links und rechts lassen sich einzelne Tage prüfen.',
+    saved_per_day_peak: 'Spitze {date}: {size}',
   },
   schedule: {
     error_load: 'Zeitplan konnte nicht geladen werden',

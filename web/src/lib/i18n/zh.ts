@@ -557,6 +557,12 @@ export const zh: Messages = {
     saved_per_day_average: "平均每天 {size}",
     chart_today: '今天',
     originals_now: '原始 {original} · 现在 {optimised}',
+    in_flight_quality_mode: '质量模式',
+    fleet_col_machine: '主机',
+    fleet_col_load: '负载',
+    fleet_col_free_space: '可用空间',
+    saved_per_day_step_hint: '使用左右方向键查看每一天的详情。',
+    saved_per_day_peak: '峰值 {date}：{size}',
   },
   schedule: {
     error_load: "无法加载时间表",

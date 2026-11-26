@@ -557,6 +557,12 @@ export const pt: Messages = {
     saved_per_day_average: "{size} por dia em média",
     chart_today: 'Hoje',
     originals_now: 'Originais {original} · agora {optimised}',
+    in_flight_quality_mode: 'Modo de qualidade',
+    fleet_col_machine: 'Máquina',
+    fleet_col_load: 'Carga',
+    fleet_col_free_space: 'Espaço livre',
+    saved_per_day_step_hint: 'Use as setas esquerda e direita para inspecionar cada dia.',
+    saved_per_day_peak: 'Pico {date}: {size}',
   },
   schedule: {
     error_load: "Não foi possível carregar a programação",
