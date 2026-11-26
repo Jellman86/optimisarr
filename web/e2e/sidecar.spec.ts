@@ -159,3 +159,43 @@ test('local diagnostics can be exported without a server connection', async ({ p
   await page.getByRole('link', { name: 'Export local diagnostics', exact: true }).click()
   expect((await download).suggestedFilename()).toBe('optimisarr-sidecar-diagnostics.json')
 })
+
+test('the sidecar shares the app strip, panel headers, stages and ok marks', async ({ page }) => {
+  await page.route('**/api/sidecar/status', route => route.fulfill({ json: { ...status, state: 'Working', jobs: [job],
+    recent: [{ jobId: 7, title: 'Delivered clip', delivered: true, finishedAt: new Date().toISOString() },
+      { jobId: 8, title: 'Stopped clip', delivered: false, finishedAt: new Date().toISOString() }] } }))
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/sidecar.html')
+    const strip = page.getByRole('region', { name: 'Worker state' })
+    await expect(strip).toHaveClass(/status-strip/)
+    const label = strip.locator('.status-strip-label')
+    await expect(label).toHaveText('Working')
+    expect(await label.evaluate((element) => getComputedStyle(element).fontFamily)).not.toMatch(/mono/i)
+    // The reason wraps rather than clipping behind an ellipsis.
+    const reason = strip.locator('.status-strip-reason')
+    await expect(reason).toHaveText('Processing one job for the server.')
+    const wrap = await reason.evaluate((element) => getComputedStyle(element))
+    expect(wrap.textOverflow).not.toBe('ellipsis')
+    expect(wrap.whiteSpace).not.toBe('nowrap')
+    expect(await reason.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    for (const fact of await strip.locator('.status-strip-fact > :last-child').all()) {
+      expect(await fact.evaluate((element) => getComputedStyle(element).fontVariantNumeric)).toContain('tabular-nums')
+    }
+
+    await expect(page.getByRole('heading', { level: 1, name: 'In flight' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'In flight' })).toContainText('1 of 1 slot · for optimisarr.example')
+    await expect(page.getByRole('heading', { level: 2, name: 'How this worker helps' })).toBeVisible()
+    await expect(page.locator('.job-stages [aria-current="step"]')).toHaveText('Encode')
+
+    const free = page.locator('[data-storage-free]')
+    const style = await free.evaluate((element) => getComputedStyle(element))
+    expect(style.fontFamily).not.toMatch(/mono/i)
+    expect(style.fontVariantNumeric).toContain('tabular-nums')
+
+    const recent = page.getByRole('region', { name: 'Since this worker started' })
+    await expect(recent.locator('li').filter({ hasText: 'Delivered clip' }).locator('[data-ok-mark]')).toHaveCount(1)
+    await expect(recent.locator('li').filter({ hasText: 'Stopped clip' }).locator('[data-ok-mark]')).toHaveCount(0)
+    await noHorizontalScroll(page)
+  }
+})

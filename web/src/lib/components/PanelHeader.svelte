@@ -16,7 +16,7 @@
     /** The heading's id, for the card's `aria-labelledby`. */
     id?: string
     /** A heading element when the card is a landmark section; a plain label otherwise. */
-    as?: 'h2' | 'h3' | 'span'
+    as?: 'h1' | 'h2' | 'h3' | 'span'
     hint?: string
     /** Extra classes for the hint, e.g. to show it only when the card is wide enough. */
     hintClass?: string

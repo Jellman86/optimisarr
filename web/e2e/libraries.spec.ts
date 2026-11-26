@@ -325,7 +325,7 @@ test('the library list leads with the count, one Scan button, and the rest in a 
   await expect(card.getByText('Auto-optimise 00:00–09:00 · auto-replace')).toBeVisible()
   await expect(card.getByText('access ok')).toHaveCount(0)
 
-  // One primary action on the card; the secondary and destructive ones are one click away.
+  // One default Scan button on the card; the secondary and destructive ones are one click away.
   await expect(card.getByRole('button')).toHaveCount(2)
   await expect(card.getByRole('button', { name: 'Scan' })).toBeVisible()
   await expect(card.getByRole('button', { name: 'Delete' })).toHaveCount(0)
@@ -345,6 +345,76 @@ test('the library list says how many files are ready when some are', async ({ pa
   const card = page.locator('[data-library-card="1"]')
   await expect(card.getByText('12 ready to optimise')).toBeVisible()
   await expect(card.getByText('All already optimal')).toHaveCount(0)
+})
+
+test('the library list keeps one accent fill, for Add library, and its summaries in ink', async ({ page }) => {
+  await mockLibraries(page, { ...library, lastAutoEnqueueAt: '2026-07-23T11:00:00Z' })
+  await page.route('**/api/candidates/summary', (route) => json(route, [{ libraryId: 1, eligible: 12, skipped: 3 }]))
+  await page.goto('/#/libraries')
+
+  const card = page.locator('[data-library-card="1"]')
+  await expect(card.getByText('12 ready to optimise')).toBeVisible()
+  // Scan advances one library; adding a library is the page's single primary action.
+  await expect(page.locator('main .btn-primary')).toHaveCount(1)
+  await expect(page.locator('main .btn-primary')).toHaveText('Add library')
+  const scan = card.getByRole('button', { name: 'Scan' })
+  await expect(scan).toHaveClass(/(^|\s)btn(\s|$)/)
+  await expect(scan).not.toHaveClass(/btn-primary/)
+  // The count is a fact, not a link, so it never wears the clickable blue.
+  const ready = card.locator('[data-library-ready]')
+  await expect(ready).not.toHaveClass(/text-accent/)
+  expect(await ready.evaluate((element) => element.closest('a, button'))).toBeNull()
+  const run = card.locator('time')
+  await expect(run).toHaveAttribute('datetime', '2026-07-23T11:00:00Z')
+  await expect(run).toHaveAttribute('title', /2026/)
+})
+
+test('a library with nothing waiting says so beside the ok mark', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries')
+  const optimal = page.locator('[data-library-card="1"] [data-library-optimal]')
+  await expect(optimal).toHaveText('All already optimal')
+  await expect(optimal.locator('[data-ok-mark]')).toHaveCount(1)
+  await expect(optimal).not.toHaveClass(/text-accent/)
+})
+
+test('an empty library list offers Add library once, in the empty state', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/libraries', (route) => json(route, []))
+  await page.goto('/#/libraries')
+  await expect(page.getByText('No libraries yet')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add library' })).toHaveCount(1)
+  await expect(page.locator('main .btn-primary')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Add library' }).click()
+  await expect(page).toHaveURL(/#\/libraries\/new$/)
+})
+
+test('loading and failed library fetches do not flash a false empty state', async ({ page }) => {
+  await mockLibraries(page)
+  let releaseLoad = () => {}
+  await page.route('**/api/libraries', async (route) => {
+    await new Promise<void>((resolve) => { releaseLoad = resolve })
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Database offline' }) })
+  })
+  await page.goto('/#/libraries')
+  await expect(page.getByRole('status')).toContainText('Loading')
+  await expect(page.getByText('No libraries yet')).toHaveCount(0)
+  releaseLoad()
+  await expect(page.getByText('Database offline')).toBeVisible()
+  await expect(page.getByText('No libraries yet')).toHaveCount(0)
+})
+
+test('excluded files show when they were excluded as a humane date with the exact time on hover', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/exclusions*', (route) => json(route, [{
+    id: 7, path: '/media/films/a.mkv', libraryId: 1, relativePath: 'a.mkv', reason: null, source: 'Manual', createdAt: '2026-07-23T11:00:00Z',
+  }]))
+  await page.goto('/#/libraries/1/configure/files')
+  await page.getByRole('button', { name: /Excluded \(/ }).click()
+  await expect(page.getByText('a.mkv', { exact: true })).toBeVisible()
+  const excludedAt = page.locator('time[datetime="2026-07-23T11:00:00Z"]')
+  await expect(excludedAt).toBeVisible()
+  await expect(excludedAt).toHaveAttribute('title', /2026/)
 })
 
 test('the library list stacks on a phone without horizontal overflow', async ({ page }) => {
