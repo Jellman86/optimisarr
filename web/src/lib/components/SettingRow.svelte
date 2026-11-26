@@ -131,7 +131,9 @@
   .setting-row-changed:last-child { margin-bottom: -0.75rem; padding-bottom: 0.75rem; }
   /* Text and control sit side by side only when the row itself has room for both, not when the
      window does: beside a sidebar a wide screen can still leave a narrow page, and the text must
-     never be squeezed into a sliver beside its control. The control keeps a readable width. */
+     never be squeezed into a sliver beside its control. The control keeps a readable width, and
+     the sentence a readable measure in its own characters, so on an ultrawide screen the control
+     follows its words instead of the card's far edge. The row itself still spans the card. */
   .setting-grid {
     display: flex;
     flex-wrap: wrap;
@@ -141,6 +143,8 @@
   .setting-text {
     flex: 999 1 20rem;
     min-width: 0;
+    max-width: 72ch;
+    font-size: var(--text-body);
   }
   .setting-control {
     flex: 1 1 18rem;
@@ -152,9 +156,10 @@
     flex-wrap: nowrap;
     align-items: stretch;
   }
-  .setting-grid-stacked > .setting-text,
-  .setting-grid-stacked > .setting-control {
+  .setting-grid-stacked > * {
     flex: none;
+  }
+  .setting-grid-stacked > .setting-control {
     max-width: none;
   }
   .setting-label {

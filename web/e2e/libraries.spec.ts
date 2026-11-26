@@ -169,7 +169,7 @@ test('replacing automatically can be switched back to asking without confirmatio
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ autoReplace: false, moveOnComplete: false })
   await expect(page.getByText('Updated library "Films".', { exact: true })).toBeVisible()
-  await expect(page.locator('[data-library-workflow]')).toBeEnabled()
+  await expect(page.locator('[data-library-workflow] fieldset[data-library-page]')).toBeEnabled()
   await expect(filesChoice(page, 'ask')).toBeChecked()
 })
 
@@ -1053,16 +1053,179 @@ test('the page list lights the page being read and keeps the accent fill for Sav
     probe.remove()
     return value
   })
+  const lit = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.className = 'bg-accent-soft'
+    document.body.append(probe)
+    const value = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return value
+  })
   // The page being read is a lit fill in semibold ink; the accent fill means "the action that
-  // advances the work", so a navigation pill never wears it.
+  // advances the work", so a navigation entry never wears it, and no coloured edge marks it.
   await expect(current).not.toHaveCSS('background-color', fill)
-  await expect(current).toHaveCSS('background-image', /gradient/)
+  await expect(current).toHaveCSS('background-color', lit)
   await expect(current).toHaveCSS('font-weight', '600')
-  await expect(pageTab(page, 'Video')).toHaveCSS('background-image', 'none')
+  await expect(current).toHaveCSS('border-left-width', '0px')
+  await expect(pageTab(page, 'Video')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await pageTab(page, 'Video').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video')
   await expect(pageTab(page, 'Video')).toHaveAttribute('aria-current', 'page')
   await expect(pageTab(page, 'Checks')).not.toHaveAttribute('aria-current', 'page')
+})
+
+test('one sticky rail beside the form lists the stages, and the Video sections sit under Video', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  const rail = page.getByRole('navigation', { name: 'Library settings pages' })
+  const form = page.locator('[data-library-workflow] fieldset[data-library-page]')
+  await expect(rail.getByRole('button')).toHaveText(['Overview', 'Which files', 'Video', 'Audio & subtitles', 'Checks', 'Schedule & replace'])
+  await expect(rail).toHaveCSS('position', 'sticky')
+  const [railBox, formBox] = [(await rail.boundingBox())!, (await form.boundingBox())!]
+  expect(railBox.x + railBox.width).toBeLessThan(formBox.x)
+  expect(Math.abs(railBox.y - formBox.y)).toBeLessThanOrEqual(2)
+
+  // The sections of the page being read are links in the same rail, not a second rail in the form.
+  const sections = rail.getByRole('navigation', { name: 'On this page' })
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toHaveCount(1)
+  await expect(form.locator('nav')).toHaveCount(0)
+  await expect(sections.getByRole('link')).toHaveText(['What to do', 'Format', 'Quality', 'Picture', 'Encoder', 'AI super-resolution (experimental)'])
+  const videoStage = (await pageTab(page, 'Video').boundingBox())!
+  const sectionsBox = (await sections.boundingBox())!
+  const audioStage = (await pageTab(page, 'Audio & subtitles').boundingBox())!
+  expect(sectionsBox.y).toBeGreaterThanOrEqual(videoStage.y + videoStage.height)
+  expect(sectionsBox.y + sectionsBox.height).toBeLessThanOrEqual(audioStage.y)
+
+  // A section link carries a real hash route, scrolls the form to it, moves keyboard focus to its heading, and leaves the page's own address alone on left-click.
+  const encoderLink = sections.getByRole('link', { name: 'Encoder', exact: true })
+  await expect(encoderLink).toHaveAttribute('href', '#/libraries/1/configure/video#library-encoder')
+  await encoderLink.click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/configure\/video$/)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video')
+  await expect(page.locator('#library-encoder-heading')).toBeFocused()
+  await expect.poll(async () => (await page.locator('#library-encoder').boundingBox())!.y).toBeLessThan(200)
+  await expect(rail).toBeInViewport()
+  await expect(pageTab(page, 'Video')).toHaveAttribute('aria-current', 'page')
+
+  // Other stages carry no section links.
+  await pageTab(page, 'Checks').click()
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toHaveCount(0)
+})
+
+test('below a desktop width the stages wrap above the form as finger-sized pills', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  const rail = page.getByRole('navigation', { name: 'Library settings pages' })
+  const form = page.locator('[data-library-workflow] fieldset[data-library-page]')
+  await expect(rail).toHaveCSS('position', 'static')
+  const [railBox, formBox] = [(await rail.boundingBox())!, (await form.boundingBox())!]
+  expect(railBox.y + railBox.height).toBeLessThanOrEqual(formBox.y)
+  await expect(page.getByRole('navigation', { name: 'On this page' })).toBeHidden()
+  for (const stage of await rail.getByRole('button').all()) {
+    expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  }
+  expect(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth)).toBe(true)
+})
+
+test('on an ultrawide screen each summary sentence keeps a readable measure with Edit beside it', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  const lines = page.locator('[data-summary-line]')
+  await expect(lines.first()).toBeVisible()
+  const measure = await page.locator('[data-summary-line] p').first().evaluate(element => {
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:72ch'
+    element.append(probe)
+    const width = probe.getBoundingClientRect().width
+    probe.remove()
+    return width
+  })
+  for (const line of await lines.all()) {
+    const text = (await line.locator(':scope > div').first().boundingBox())!
+    const edit = (await line.getByRole('button', { name: /^Edit / }).boundingBox())!
+    expect(text.width).toBeLessThanOrEqual(measure + 1)
+    expect(edit.x - (text.x + text.width)).toBeLessThanOrEqual(24)
+  }
+  const duplicates = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Find duplicates', exact: true }) })
+  const hint = (await duplicates.locator(':scope > div').first().boundingBox())!
+  const open = (await duplicates.getByRole('button', { name: 'Find duplicates' }).boundingBox())!
+  expect(hint.width).toBeLessThanOrEqual(measure + 1)
+  expect(open.x - (hint.x + hint.width)).toBeLessThanOrEqual(24)
+})
+
+test('on an ultrawide screen a setting keeps a readable sentence with its control beside it', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/checks')
+  const rows = page.locator('[data-setting-row]')
+  await expect(rows.first()).toBeVisible()
+  const checked = await rows.evaluateAll(elements => elements.filter(row => row.checkVisibility()).map(row => {
+    const text = row.querySelector<HTMLElement>('.setting-text')!
+    const control = row.querySelector<HTMLElement>('.setting-control')!
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:72ch'
+    text.append(probe)
+    const measure = probe.getBoundingClientRect().width
+    probe.remove()
+    const [textBox, controlBox, rowBox] = [text, control, row].map(element => element.getBoundingClientRect())
+    return { label: row.dataset.settingRow, measure, text: textBox.width, gap: controlBox.left - textBox.right, row: rowBox.width, overflow: controlBox.right - rowBox.right }
+  }))
+  expect(checked.length).toBeGreaterThan(2)
+  for (const row of checked) {
+    expect(row.text, row.label).toBeLessThanOrEqual(row.measure + 1)
+    expect(row.overflow, row.label).toBeLessThanOrEqual(1)
+    // A control beside its sentence sits a column-gap away; a stacked one sits under it.
+    if (row.gap > 0) expect(row.gap, row.label).toBeLessThanOrEqual(40)
+  }
+  // The row itself still spans the card, so its divider and changed highlight reach the edge.
+  const card = (await page.locator('#library-core-checks').boundingBox())!
+  expect(checked[0].row).toBeGreaterThan(card.width - 120)
+})
+
+test('unsaved changes pin the save bar to the bottom of a desktop window; saved, it stays in place', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/files')
+  const actions = page.locator('[data-library-actions]')
+  await expect(actions).toHaveCSS('position', 'static')
+  await page.getByLabel('Name', { exact: true }).fill('Films archive')
+  await expect(actions).toHaveClass(/\bsticky-actions\b/)
+  await expect(actions).toHaveCSS('position', 'sticky')
+  await expect(actions).toHaveCSS('bottom', '0px')
+  await expect(actions).toBeInViewport()
+  const [actionsBox, mainBox] = [(await actions.boundingBox())!, (await page.locator('main').boundingBox())!]
+  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height + 1)
+  await page.getByLabel('Name', { exact: true }).fill('Films')
+  await expect(actions).toHaveCSS('position', 'static')
+})
+
+test('a short desktop viewport keeps every rail stage reachable by scrolling the rail independently', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await mockLibraries(page, { ...library, mediaType: 'Other' })
+  await page.goto('/#/libraries/1/configure/video')
+  const schedule = pageTab(page, 'Schedule & replace')
+  await schedule.scrollIntoViewIfNeeded()
+  await expect(schedule).toBeInViewport()
+  await schedule.click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Schedule & replace')
+})
+
+test('a sticky dirty save bar explains why Save is disabled and jumps to the invalid setting', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/audio')
+  await page.getByLabel('Keep audio languages', { exact: true }).fill('not-a-code!')
+  await pageTab(page, 'Video').click()
+  const actions = page.locator('[data-library-actions]')
+  await expect(actions).toHaveCSS('position', 'sticky')
+  await expect(actions.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  const blocker = actions.locator('[data-save-blocker]')
+  await expect(blocker).toBeVisible()
+  await blocker.getByRole('button').first().click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Audio & subtitles')
 })
 
 test('image quality is one choice of four, needs a score before it can be required, and keeps SSIM', async ({ page }) => {
