@@ -88,20 +88,26 @@ installed on the host, not in Optimisarr. Optimisarr never changes host drivers.
 
 **Check your card is supported.** GeForce 10-series (Pascal) and older cards are dropped by the newest
 NVIDIA driver branches. Debian's packaged drivers (535 on Debian 12, 550 on Debian 13) still support
-Pascal. If you install a driver from NVIDIA or a PPA instead, use branch 580 or older for a 10-series
-card.
+Pascal; Debian's wiki marks the Debian 12 driver as no longer maintained, so prefer Debian 13. If you
+install a driver from NVIDIA, or on Ubuntu from a PPA, use branch 580 or older for a 10-series card.
 
 **Debian 12 or 13**
 
-1. Enable the `contrib`, `non-free` and `non-free-firmware` components for the main and security
-   suites in your APT sources, then run `sudo apt update`.
+1. Enable the `contrib`, `non-free` and `non-free-firmware` components for the release and security
+   suites in your APT sources. Then bring the system up to date with `sudo apt update` and
+   `sudo apt full-upgrade`, and reboot if that installed a new kernel, so the driver is built for the
+   kernel you will boot.
 2. Install the headers and driver for the standard 64-bit PC kernel:
    - Debian 12: `sudo apt install linux-headers-amd64 nvidia-driver firmware-misc-nonfree`
    - Debian 13: `sudo apt install linux-headers-amd64 nvidia-kernel-dkms nvidia-driver firmware-misc-nonfree`
 
    DKMS builds the `nvidia` module for your kernel. With Secure Boot on, it signs the module with a
    machine owner key (MOK) that it creates on first use, at `/var/lib/dkms/mok.key` and
-   `/var/lib/dkms/mok.pub`.
+   `/var/lib/dkms/mok.pub`. Before rebooting, check that `dkms status 'nvidia*'` shows it installed for
+   the kernel that `uname -r` prints.
+
+   If you run a backports kernel, the stable driver will not build for it; install the driver from
+   `trixie-backports` instead, as Debian's wiki describes.
 3. Enrol that key so the firmware trusts the module:
 
    ```bash
@@ -111,12 +117,15 @@ card.
 
 4. Reboot. Before the system starts, a blue screen says to press a key for MOK management. Press a
    key within about ten seconds, choose **Enroll MOK**, then **Continue**, then **Yes**, enter the
-   one-time password, and reboot. If you miss it, run the `mokutil --import` command again and
-   reboot.
+   one-time password, and reboot. The MOK screen uses a US keyboard layout, so choose a password of
+   plain letters and digits. If you miss the screen, the system still starts but the NVIDIA driver
+   will not load, so the desktop may be low-resolution or missing: log in on a text console
+   (Ctrl+Alt+F3) or over SSH, run the `mokutil --import` command again, and reboot.
 5. Check it worked:
 
    ```bash
    mokutil --sb-state          # SecureBoot enabled
+   sudo mokutil --test-key /var/lib/dkms/mok.pub   # is already enrolled
    dkms status 'nvidia*'       # installed for the running kernel
    nvidia-smi                  # lists the GPU and driver version
    ```
@@ -131,10 +140,11 @@ See Debian's [NVIDIA driver](https://wiki.debian.org/NvidiaGraphicsDrivers) and
 
 1. Run `sudo ubuntu-drivers install`. It picks the recommended driver for the card; to choose one, list
    them with `ubuntu-drivers list` and install with `sudo ubuntu-drivers install nvidia:580`.
-2. Ubuntu normally installs prebuilt modules that Canonical has already signed, so Secure Boot needs
-   nothing more. If it has to build the module with DKMS instead, the installer asks you to choose a
-   Secure Boot password; at the next boot use the same **MOK management** screen as above (Enroll
-   MOK, Continue, Yes, the password).
+2. By default `ubuntu-drivers` installs prebuilt modules that Canonical has already signed, so Secure
+   Boot needs nothing more. If you install a DKMS driver instead (`sudo ubuntu-drivers install
+   --include-dkms`, or a driver from a PPA), the installer asks you to choose a Secure Boot password;
+   at the next boot use the same MOK management screen as above (Enroll MOK, Continue, Yes, the
+   password).
 3. Reboot and check with `mokutil --sb-state` and `nvidia-smi`.
 
 **Then, on either system: the container toolkit**
