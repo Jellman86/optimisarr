@@ -2,7 +2,7 @@
   import { api, type Library, type QueueStatus } from '../api'
   import { localWorkloadCapacity } from '../job-presentation'
   import { filesChoice } from '../files-choice'
-  import { formatSize } from '../format'
+  import { formatDateTime, formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
@@ -142,7 +142,7 @@
             <p class="schedule-library-reason">{!lib.enabled ? i18n.m.schedule.explain_disabled : open ? i18n.m.schedule.explain_open : i18n.m.schedule.explain_closed}</p>
             <dl class="schedule-library-facts">
               <div><dt>{i18n.m.schedule.col_auto_replace}</dt><dd>{filesChoice(lib) === 'auto' ? i18n.m.schedule.when_verified : i18n.m.common.off}</dd></div>
-              <div><dt>{i18n.m.schedule.col_last_enqueued}</dt><dd>{lib.lastAutoEnqueueAt ? new Date(lib.lastAutoEnqueueAt).toLocaleString() : i18n.m.common.never}</dd></div>
+              <div><dt>{i18n.m.schedule.col_last_enqueued}</dt><dd>{lib.lastAutoEnqueueAt ? formatDateTime(lib.lastAutoEnqueueAt, new Date(), i18n.locale) : i18n.m.common.never}</dd></div>
             </dl>
             <button class="schedule-configure focus-ring" onclick={() => router.go(`/libraries/${lib.id}/configure`)}>{i18n.m.libraries.configure}<span aria-hidden="true">↗</span></button>
           </article>

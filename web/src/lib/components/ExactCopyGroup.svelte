@@ -2,7 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import { api, type ExactDuplicateGroup } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
-  import { formatSize } from '../format'
+  import { formatDateTime, formatSize } from '../format'
   import Icon from './Icon.svelte'
   import Thumbnail from './Thumbnail.svelte'
   import Banner from './Banner.svelte'
@@ -115,7 +115,7 @@
           <button class="btn" disabled={!canSave} onclick={() => save('Ignore')}>{i18n.m.duplicates.ignoreGroup}</button>
           {#if group.decision}<button class="btn" disabled={!canSave} onclick={() => save('Review')}>{i18n.m.duplicates.reviewAgain}</button>{/if}
         </div>
-        {#if group.decision}<p class="mt-3 text-xs text-ink-3" role="status">{t(i18n.m.duplicates.saved, { date: new Date(group.decision.savedAt).toLocaleString() })}</p>{/if}
+        {#if group.decision}<p class="mt-3 text-xs text-ink-3" role="status">{t(i18n.m.duplicates.saved, { date: formatDateTime(group.decision.savedAt, new Date(), i18n.locale) })}</p>{/if}
         {#if !group.canDecide || disabled}<p class="mt-3 text-sm text-ink-3">{i18n.m.duplicates.decisionUnavailable}</p>{/if}
         <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.duplicates.preferencesOnly}</p>
       </div>

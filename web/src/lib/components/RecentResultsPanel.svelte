@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { OptimisationResult } from '../api'
-  import { formatRelative, formatSize, mediaTitle, sizeBarShares, sizeChangeStatus } from '../format'
+  import { formatAbsoluteDateTime, formatDateTime, formatSize, mediaTitle, sizeBarShares, sizeChangeStatus } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import DataTable from './DataTable.svelte'
@@ -81,7 +81,7 @@
         <td class="hidden whitespace-nowrap tabular-nums @min-[64rem]:table-cell">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</td>
         <td class="hidden truncate font-mono text-xs @min-[88rem]:table-cell">{result.videoEncoder ?? '—'}</td>
         <td class="hidden truncate text-ink-3 @min-[88rem]:table-cell">{result.workerName ?? i18n.m.dashboard.this_server}</td>
-        <td class="hidden truncate text-ink-3 @min-[44rem]:table-cell" title={new Date(result.finishedAt).toLocaleString(i18n.locale)}>{formatRelative(result.finishedAt, now, i18n.locale)}</td>
+        <td class="hidden truncate text-ink-3 @min-[44rem]:table-cell"><time datetime={result.finishedAt} title={formatAbsoluteDateTime(result.finishedAt, i18n.locale)}>{formatDateTime(result.finishedAt, now, i18n.locale)}</time></td>
       </tr>
     {/each}
     {#snippet loadingState()}<div class="h-40 w-full animate-pulse rounded-lg bg-[var(--lit)]" aria-hidden="true"></div><span class="sr-only">{i18n.m.common.loading_short}</span>{/snippet}

@@ -736,7 +736,11 @@ filter_all: "Todos ({count})",
     error_queue: "Não foi possível colocar este arquivo na fila",
     probe: "Sondar",
     reprobe: "Sondar novamente",
-    preview: "Visualização"
+    preview: "Visualização",
+    search_label: "Pesquisar arquivos",
+    search_placeholder: "Filtrar por nome de arquivo ou pasta…",
+    clear_search: "Limpar pesquisa",
+    empty_search: "Nenhum arquivo corresponde a “{query}”.",
   },
   queue: {
     clear_review_included: "Isto também remove {count} tarefas suspensas para revisão do tamanho.",

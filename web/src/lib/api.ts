@@ -1173,6 +1173,9 @@ export type CandidateSummary = {
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
 
+/** A sortable Inventory column and direction; leaving it out keeps the server's path order. */
+export type InventorySort = 'name_asc' | 'name_desc' | 'size_asc' | 'size_desc' | 'verdict_asc' | 'verdict_desc'
+
 /** What queueing one file would do, by its library's settings as they are now. */
 export type MediaPlan = {
   mediaFileId: number
@@ -1571,11 +1574,12 @@ export const api = {
   candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
 
   // The paginated Inventory view: a page of files with their verdicts, plus per-filter counts.
-  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; page?: number; pageSize?: number }) => {
+  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; sort?: InventorySort; page?: number; pageSize?: number }) => {
     const q = new URLSearchParams()
     if (params.libraryId !== undefined) q.set('libraryId', String(params.libraryId))
     if (params.show && params.show !== 'all') q.set('show', params.show)
     if (params.search) q.set('search', params.search)
+    if (params.sort) q.set('sort', params.sort)
     if (params.page !== undefined) q.set('page', String(params.page))
     if (params.pageSize !== undefined) q.set('pageSize', String(params.pageSize))
     const query = q.toString()

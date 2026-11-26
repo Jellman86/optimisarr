@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from '../api'
+  import { formatDateTime } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   let { captureId, jobId, recording = false }: { captureId: string; jobId: number; recording?: boolean } = $props()
   type Event = { id: number; receivedAt: string; occurredAt: string; attempt: number; workerId: number | null;
@@ -35,7 +36,7 @@
       {#each events.slice(-100) as event (event.id)}
         <li class="rounded-lg border p-3 text-xs" style="border-color: var(--edge)">
           <div class="flex flex-wrap items-baseline gap-2"><strong class="break-all text-ink">{event.reasonCode}</strong><span class="text-ink-3">#{event.attempt} · {event.source}{event.workerId == null ? '' : ` · Worker #${event.workerId}`}</span></div>
-          <time class="mt-1 block text-ink-3" datetime={event.receivedAt} title={`Local: ${event.occurredAt}`}>{new Date(event.receivedAt).toLocaleString()} · {event.currentStatus}</time>
+          <p class="mt-1 text-ink-3"><time datetime={event.receivedAt} title={`Local: ${event.occurredAt}`}>{formatDateTime(event.receivedAt, new Date(), i18n.locale)}</time> · {event.currentStatus}</p>
           {#if event.details?.report}
             <details class="mt-2">
               <summary class="hit-target list-item cursor-pointer py-2 text-ink">{i18n.m.queue.col_verification} · {event.details.report.location}</summary>

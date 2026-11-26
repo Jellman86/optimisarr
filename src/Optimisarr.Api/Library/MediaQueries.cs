@@ -74,7 +74,7 @@ public static class MediaQueries
 
         var total = await query.CountAsync(cancellationToken);
 
-        var ordered = query.OrderBy(file => file.RelativePath);
+        var ordered = query.OrderBy(file => file.RelativePath).ThenBy(file => file.Id);
         var paged = filter.PageSize > 0
             ? ordered.Skip(Math.Max(filter.Page - 1, 0) * filter.PageSize).Take(filter.PageSize)
             : (IQueryable<MediaFile>)ordered;

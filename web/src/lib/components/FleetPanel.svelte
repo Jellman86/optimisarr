@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Worker } from '../api'
-  import { formatRelative, formatSize } from '../format'
+  import { formatDateTime, formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
@@ -41,7 +41,7 @@
   }
 
   function problemLine(worker: Worker): string {
-    const when = worker.lastProblemAt ? formatRelative(worker.lastProblemAt, new Date(), i18n.locale) : null
+    const when = worker.lastProblemAt ? formatDateTime(worker.lastProblemAt, new Date(), i18n.locale) : null
     return when ? `${when} · ${worker.lastProblem}` : worker.lastProblem ?? ''
   }
 

@@ -736,7 +736,11 @@ export const zh: Messages = {
     error_queue: "无法将此文件加入队列",
     probe: "探测",
     reprobe: "重新探测",
-    preview: "预览"
+    preview: "预览",
+    search_label: "搜索文件",
+    search_placeholder: "按文件名或文件夹筛选…",
+    clear_search: "清除搜索",
+    empty_search: "没有与“{query}”匹配的文件。",
   },
   queue: {
     clear_review_included: "这也会移除 {count} 个等待大小审核的任务。",

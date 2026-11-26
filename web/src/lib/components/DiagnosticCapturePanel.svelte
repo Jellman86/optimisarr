@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api, type DiagnosticCapture } from '../api'
+  import { formatAbsoluteDateTime, formatDateTime } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import ConfigSection from './ConfigSection.svelte'
 
@@ -146,7 +147,8 @@
     finally { busy = false }
   }
 
-  const date = (value: string) => new Date(value).toLocaleString()
+  const date = (value: string) => formatDateTime(value, new Date(), i18n.locale)
+  const absoluteDate = (value: string) => formatAbsoluteDateTime(value, i18n.locale)
   const status = (value: string) => value === 'Recording' ? i18n.m.settings.diagnostics_recording
     : value === 'Expired' ? i18n.m.settings.diagnostics_expired : i18n.m.settings.diagnostics_stopped
 </script>
@@ -169,7 +171,7 @@
         <div class="rounded-lg border border-accent/25 bg-accent/5 p-4">
           <p class="text-sm text-ink-2">
             {i18n.m.settings.diagnostics_started} {date(activeCapture.startedAt)} ·
-            {activeCapture.expiresAt ? `${i18n.m.settings.diagnostics_expires}: ${date(activeCapture.expiresAt)}` : i18n.m.settings.diagnostics_until_stopped}
+            {activeCapture.expiresAt ? `${i18n.m.settings.diagnostics_expires}: ${absoluteDate(activeCapture.expiresAt)}` : i18n.m.settings.diagnostics_until_stopped}
           </p>
           <p class="mt-1 text-xs text-ink-3">
             {activeCapture.scopedJobId ? `${i18n.m.settings.diagnostics_job} #${activeCapture.scopedJobId}` : i18n.m.settings.diagnostics_all_jobs}
@@ -216,7 +218,7 @@
         <select id="diagnostic-saved" class="input w-full" disabled={busy} bind:value={selection} onchange={() => selectCapture(captures.find(item => item.id === selection) ?? null, true)}>
           {#each captures as item (item.id)}<option value={item.id}>{date(item.startedAt)} · {status(item.status)} · {item.eventsStored.toLocaleString()} {i18n.m.settings.diagnostics_events}</option>{/each}
         </select>
-        <p class="text-xs text-ink-3">{capture.pinned ? i18n.m.settings.diagnostics_pinned : capture.retainUntil ? `${capture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: ${date(capture.retainUntil)}` : ''}{capture.pinned || capture.retainUntil ? ' · ' : ''} {Math.ceil((capture.bytesStored ?? 0) / 1024)} KiB / {Math.round((capture.maximumBytes ?? 4194304) / 1024 / 1024)} MiB</p>
+        <p class="text-xs text-ink-3">{capture.pinned ? i18n.m.settings.diagnostics_pinned : capture.retainUntil ? `${capture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: ${absoluteDate(capture.retainUntil)}` : ''}{capture.pinned || capture.retainUntil ? ' · ' : ''} {Math.ceil((capture.bytesStored ?? 0) / 1024)} KiB / {Math.round((capture.maximumBytes ?? 4194304) / 1024 / 1024)} MiB</p>
         {#if capture.eventLimitReached}<p class="text-sm text-warn" role="status">{i18n.m.settings.diagnostics_cap_reached}</p>{/if}
         <div class="flex flex-wrap gap-2">
           <button class="btn" disabled={busy} onclick={pin}>{capture.pinned ? i18n.m.settings.diagnostics_unpin : i18n.m.settings.diagnostics_pin}</button>

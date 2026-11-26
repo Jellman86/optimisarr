@@ -455,6 +455,22 @@ p {
     background: var(--panel);
     box-shadow: var(--lift-2);
   }
+  /* An action bar that stays in reach while the evidence above it scrolls by. It is the last
+     thing on its page, so at the end it settles into its own place rather than over content.
+     A short viewport, such as a phone on its side, lets it scroll with the page instead of
+     covering half of it. */
+  .sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    padding-bottom: 1rem;
+    box-shadow: var(--lift-3);
+  }
+  @media (max-height: 30rem) {
+    .sticky-actions {
+      position: static;
+    }
+  }
   /* The sidebar floats on the ground as a pane of tinted glass. It is tinted almost to
      opaque, so its labels never depend on whatever is behind it (the phone drawer slides over
      the page). No backdrop blur: over the flat ground it changes nothing, and Chromium stops
@@ -895,7 +911,7 @@ p {
   }
   /* A sortable header is a button inside a `th[aria-sort]`; the arrow follows the attribute. */
   .table-sort {
-    @apply -mx-1 inline-flex items-center gap-1 rounded px-1 font-semibold focus-ring;
+    @apply -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 text-left font-semibold [overflow-wrap:anywhere] focus-ring;
     color: inherit;
   }
   .table-sort:hover {
@@ -1018,6 +1034,22 @@ p {
   }
   100% {
     left: 100%;
+  }
+}
+
+/* Focus moving down a page with a sticky action bar lands above the bar, not behind it.
+   Unlayered so it outranks the page's own scroll-padding utility. */
+main:has(.sticky-actions) {
+  scroll-padding-bottom: 9rem;
+}
+@media (max-width: 64rem) {
+  main:has(.sticky-actions) {
+    scroll-padding-bottom: 15rem;
+  }
+}
+@media (max-height: 30rem) {
+  main:has(.sticky-actions) {
+    scroll-padding-bottom: revert-layer;
   }
 }
 
