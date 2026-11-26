@@ -306,7 +306,7 @@ for (const viewport of viewports) {
       samples[name] = layout
       const slug = name.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase()
       if (viewport.name === 'desktop dark' || viewport.name === 'phone dark'
-        || (viewport.name === 'large text' && ['dashboard', 'settings workers', 'personal quality check', 'settings media servers', 'photo encoding advanced'].includes(name))) {
+        || (viewport.name === 'large text' && ['dashboard', 'settings workers', 'personal quality check', 'settings media servers', 'photo images'].includes(name))) {
         await page.screenshot({ path: testInfo.outputPath(`${slug}.png`), animations: 'disabled' })
       }
       if (layout.documentOverflow > 2 || layout.mainOverflow > 2 || layout.escapedCards.length || layout.clippedCards.length || layout.narrowRows.length) {
@@ -338,7 +338,7 @@ test('translated controls stay inside their cards at phone width', async ({ page
     await page.reload()
     for (const [name, route] of routes.filter(([name]) =>
       ['settings overview', 'settings media servers', 'settings notifications',
-        'library video advanced', 'photo encoding advanced', 'personal quality check'].includes(name))) {
+        'library video', 'photo images', 'personal quality check'].includes(name))) {
       await page.goto(`/#${route}`)
       await expect(page.locator('main')).toBeVisible()
       await waitForAuditedContent(page, name)

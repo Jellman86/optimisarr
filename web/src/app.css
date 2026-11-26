@@ -466,9 +466,19 @@ p {
     padding-bottom: 1rem;
     box-shadow: var(--lift-3);
   }
+  /* In dark mode, lift sticky bars off scrolling cards with a lighter fill and crisp top edge. */
+  html.dark .sticky-actions {
+    background: var(--raised);
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+  }
   @media (max-height: 30rem) {
     .sticky-actions {
       position: static;
+    }
+    .sticky-rail {
+      position: static;
+      max-height: none;
+      overflow: visible;
     }
   }
   /* The sidebar floats on the ground as a pane of tinted glass. It is tinted almost to

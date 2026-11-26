@@ -24,18 +24,20 @@
 <section class="card overflow-hidden" aria-labelledby={headingId} data-library-summary data-config-section="">
   <header class="px-4 py-4 hairline-b sm:px-6">
     <h2 id={headingId} class="text-base font-semibold text-ink">{i18n.m.librarySummary.title}</h2>
-    <p class="mt-0.5 text-sm leading-relaxed text-ink-3">
+    <p class="mt-0.5 max-w-[72ch] text-sm leading-relaxed text-ink-3">
       {intro ?? i18n.m.librarySummary.intro}
       {#if unsaved}<span class="text-warn" data-summary-unsaved>{i18n.m.librarySummary.unsaved_note}</span>{/if}
     </p>
   </header>
+  <!-- Each line keeps a readable measure and its Edit right beside it, however wide the card:
+       on an ultrawide screen the button would otherwise end up a screen's width from its words. -->
   <ul class="divide-y divide-line-soft px-4 sm:px-6">
     {#each lines as line (line.topic)}
-      <li class="flex items-start gap-3 py-4 sm:gap-4" data-summary-line={line.topic}>
+      <li class="flex flex-wrap items-start gap-3 py-4 sm:gap-4" data-summary-line={line.topic}>
         <span class="mt-0.5 hidden h-9 w-9 flex-none items-center justify-center rounded-xl bg-raised text-accent sm:flex">
           <Icon name={icons[line.topic]} class="h-4 w-4" />
         </span>
-        <div class="min-w-0 flex-1">
+        <div class="min-w-0 max-w-[72ch] flex-[1_1_14rem] text-sm">
           <h3 class="text-xs font-semibold text-ink-3">{line.title}</h3>
           <p class="mt-1 break-words text-sm leading-relaxed text-ink">{line.text}</p>
           {#if line.detail}<p class="mt-1 text-xs text-ink-3" data-summary-detail>{line.detail}</p>{/if}
