@@ -49,7 +49,7 @@ test('a page that cannot be fetched says so and offers a reload, and the rest of
   await page.route(schedulePage, route => route.abort())
   await page.goto('/#/schedule')
 
-  const failure = page.getByRole('alert').filter({ hasText: 'This page didn’t load.' })
+  const failure = page.getByRole('alert').filter({ hasText: 'This page couldn\'t load.' })
   await expect(failure).toBeVisible()
   await expect(failure.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
   await expect(page).toHaveTitle('Schedule · Optimisarr')
