@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retry the image build's Real-CUGAN, Real-ESRGAN and Jellyfin key downloads up to four times, so a brief GitHub or mirror outage no longer fails the whole build. Checksums are still verified. No migration.
+
 - Show which files are interlaced (#548). A file's details in the Inventory now carry an **Interlaced** tag, and its information button says which field comes first (top or bottom) and ffprobe's field order. An **Interlaced** filter beside the Inventory filters lists only interlaced files, with their count, and works with the library, search and verdict filters. `GET /api/inventory` gains an optional `interlaced=true` query parameter and an `interlaced` count, and each file now includes `fieldOrder`. A file probed before field order was recorded needs Re-probe to show up. Requested by [Blorti](https://github.com/Blorti). No migration.
 
 - An information button's help now opens next to the button on a tablet or desktop, including inside a dialog such as a file's or a job's details, instead of in the bottom-right corner of the window; it opens above the button when there is no room below and scrolls when it is longer than the window. A phone keeps the full-width help along the bottom of the screen. No migration.

@@ -79,7 +79,7 @@ RUN mkdir -p /opt/realcugan /licenses \
     && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
         apt-get update \
         && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-        && curl -fsSL -o /tmp/realcugan.zip \
+        && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o /tmp/realcugan.zip \
             "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/${REALCUGAN_VERSION}/realcugan-ncnn-vulkan-${REALCUGAN_VERSION}-ubuntu.zip" \
         && echo "${REALCUGAN_SHA256}  /tmp/realcugan.zip" | sha256sum -c - \
         && unzip -q /tmp/realcugan.zip -d /tmp/realcugan \
@@ -101,7 +101,7 @@ RUN mkdir -p /opt/realesrgan \
     && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
         apt-get update \
         && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-        && curl -fsSL -o /tmp/realesrgan.zip \
+        && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o /tmp/realesrgan.zip \
             "https://github.com/xinntao/Real-ESRGAN/releases/download/${REALESRGAN_RELEASE}/realesrgan-ncnn-vulkan-${REALESRGAN_BUILD}-ubuntu.zip" \
         && echo "${REALESRGAN_SHA256}  /tmp/realesrgan.zip" | sha256sum -c - \
         && unzip -q /tmp/realesrgan.zip -d /tmp/realesrgan \
@@ -130,7 +130,7 @@ RUN apt-get update \
         tzdata \
     && perl -MCompress::Zlib -e 'exit 0' \
     && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+    && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 https://repo.jellyfin.org/jellyfin_team.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \
     && . /etc/os-release \
     && printf 'Types: deb\nURIs: https://repo.jellyfin.org/%s\nSuites: %s\nComponents: main\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/jellyfin.gpg\n' \
