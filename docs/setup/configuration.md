@@ -403,6 +403,8 @@ that has one FFmpeg is known to lose or change:
   (`image/jpg` becomes `image/jpeg`), a second ID3v2 tag straight after the first, an APE, Lyrics3 or
   enhanced ID3v1 (`TAG+`) tag, an ID3v1 genre number FFmpeg has no name for (192 to 254, written
   back as "none"), and a compressed or encrypted frame.
+- An MP3 with both an ID3v2 and an ID3v1 tag: FFmpeg ignores the source's ID3v1 tag and writes a new
+  one from the ID3v2 frames, so fields only the ID3v1 tag held would be lost.
 - MP3 text in a legacy character set: ID3 text marked as ISO-8859-1 but holding non-ASCII bytes, in a
   frame, a description or the ID3v1 tag. Old taggers often wrote CP1251, GBK or Shift-JIS that way,
   and FFmpeg would write it again as Unicode that says something else. Genuine Latin-1 accents

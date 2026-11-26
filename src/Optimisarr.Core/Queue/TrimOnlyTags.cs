@@ -69,6 +69,12 @@ public static class TrimOnlyTags
         if (Named(tags.Layout, tags.Tags.Where(tag => tag.LegacyText)) is { } legacy)
             return $"Some of its tags are written in a legacy character set ({legacy}), which trimming without converting would rewrite, so it is left alone.";
 
+        // With both tags present, FFmpeg ignores the source's ID3v1 tag and writes a new one from the
+        // ID3v2 frames, so fields only the ID3v1 tag held are lost and the rest can change. The tag
+        // comparison would refuse the result; leaving the file alone here saves the wasted job.
+        if (tags.Layout == MusicTagLayout.Id3 && tags.Id3Version is not null && tags.HasId3v1)
+            return "It has both an ID3v2 and an ID3v1 tag, and trimming without converting would rewrite the ID3v1 tag, so it is left alone.";
+
         // FFmpeg keeps one value per key, and its keys ignore case, so a second frame or entry of the
         // same kind (or a TXXX description differing only in case) is lost.
         var repeated = tags.Layout is MusicTagLayout.Id3 or MusicTagLayout.Wav

@@ -33,6 +33,16 @@ public sealed class TrimOnlyTagsTests
     }
 
     [Fact]
+    public void An_mp3_with_both_an_id3v2_and_an_id3v1_tag_is_left_alone()
+    {
+        var both = MusicTagReader.Read(".mp3", new MusicTagBytes([.. Id3v2(3, Text(3, "TIT2", "Title")), .. AudioFrames, .. Id3v1("Title", "Artist", 1, 17)]));
+        var v2Only = MusicTagReader.Read(".mp3", new MusicTagBytes([.. Id3v2(3, Text(3, "TIT2", "Title")), .. AudioFrames]));
+
+        Assert.Equal("It has both an ID3v2 and an ID3v1 tag, and trimming without converting would rewrite the ID3v1 tag, so it is left alone.", TrimOnlyTags.Refusal(both));
+        Assert.Null(TrimOnlyTags.Refusal(v2Only));
+    }
+
+    [Fact]
     public void Mp3_frames_ffmpeg_loses_or_rewrites_leave_the_file_alone_and_are_named()
     {
         var read = Mp3(4, Text(4, "TIT2", "Title"),
