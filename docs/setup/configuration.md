@@ -397,20 +397,30 @@ that has one FFmpeg is known to lose or change:
 - MP3: comments (`COMM`), unsynchronised and synchronised lyrics (`USLT`, `SYLT`), ratings and play
   counts (`POPM`, `PCNT`), MusicBrainz and other unique IDs (`UFID`), URL frames, chapters
   (`CHAP`, `CTOC`), and any other frame outside the plain text frames, `TXXX`, `APIC` and `PRIV`. Also
-  a text frame with more than one value, a numeric genre such as `(17)`, an ID3v2.3 `TCMP` or `TSOP`,
-  an ID3v2.4 `TDRL`, a frame that appears twice, an APE or Lyrics3 tag, and a compressed or encrypted
-  frame.
+  a text frame with more than one value, a genre that starts with a number or a bracket such as
+  `(17)` or `80s Rock`, an ID3v2.3 `TCMP` or `TSOP`, an ID3v2.4 `TDRL`, a frame that appears twice
+  (or two `TXXX` descriptions that differ only in case), a picture whose MIME type FFmpeg respells
+  (`image/jpg` becomes `image/jpeg`), a second ID3v2 tag straight after the first, an APE, Lyrics3 or
+  enhanced ID3v1 (`TAG+`) tag, an ID3v1 genre number FFmpeg has no name for (192 to 254, written
+  back as "none"), and a compressed or encrypted frame.
+- MP3 text in a legacy character set: ID3 text marked as ISO-8859-1 but holding non-ASCII bytes, in a
+  frame, a description or the ID3v1 tag. Old taggers often wrote CP1251, GBK or Shift-JIS that way,
+  and FFmpeg would write it again as Unicode that says something else. Genuine Latin-1 accents
+  written that way are left alone too, because the two cannot be told apart.
 - FLAC and Opus: a field with more than one value (FFmpeg joins two `ARTIST` fields into one
-  `A;B`), `COMMENT` (written back as `DESCRIPTION`), chapter fields, and FLAC `APPLICATION` and
-  `CUESHEET` blocks.
+  `A;B`), `COMMENT` (written back as `DESCRIPTION`), chapter fields, FLAC `APPLICATION` and
+  `CUESHEET` blocks, a picture whose MIME type FFmpeg respells, any tag after a FLAC stream, and a
+  chained Opus file (a second stream after the first, each with its own tags).
 - WAV: any chunk other than the format, the samples and `LIST INFO`, such as `bext`, `iXML` or an
   `id3` chunk, and an `ITRK` entry (written back as `IPRT`).
 
 A tag Optimisarr cannot read in full counts as one it cannot keep. Each trimmed file then gets one
 more check, **Tags kept unchanged**: the output's tags are read the same way and must hold every one
-of the source's, with the same values, as many times. Only the encoder name, Optimisarr's marker and
-the length tags above may differ, and FLAC's padding and seek table are written again. Anything else
-lost or changed fails the job and the original is not replaced.
+of the source's, with the same values, as many times, and no tag the source lacks. An MP3 must keep
+its ID3v2 version and its ID3v1 tag. Only the encoder name, Optimisarr's marker and the length tags
+above may differ, FLAC's padding and seek table are written again, and an MP3 with only an ID3v1 tag
+gains the same fields as ID3v2 frames. Anything else lost, changed or added fails the job and the
+original is not replaced.
 
 A lossy file is never re-encoded to trim it: that would lose quality to save nothing. A copy can
 only start on an audio frame (about 26 ms for MP3 and 20 ms for Opus), and a decoder starting

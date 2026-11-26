@@ -71,6 +71,12 @@ def write_id3(path, frames, version=4):
     _replace(path, id3_tag(frames, version) + strip_id3(path.read_bytes()))
 
 
+def prepend_id3(path, frames, version=4):
+    """Puts another ID3v2 tag in front of the file's own, as some taggers leave two in a row."""
+    path = Path(path)
+    _replace(path, id3_tag(frames, version) + path.read_bytes())
+
+
 def read_id3(path):
     """Every frame of an ID3v2.3/2.4 tag as (id, sha256 of its payload), in order."""
     data = Path(path).read_bytes()
@@ -250,5 +256,5 @@ def lost_or_changed(source_entries, output_entries):
     return sorted(key for key, values in source.items() if key not in REGENERATED and output.get(key) != values)
 
 
-__all__ = ["id3_text", "id3_frame", "popm", "ufid", "uslt", "write_id3", "read_id3", "frame_ids",
+__all__ = ["id3_text", "id3_frame", "popm", "ufid", "uslt", "write_id3", "prepend_id3", "read_id3", "frame_ids",
            "write_flac", "read_flac", "id3_entries", "comment_entries", "lost_or_changed"]

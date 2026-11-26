@@ -11,10 +11,16 @@ namespace Optimisarr.Core.Library;
 /// An ID3 frame is one entry each; a Vorbis comment field is one entry holding every value it was
 /// given, in order.
 /// </summary>
-public sealed record MusicTag(string Key, IReadOnlyList<string> Values)
+/// <param name="LegacyText">
+/// Its text is single-byte ID3 text with bytes above ASCII. ID3 calls that ISO-8859-1, but taggers
+/// wrote local code pages (CP1251, GBK, Shift-JIS) the same way, so the decoded words may not be what
+/// a player shows; text that moves into or out of it is not the same text.
+/// </param>
+public sealed record MusicTag(string Key, IReadOnlyList<string> Values, bool LegacyText = false)
 {
     public bool Equals(MusicTag? other) =>
-        other is not null && Key == other.Key && Values.SequenceEqual(other.Values, StringComparer.Ordinal);
+        other is not null && Key == other.Key && LegacyText == other.LegacyText
+        && Values.SequenceEqual(other.Values, StringComparer.Ordinal);
 
     public override int GetHashCode() => HashCode.Combine(Key, Values.Count);
 }
@@ -90,7 +96,16 @@ public static class MusicTagReader
         {
             return MusicTagRead.Unreadable(truncated.Message);
         }
+        // Whatever goes wrong inside a tag, it is a tag this reader cannot follow: a caller must see
+        // unreadable tags, never an error. Only a cancelled read is the caller's own.
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return MusicTagRead.Unreadable($"a tag it cannot follow ({error.GetType().Name})");
+        }
     }
+
+    /// <summary>How far past the tags at its start, and back from its end, a file is searched for tags of other kinds.</summary>
+    private const int TagSearchBytes = 64 * 1024;
 
     private static byte[] Exactly(IMusicTagBytes file, long offset, long count, string what)
     {
@@ -104,6 +119,7 @@ public static class MusicTagReader
     {
         var tags = new List<MusicTag>();
         int? version = null;
+        var audioStart = 0L;
         var start = file.Read(0, 10);
         if (start.Length >= 3 && start.AsSpan(0, 3).SequenceEqual("ID3"u8))
         {
@@ -112,23 +128,44 @@ public static class MusicTagReader
             var tag = Exactly(file, 0, 10 + size, "an ID3v2 tag");
             if (Id3v2.Read(tag, tags, out var id3Version) is { } problem) return MusicTagRead.Unreadable(problem);
             version = id3Version;
+            // A 2.4 tag with a footer repeats its header after its frames.
+            audioStart = 10 + size + (id3Version == 4 && (start[5] & 0x10) != 0 ? 10 : 0);
         }
 
-        // ID3v1 is the last 128 bytes; an APE tag ends with its footer, and Lyrics3 with its marker,
-        // just before it or at the very end.
-        var tailLength = (int)Math.Min(256, file.Length);
-        var tail = Exactly(file, file.Length - tailLength, tailLength, "the end of the file").AsSpan();
+        // FFmpeg reads consecutive ID3v2 tags as one, and steps over an APE or Lyrics3 tag where it
+        // stands: either way it would write tags this reader never saw.
+        var head = file.Read(audioStart, TagSearchBytes).AsSpan();
+        if (head.StartsWith("ID3"u8)) return MusicTagRead.Unreadable("a second ID3v2 tag");
+        if (OtherTag(head) is { } leading) return MusicTagRead.Unreadable(leading);
+
+        // ID3v1 is the last 128 bytes, and an enhanced tag the 227 before them; APE and Lyrics3 tags
+        // sit before it or at the very end.
+        var tail = Tail(file, audioStart);
         var hasId3v1 = tail.Length >= 128 && tail[^128..^125].SequenceEqual("TAG"u8);
         var beforeId3v1 = hasId3v1 ? tail[..^128] : tail;
-        if (beforeId3v1.Length >= 32 && beforeId3v1[^32..^24].SequenceEqual("APETAGEX"u8))
-            return MusicTagRead.Unreadable("an APE tag");
-        if (beforeId3v1.Length >= 9 && (beforeId3v1[^9..].SequenceEqual("LYRICS200"u8) || beforeId3v1[^9..].SequenceEqual("LYRICSEND"u8)))
-            return MusicTagRead.Unreadable("a Lyrics3 tag");
-        if (beforeId3v1.Length >= 10 && beforeId3v1[^10..^7].SequenceEqual("3DI"u8))
-            return MusicTagRead.Unreadable("an ID3v2 tag at the end of the file");
+        if (hasId3v1 && beforeId3v1.Length >= 227 && beforeId3v1[^227..^223].SequenceEqual("TAG+"u8))
+            return MusicTagRead.Unreadable("an enhanced ID3v1 tag");
+        if (TrailingTag(beforeId3v1) is { } trailing) return MusicTagRead.Unreadable(trailing);
         if (hasId3v1) Id3v1.Read(tail[^128..], tags);
         return MusicTagRead.Read(new MusicTagSet(MusicTagLayout.Id3, tags, version, hasId3v1));
     }
+
+    /// <summary>The end of a file, no further back than where its audio starts, so its own tags are not searched again.</summary>
+    private static ReadOnlySpan<byte> Tail(IMusicTagBytes file, long audioStart)
+    {
+        var length = (int)Math.Min(TagSearchBytes, file.Length - audioStart);
+        return Exactly(file, file.Length - length, length, "the end of the file");
+    }
+
+    // An APE tag is known by its header or footer, a Lyrics3 tag by its start or end marker; eight or
+    // more bytes of text are not found in compressed audio by chance.
+    private static string? OtherTag(ReadOnlySpan<byte> bytes) =>
+        bytes.IndexOf("APETAGEX"u8) >= 0 ? "an APE tag"
+        : bytes.IndexOf("LYRICSBEGIN"u8) >= 0 || bytes.IndexOf("LYRICS200"u8) >= 0 || bytes.IndexOf("LYRICSEND"u8) >= 0 ? "a Lyrics3 tag"
+        : null;
+
+    private static string? TrailingTag(ReadOnlySpan<byte> end) =>
+        OtherTag(end) ?? (end.Length >= 10 && end[^10..^7].SequenceEqual("3DI"u8) ? "an ID3v2 tag at the end of the file" : null);
 
     private static MusicTagRead ReadFlac(IMusicTagBytes file)
     {
@@ -175,6 +212,11 @@ public static class MusicTagReader
             position += 4 + size;
             if ((header[0] & 0x80) != 0) break;
         }
+
+        // FFmpeg's FLAC reader takes no tags from after the stream, and its writer adds none there.
+        var tail = Tail(file, position);
+        if (tail.Length >= 128 && tail[^128..^125].SequenceEqual("TAG"u8)) return MusicTagRead.Unreadable("an ID3v1 tag after the audio");
+        if (TrailingTag(tail) is { } trailing) return MusicTagRead.Unreadable(trailing);
         tags.AddRange(pictures.Select(picture => new MusicTag(picture.Key, picture.Value)));
         return MusicTagRead.Read(new MusicTagSet(MusicTagLayout.Flac, tags));
     }
@@ -219,7 +261,54 @@ public static class MusicTagReader
         // Anything after the comments is binary data that only counts when its first bit is set.
         var rest = comments[(8 + used)..];
         if (rest.Length > 0 && (rest[0] & 1) == 1) tags.Add(new("OPUSTAGS:BINARY", [Sha256(rest)]));
+        if (OtherOggData(file, serial!.Value) is { } other) return MusicTagRead.Unreadable(other);
         return MusicTagRead.Read(new MusicTagSet(MusicTagLayout.OggOpus, tags));
+    }
+
+    /// <summary>
+    /// Every page to the end of the file must belong to the one stream. A chained file (a second
+    /// stream after the first, as joined tracks and radio captures have) carries tags of its own in
+    /// each stream, and only the first stream's are read here; bytes after the last page are a tag of
+    /// another kind.
+    /// </summary>
+    private static string? OtherOggData(IMusicTagBytes file, uint serial)
+    {
+        var pages = new SequentialBytes(file);
+        var position = 0L;
+        while (position < file.Length)
+        {
+            var header = pages.Read(position, 27);
+            if (header.Length < 27 || !header.StartsWith("OggS"u8) || header[4] != 0) return "data that is not an Ogg page";
+            // A second stream starts with its own first page, whatever its serial number.
+            if (BinaryPrimitives.ReadUInt32LittleEndian(header[14..]) != serial || (position > 0 && (header[5] & 0x02) != 0))
+                return "more than one Ogg stream";
+            var segments = header[26];
+            var table = pages.Read(position + 27, segments);
+            var bodyLength = 0;
+            foreach (var lacing in table) bodyLength += lacing;
+            position += 27 + table.Length + bodyLength;
+            if (table.Length < segments || position > file.Length) return "an Ogg page cut short by the end of the file";
+        }
+        return null;
+    }
+
+    /// <summary>Front-to-back reads in large pieces, so walking a long file's pages is a few reads, not one per page.</summary>
+    private sealed class SequentialBytes(IMusicTagBytes file)
+    {
+        private const int PieceBytes = 1024 * 1024;
+        private byte[] _piece = [];
+        private long _pieceStart;
+
+        public ReadOnlySpan<byte> Read(long offset, int count)
+        {
+            if (offset < _pieceStart || offset + count > _pieceStart + _piece.Length)
+            {
+                _pieceStart = offset;
+                _piece = file.Read(offset, Math.Max(count, PieceBytes));
+            }
+            var start = (int)(offset - _pieceStart);
+            return _piece.AsSpan(start, Math.Min(count, _piece.Length - start));
+        }
     }
 
     /// <summary>
@@ -257,8 +346,9 @@ public static class MusicTagReader
                     while (entry + 8 <= list.Length)
                     {
                         var entryId = Encoding.ASCII.GetString(list, entry, 4);
-                        var entrySize = (int)BinaryPrimitives.ReadUInt32LittleEndian(list.AsSpan(entry + 4));
-                        if (entrySize < 0 || entry + 8 + entrySize > list.Length) return MusicTagRead.Unreadable("a truncated INFO entry");
+                        var statedSize = BinaryPrimitives.ReadUInt32LittleEndian(list.AsSpan(entry + 4));
+                        if (statedSize > list.Length - entry - 8) return MusicTagRead.Unreadable("a truncated INFO entry");
+                        var entrySize = (int)statedSize;
                         // The bytes as they are: Latin-1 maps each byte to one character.
                         tags.Add(new($"INFO:{entryId}", [Encoding.Latin1.GetString(list.AsSpan(entry + 8, entrySize).TrimEnd((byte)0))]));
                         entry += 8 + entrySize + (entrySize & 1);
@@ -327,7 +417,8 @@ public static class MusicTagReader
     private static class FlacPicture
     {
         // Type, MIME type and description identify a picture, and its data is what it shows; the
-        // stated size and colour depth are worked out again by the writer.
+        // stated size and colour depth are worked out again by the writer. The MIME type is one part
+        // of the key, so it cannot hold the separator.
         public static bool TryRead(ReadOnlySpan<byte> body, out string key, out string digest)
         {
             key = digest = "";
@@ -335,13 +426,15 @@ public static class MusicTagReader
             {
                 var type = BinaryPrimitives.ReadUInt32BigEndian(body);
                 var mimeLength = (int)BinaryPrimitives.ReadUInt32BigEndian(body[4..]);
+                var mime = Encoding.ASCII.GetString(body.Slice(8, mimeLength));
+                if (mime.Contains(':', StringComparison.Ordinal)) return false;
                 var descriptionStart = 8 + mimeLength;
                 var descriptionLength = (int)BinaryPrimitives.ReadUInt32BigEndian(body[descriptionStart..]);
                 var description = StrictUtf8.GetString(body.Slice(descriptionStart + 4, descriptionLength));
                 var dataStart = descriptionStart + 4 + descriptionLength + 16;
                 var dataLength = (int)BinaryPrimitives.ReadUInt32BigEndian(body[dataStart..]);
                 if (dataLength < 0 || dataLength > body.Length - dataStart - 4) return false;
-                key = string.Create(CultureInfo.InvariantCulture, $"PICTURE:{type}:{description}");
+                key = string.Create(CultureInfo.InvariantCulture, $"PICTURE:{type}:{mime}:{description}");
                 digest = Sha256(body.Slice(dataStart + 4, dataLength));
                 return true;
             }
@@ -429,26 +522,31 @@ internal static class Id3v2
                 case "TXXX" or "WXXX":
                 {
                     var description = SplitText(payload[0], payload.AsSpan(1), out var rest);
+                    // A URL is always ISO-8859-1; only a description is in the frame's encoding.
                     var values = id == "WXXX" ? [Encoding.Latin1.GetString(TrimNul(payload.AsSpan(1 + rest)))] : TextValues(payload[0], payload.AsSpan(1 + rest));
-                    return new($"{id}:{description}", values);
+                    return new($"{id}:{description}", values, Legacy(payload[0], payload.AsSpan(1, id == "WXXX" ? rest : payload.Length - 1)));
                 }
                 case "COMM" or "USLT":
                 {
                     var language = Encoding.Latin1.GetString(payload, 1, 3);
                     var description = SplitText(payload[0], payload.AsSpan(4), out var rest);
-                    return new($"{id}:{language}:{description}", [string.Join('\0', TextValues(payload[0], payload.AsSpan(4 + rest)))]);
+                    return new($"{id}:{language}:{description}", [string.Join('\0', TextValues(payload[0], payload.AsSpan(4 + rest)))],
+                        Legacy(payload[0], payload.AsSpan(4)));
                 }
                 case "APIC":
                 {
                     var mimeEnd = Array.IndexOf(payload, (byte)0, 1);
                     if (mimeEnd < 0 || mimeEnd + 2 > payload.Length) return null;
+                    // The MIME type is one part of the key, so it cannot hold the separator.
+                    var mime = Encoding.Latin1.GetString(payload, 1, mimeEnd - 1);
+                    if (mime.Contains(':', StringComparison.Ordinal)) return null;
                     var pictureType = payload[mimeEnd + 1];
                     var description = SplitText(payload[0], payload.AsSpan(mimeEnd + 2), out var data);
-                    return new(string.Create(CultureInfo.InvariantCulture, $"APIC:{pictureType}:{description}"),
-                        [MusicTagReader.Sha256(payload.AsSpan(mimeEnd + 2 + data))]);
+                    return new(string.Create(CultureInfo.InvariantCulture, $"APIC:{pictureType}:{mime}:{description}"),
+                        [MusicTagReader.Sha256(payload.AsSpan(mimeEnd + 2 + data))], Legacy(payload[0], payload.AsSpan(mimeEnd + 2, data)));
                 }
                 case ['T', ..]:
-                    return new(id, TextValues(payload[0], payload.AsSpan(1)));
+                    return new(id, TextValues(payload[0], payload.AsSpan(1)), Legacy(payload[0], payload.AsSpan(1)));
                 case ['W', ..]:
                     return new(id, [Encoding.Latin1.GetString(TrimNul(payload))]);
                 default:
@@ -460,6 +558,9 @@ internal static class Id3v2
             return null;
         }
     }
+
+    /// <summary>Single-byte text with bytes above ASCII, which may be a local code page rather than the ISO-8859-1 it claims.</summary>
+    private static bool Legacy(byte encoding, ReadOnlySpan<byte> text) => encoding == 0 && text.ContainsAnyInRange((byte)0x80, (byte)0xFF);
 
     /// <summary>Text frames may hold several NUL-separated values; a writer may add a final NUL.</summary>
     private static List<string> TextValues(byte encoding, ReadOnlySpan<byte> bytes)
@@ -537,12 +638,45 @@ internal static class Id3v2
 /// <summary>The fixed fields of an ID3v1 or ID3v1.1 tag.</summary>
 internal static class Id3v1
 {
+    // FFmpeg 7.1's names for the genre numbers (ff_id3v1_genre_str), in order; it names no others.
+    private static readonly string[] Genres =
+    [
+        "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal", "New Age",
+        "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial", "Alternative", "Ska",
+        "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion",
+        "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise", "AlternRock",
+        "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic",
+        "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy",
+        "Cult", "Gangsta", "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave",
+        "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro",
+        "Musical", "Rock & Roll", "Hard Rock", "Folk", "Folk-Rock", "National Folk", "Swing", "Fast Fusion", "Bebop",
+        "Latin", "Revival", "Celtic", "Bluegrass", "Avantgarde", "Gothic Rock", "Progressive Rock",
+        "Psychedelic Rock", "Symphonic Rock", "Slow Rock", "Big Band", "Chorus", "Easy Listening", "Acoustic",
+        "Humour", "Speech", "Chanson", "Opera", "Chamber Music", "Sonata", "Symphony", "Booty Bass", "Primus",
+        "Porn Groove", "Satire", "Slow Jam", "Club", "Tango", "Samba", "Folklore", "Ballad", "Power Ballad",
+        "Rhythmic Soul", "Freestyle", "Duet", "Punk Rock", "Drum Solo", "A Cappella", "Euro-House", "Dance Hall",
+        "Goa", "Drum & Bass", "Club-House", "Hardcore Techno", "Terror", "Indie", "BritPop", "Negerpunk",
+        "Polsk Punk", "Beat", "Christian Gangsta Rap", "Heavy Metal", "Black Metal", "Crossover",
+        "Contemporary Christian", "Christian Rock", "Merengue", "Salsa", "Thrash Metal", "Anime", "Jpop", "Synthpop",
+        "Abstract", "Art Rock", "Baroque", "Bhangra", "Big Beat", "Breakbeat", "Chillout", "Downtempo", "Dub", "EBM",
+        "Eclectic", "Electro", "Electroclash", "Emo", "Experimental", "Garage", "Global", "IDM", "Illbient",
+        "Industro-Goth", "Jam Band", "Krautrock", "Leftfield", "Lounge", "Math Rock", "New Romantic", "Nu-Breakz",
+        "Post-Punk", "Post-Rock", "Psytrance", "Shoegaze", "Space Rock", "Trop Rock", "World Music", "Neoclassical",
+        "Audiobook", "Audio Theatre", "Neue Deutsche Welle", "Podcast", "Indie Rock", "G-Funk", "Dubstep",
+        "Garage Rock", "Psybient",
+    ];
+
+    /// <summary>The name FFmpeg gives an ID3v1 genre number, or null when it gives none.</summary>
+    public static string? GenreName(string number) =>
+        int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var index) && index < Genres.Length ? Genres[index] : null;
+
     public static void Read(ReadOnlySpan<byte> tag, List<MusicTag> tags)
     {
+        // ID3v1 has no text encoding at all: bytes above ASCII are whatever code page wrote them.
         void Field(string name, ReadOnlySpan<byte> bytes)
         {
             var text = Encoding.Latin1.GetString(bytes.TrimEnd((byte)0)).TrimEnd(' ', '\0');
-            if (text.Length > 0) tags.Add(new($"ID3V1:{name}", [text]));
+            if (text.Length > 0) tags.Add(new($"ID3V1:{name}", [text], text.Any(character => character > '\x7F')));
         }
 
         Field("TITLE", tag.Slice(3, 30));

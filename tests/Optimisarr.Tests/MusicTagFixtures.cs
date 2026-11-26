@@ -41,12 +41,16 @@ internal static class MusicTagFixtures
     /// <summary>Stands in for the MPEG frames after the tag; the reader never looks at them.</summary>
     public static readonly byte[] AudioFrames = [0xFF, 0xFB, 0x90, 0x64, .. new byte[400]];
 
-    public static byte[] Id3v1(string title, string artist, byte track, byte genre)
+    public static byte[] Id3v1(string title, string artist, byte track, byte genre) =>
+        Id3v1(Encoding.Latin1.GetBytes(title), Encoding.Latin1.GetBytes(artist), track, genre);
+
+    /// <summary>An ID3v1.1 tag from raw field bytes, as a tagger writing a local code page leaves them.</summary>
+    public static byte[] Id3v1(byte[] title, byte[] artist, byte track, byte genre)
     {
         var tag = new byte[128];
         "TAG"u8.CopyTo(tag);
-        Encoding.Latin1.GetBytes(title).CopyTo(tag, 3);
-        Encoding.Latin1.GetBytes(artist).CopyTo(tag, 33);
+        title.CopyTo(tag, 3);
+        artist.CopyTo(tag, 33);
         tag[126] = track;
         tag[127] = genre;
         return tag;
@@ -75,7 +79,7 @@ internal static class MusicTagFixtures
 
     public static byte[] Flac(params byte[][] blocks) => [.. "fLaC"u8.ToArray(), .. blocks.SelectMany(block => block), 0xFF, 0xF8, .. new byte[64]];
 
-    public static byte[] FlacPicture(int type, string description, byte[] data)
+    public static byte[] FlacPicture(int type, string description, byte[] data, string mime = "image/jpeg")
     {
         var body = new List<byte>();
         void Int(int value)
@@ -85,8 +89,8 @@ internal static class MusicTagFixtures
             body.AddRange(bytes);
         }
         Int(type);
-        Int(10);
-        body.AddRange("image/jpeg"u8.ToArray());
+        Int(mime.Length);
+        body.AddRange(Encoding.ASCII.GetBytes(mime));
         var text = Encoding.UTF8.GetBytes(description);
         Int(text.Length);
         body.AddRange(text);

@@ -270,7 +270,7 @@ public sealed class LibraryInventoryService(
             // with exiftool when the container probe found none.
             // Read now so Candidates can say why a file is not trimmed before any job is queued.
             file.TrimOnlyTagRefusal = result.MediaKind == MediaKind.Audio && musicTags is not null && AudioTrimOnly.ReadsTags(file.Path)
-                ? TrimOnlyTags.Refusal(await musicTags.ReadAsync(file.Path, cancellationToken))
+                ? TrimOnlyTags.Refusal(await ReadTagsAsync(musicTags, file.Path, cancellationToken))
                 : null;
             file.OptimisedMarker = result.OptimisedMarker
                 ?? (result.MediaKind == MediaKind.Image
@@ -286,5 +286,19 @@ public sealed class LibraryInventoryService(
 
         await db.SaveChangesAsync(cancellationToken);
         return file;
+    }
+
+    // A failed tag read refuses the trim, never the probe: a file left at Discovered would be picked
+    // again by every probe sweep, ahead of the rest of the library.
+    private static async Task<MusicTagRead> ReadTagsAsync(MusicTagService musicTags, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await musicTags.ReadAsync(path, cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return MusicTagRead.Unreadable($"reading them failed: {error.Message}");
+        }
     }
 }

@@ -738,6 +738,13 @@ class Harness:
             audio_tags.uslt("eng", "Words that are not timed")], version=3),
         ("flac", "lost"): lambda path: audio_tags.write_flac(path, [
             ("TITLE", "Trim-only fixture"), ("ARTIST", "First artist"), ("ARTIST", "Second artist")]),
+        # FFmpeg merges a second ID3v2 tag into the first, so its frames would be rewritten unseen.
+        ("mp3", "stacked"): lambda path: (
+            audio_tags.write_id3(path, [audio_tags.id3_text("TPE1", "Optimisarr acceptance"), audio_tags.popm("acceptance@example.org", 196, 5)], version=3),
+            audio_tags.prepend_id3(path, [audio_tags.id3_text("TIT2", "Trim-only fixture")], version=3)),
+        # CP1251 bytes written as ISO-8859-1 text, which FFmpeg would rewrite as other Unicode words.
+        ("mp3", "cp1251"): lambda path: audio_tags.write_id3(path, [
+            audio_tags.id3_frame("TIT2", b"\x00" + "Кино".encode("cp1251")), audio_tags.id3_text("TPE1", "Optimisarr acceptance")], version=3),
     }
 
     def trim_only_fixture(self, fmt, name):
@@ -837,12 +844,24 @@ class Harness:
         self.replace_restore(case, candidate)
         return {"duration": duration, "restoredOriginal": True, "tags": len(source_tags)}
 
-    def audio_trim_only_refused(self, fmt, expected):
+    def chain_opus(self, fixture):
+        # A second Opus stream after the first, as joined tracks are: each stream carries its own tags.
+        extension, codec_args, _, _ = self.TRIM_ONLY["opus"]
+        second = fixture.with_name(fixture.stem + "-second" + extension)
+        self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.4:duration=20:sample_rate=48000:seed=9",
+            "-ac", "2", *codec_args, "-serial_offset", "4242", "-fflags", "+bitexact", "-metadata", "title=Second stream", self.tools.path(second)])
+        audio_tags._replace(fixture, fixture.read_bytes() + second.read_bytes())
+        second.unlink()
+
+    def audio_trim_only_refused(self, fmt, expected, tags="lost"):
         # Tags FFmpeg would lose: the file is left alone before any job, with the tags named, and unchanged.
         _, _, target, _ = self.TRIM_ONLY[fmt]
-        name = f"audio-trim-only-{fmt}-lost-tags"
+        name = f"audio-trim-only-{fmt}-{tags}-tags"
         fixture = self.trim_only_fixture(fmt, name)
-        self.TRIM_ONLY_TAGS[(fmt, "lost")](fixture)
+        if tags == "chained":
+            self.chain_opus(fixture)
+        else:
+            self.TRIM_ONLY_TAGS[(fmt, tags)](fixture)
         case = self.create_job(name, fixture, overrides=self.trim_only_overrides(target), expected_ineligible=expected)
         jobs = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
         require(not jobs, f"A job was queued for a refused file: {jobs}")
@@ -1482,6 +1501,12 @@ class Harness:
                                  lambda: self.audio_trim_only_refused("mp3", "(POPM, UFID, USLT)"))
                 self.report.case("local-audio-trim-only-flac-lost-tags",
                                  lambda: self.audio_trim_only_refused("flac", "(ARTIST ×2)"))
+                self.report.case("local-audio-trim-only-mp3-stacked-tags",
+                                 lambda: self.audio_trim_only_refused("mp3", "(a second ID3v2 tag)", tags="stacked"))
+                self.report.case("local-audio-trim-only-mp3-cp1251-tags",
+                                 lambda: self.audio_trim_only_refused("mp3", "legacy character set (TIT2)", tags="cp1251"))
+                self.report.case("local-audio-trim-only-opus-chained-tags",
+                                 lambda: self.audio_trim_only_refused("opus", "(more than one Ogg stream)", tags="chained"))
                 usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
                 if tier == "fleet" and not usable:
                     self.report.case("audio-workers", lambda: (_ for _ in ()).throw(Blocked("No audio workers paired")))

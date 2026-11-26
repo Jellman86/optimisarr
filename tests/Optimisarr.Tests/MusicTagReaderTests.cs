@@ -56,7 +56,7 @@ public sealed class MusicTagReaderTests
         var one = Tags(".mp3", [.. Id3v2(3, Frame("APIC", Picture(1))), .. AudioFrames]).Tags.Single();
         var other = Tags(".mp3", [.. Id3v2(3, Frame("APIC", Picture(2))), .. AudioFrames]).Tags.Single();
 
-        Assert.Equal("APIC:3:Front", one.Key);
+        Assert.Equal("APIC:3:image/jpeg:Front", one.Key);
         Assert.NotEqual(one, other);
     }
 
@@ -172,7 +172,7 @@ public sealed class MusicTagReaderTests
             FlacBlock(5, new byte[20]),
             FlacBlock(6, FlacPicture(3, "Front", [0xFF, 0xD8, 1]), last: true)));
 
-        Assert.Equal(["APPLICATION:54455354", "CUESHEET", "PICTURE:3:Front"], tags.Tags.Select(tag => tag.Key));
+        Assert.Equal(["APPLICATION:54455354", "CUESHEET", "PICTURE:3:image/jpeg:Front"], tags.Tags.Select(tag => tag.Key));
     }
 
     [Fact]
@@ -231,5 +231,117 @@ public sealed class MusicTagReaderTests
 
         Assert.Contains("truncated", Read(".wav", wav[..2000]).Problem);
         Assert.Contains("RIFF", Read(".wav", Encoding.ASCII.GetBytes("RF64....WAVE")).Problem);
+    }
+
+    [Fact]
+    public void A_second_id3v2_tag_straight_after_the_first_cannot_be_proved()
+    {
+        // FFmpeg merges consecutive tags, so frames in the second one would be read by it but not here.
+        byte[] stacked = [.. Id3v2(3, 0, 0, Text(3, "TIT2", "Song")), .. Id3v2(3, Frame("POPM", [.. "a@b\0"u8.ToArray(), 200, 0, 0, 0, 5])), .. AudioFrames];
+        // A 2.4 tag with a footer ends ten bytes after its stated size.
+        var withFooter = Id3v2(4, 0x10, 0, Text(4, "TIT2", "Song"));
+        byte[] footer = [.. "3DI"u8.ToArray(), .. withFooter[3..10]];
+        byte[] footed = [.. withFooter, .. footer, .. Id3v2(4, Text(4, "TPE1", "Artist")), .. AudioFrames];
+
+        Assert.Equal("a second ID3v2 tag", Read(".mp3", stacked).Problem);
+        Assert.Equal("a second ID3v2 tag", Read(".mp3", footed).Problem);
+        Assert.NotNull(Read(".mp3", [.. withFooter, .. footer, .. AudioFrames]).Tags);
+    }
+
+    [Fact]
+    public void Single_byte_text_above_ascii_is_marked_as_a_legacy_character_set()
+    {
+        // CP1251 "Кино" written as if it were ISO-8859-1, as many old taggers did.
+        byte[] cp1251 = [0xCA, 0xE8, 0xED, 0xEE];
+        var tags = Tags(".mp3", [.. Id3v2(3,
+            Frame("TIT2", [0, .. cp1251]),
+            Frame("TPE1", "\0Artist"u8.ToArray()),
+            Frame("TXXX", [0, .. cp1251, 0, .. "value"u8.ToArray()]),
+            Frame("COMM", [0, .. "eng"u8.ToArray(), 0, .. cp1251]),
+            Frame("APIC", [0, .. "image/jpeg\0"u8.ToArray(), 3, .. cp1251, 0, 0xFF, 0xD8]),
+            Text(3, "TALB", "Кино")), .. AudioFrames, .. Id3v1(cp1251, "Artist"u8.ToArray(), 1, 17)]).Tags;
+
+        Assert.Equal(["TIT2", "TXXX:Êèíî", "COMM:eng:", "APIC:3:image/jpeg:Êèíî", "ID3V1:TITLE"],
+            tags.Where(tag => tag.LegacyText).Select(tag => tag.Key));
+        Assert.NotEqual(new MusicTag("TIT2", ["Êèíî"]), tags[0]);
+    }
+
+    [Fact]
+    public void A_wav_info_entry_with_an_impossible_size_cannot_be_proved()
+    {
+        byte[] Info(uint size) => RiffChunk("LIST", [.. "INFO"u8.ToArray(), .. "INAM"u8.ToArray(), .. BitConverter.GetBytes(size), .. "abcd"u8.ToArray()]);
+
+        Assert.Equal("a truncated INFO entry", Read(".wav", Wav(Info(0x7FFFFFFF))).Problem);
+        Assert.Equal("a truncated INFO entry", Read(".wav", Wav(Info(0xFFFFFFF0))).Problem);
+    }
+
+    private sealed class FailingBytes(Exception error) : IMusicTagBytes
+    {
+        public long Length => 1000;
+
+        public byte[] Read(long offset, int count) => throw error;
+    }
+
+    [Fact]
+    public void A_failure_while_reading_is_unreadable_tags_and_never_escapes()
+    {
+        Assert.Null(MusicTagReader.Read(".mp3", new FailingBytes(new IndexOutOfRangeException())).Tags);
+        Assert.Null(MusicTagReader.Read(".flac", new FailingBytes(new OverflowException())).Tags);
+        Assert.Null(MusicTagReader.Read(".wav", new FailingBytes(new ArgumentException("bad"))).Tags);
+        Assert.Throws<OperationCanceledException>(() => MusicTagReader.Read(".opus", new FailingBytes(new OperationCanceledException())));
+    }
+
+    [Fact]
+    public void Ape_and_lyrics3_tags_anywhere_the_reader_looks_cannot_be_proved()
+    {
+        byte[] apeHeader = [.. "APETAGEX"u8.ToArray(), 0xD0, 0x07, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xA0, .. new byte[8]];
+        byte[] apeFooter = [.. "APETAGEX"u8.ToArray(), .. new byte[24]];
+
+        Assert.Equal("an APE tag", Read(".mp3", [.. apeHeader, .. AudioFrames]).Problem);
+        Assert.Equal("an APE tag", Read(".mp3", [.. Id3v2(4, Text(4, "TIT2", "T")), .. apeHeader, .. AudioFrames]).Problem);
+        // An APE tag behind a Lyrics3 tag at the end.
+        Assert.Equal("an APE tag", Read(".mp3", [.. AudioFrames, .. apeFooter, .. "LYRICSBEGINxyz000020LYRICS200"u8.ToArray(), .. new byte[300]]).Problem);
+        Assert.Equal("a Lyrics3 tag", Read(".mp3", [.. AudioFrames, .. "LYRICSBEGINxyzLYRICSEND"u8.ToArray(), .. new byte[300]]).Problem);
+    }
+
+    [Fact]
+    public void An_enhanced_id3v1_tag_cannot_be_proved()
+    {
+        byte[] enhanced = [.. "TAG+"u8.ToArray(), .. new byte[223]];
+
+        Assert.Equal("an enhanced ID3v1 tag", Read(".mp3", [.. AudioFrames, .. enhanced, .. Id3v1("Title", "Artist", 1, 17)]).Problem);
+    }
+
+    [Fact]
+    public void A_flac_file_with_a_tag_after_its_stream_cannot_be_proved()
+    {
+        var flac = Flac(FlacBlock(0, new byte[34]), FlacBlock(4, VorbisComment("x", ("TITLE", "a")), last: true));
+
+        Assert.Equal("an ID3v1 tag after the audio", Read(".flac", [.. flac, .. Id3v1("Title", "Artist", 1, 17)]).Problem);
+        Assert.Equal("an APE tag", Read(".flac", [.. flac, .. "APETAGEX"u8.ToArray(), .. new byte[24]]).Problem);
+        Assert.NotNull(Read(".flac", flac).Tags);
+    }
+
+    [Fact]
+    public void A_chained_opus_file_cannot_be_proved()
+    {
+        byte[] Stream(uint serial, string title) =>
+            [.. OggPage(serial, 0, OpusHead), .. OggPage(serial, 1, OpusTags(("TITLE", title))), .. OggPage(serial, 2, [1, 2, 3])];
+
+        // A second stream after the first: FFmpeg plays both, but only the first one's tags are read here.
+        Assert.Equal("more than one Ogg stream", Read(".opus", [.. Stream(7, "First"), .. Stream(8, "Second")]).Problem);
+        Assert.Equal("more than one Ogg stream", Read(".opus", [.. Stream(7, "First"), .. Stream(7, "Second")]).Problem);
+        Assert.Equal("data that is not an Ogg page", Read(".opus", [.. Stream(7, "First"), .. Id3v1("Title", "Artist", 1, 17)]).Problem);
+        Assert.NotNull(Read(".opus", Stream(7, "First")).Tags);
+    }
+
+    [Fact]
+    public void A_picture_is_known_by_its_mime_type_as_well()
+    {
+        var jpg = Tags(".mp3", [.. Id3v2(3, Frame("APIC", [0, .. "image/jpg\0"u8.ToArray(), 3, 0, 0xFF, 0xD8])), .. AudioFrames]).Tags.Single();
+        var flac = Tags(".flac", Flac(FlacBlock(0, new byte[34]), FlacBlock(6, FlacPicture(3, "", [0xFF, 0xD8], "image/jpg"), last: true))).Tags.Single();
+
+        Assert.Equal("APIC:3:image/jpg:", jpg.Key);
+        Assert.Equal("PICTURE:3:image/jpg:", flac.Key);
     }
 }

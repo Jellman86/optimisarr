@@ -341,6 +341,28 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Null(probed!.TrimOnlyTagRefusal);
     }
 
+    private sealed class BrokenTagReader : MusicTagService
+    {
+        public override Task<MusicTagRead> ReadAsync(string path, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the tag reader failed");
+    }
+
+    [Fact]
+    public async Task A_tag_reader_failure_refuses_the_trim_but_still_probes_the_file()
+    {
+        // A file stuck at Discovered would be retried by every probe sweep ahead of the rest of the library.
+        WriteMediaFile("Album/Broken.mp3");
+        var library = await CreateLibraryAsync(MediaType.Music);
+        await ScanAsync(library);
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new LibraryInventoryService(db, new LibraryScanner(), new AudioProbe("mp3"), new ImageMarkerService(), new BrokenTagReader());
+
+        var probed = await service.ProbeAsync((await db.MediaFiles.SingleAsync()).Id, CancellationToken.None);
+
+        Assert.Equal(MediaFileStatus.Probed, probed!.Status);
+        Assert.Equal("Its tags could not be read in full (reading them failed: the tag reader failed), so it is not trimmed without converting it.", probed.TrimOnlyTagRefusal);
+    }
+
     private async Task<Library> CreateLibraryAsync(MediaType mediaType = MediaType.Tv)
     {
         await using var db = new OptimisarrDbContext(_options);

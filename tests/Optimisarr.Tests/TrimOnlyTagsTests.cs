@@ -60,6 +60,8 @@ public sealed class TrimOnlyTagsTests
         Assert.Contains("TDRL", TrimOnlyTags.Refusal(Mp3(4, Text(4, "TDRL", "2001"))));
         Assert.Contains("TIT2", TrimOnlyTags.Refusal(Mp3(4, Text(4, "TIT2", "A"), Text(4, "TIT2", "B"))));
         Assert.Null(TrimOnlyTags.Refusal(Mp3(4, Text(4, "TSOP", "Sort"))));
+        // FFmpeg's keys ignore case, so a second description differing only in case is lost.
+        Assert.Contains("TXXX:foo", TrimOnlyTags.Refusal(Mp3(4, Frame("TXXX", [3, .. "Foo\0a"u8.ToArray()]), Frame("TXXX", [3, .. "foo\0b"u8.ToArray()]))));
     }
 
     [Fact]
@@ -117,7 +119,7 @@ public sealed class TrimOnlyTagsTests
         var comparison = TrimOnlyTags.Compare(source, output);
 
         Assert.False(comparison.Kept);
-        Assert.Equal("The tags lost POPM, UFID.", comparison.Detail);
+        Assert.Equal("The tags lost POPM, UFID and gained TXXX:lyrics-eng.", comparison.Detail);
     }
 
     [Fact]
@@ -139,12 +141,125 @@ public sealed class TrimOnlyTagsTests
     }
 
     [Fact]
-    public void Text_written_in_another_encoding_or_id3_version_still_compares_equal()
+    public void Text_written_in_another_unicode_encoding_still_compares_equal()
     {
         var source = Mp3(3, Text(3, "TIT2", "Café"), Text(3, "TPE1", "Artist")).Tags!;
         var output = Mp3(3, Frame("TIT2", [1, 0xFF, 0xFE, .. System.Text.Encoding.Unicode.GetBytes("Café\0")]), Frame("TPE1", "\0Artist\0"u8.ToArray()),
             Frame("TXXX", "\0optimisarr\0v1\0"u8.ToArray()), Frame("TSSE", "\0Lavf61.7.103\0"u8.ToArray())).Tags!;
 
         Assert.True(TrimOnlyTags.Compare(source, output).Kept);
+    }
+
+    [Fact]
+    public void Text_in_a_legacy_character_set_leaves_the_file_alone()
+    {
+        // FFmpeg would read CP1251 bytes as ISO-8859-1 and write them again as Unicode, which says something else.
+        var read = Mp3(3, Frame("TIT2", [0, 0xCA, 0xE8, 0xED, 0xEE]), Frame("TPE1", "\0Artist"u8.ToArray()));
+
+        Assert.Equal("Some of its tags are written in a legacy character set (TIT2), which trimming without converting would rewrite, so it is left alone.",
+            TrimOnlyTags.Refusal(read));
+    }
+
+    [Fact]
+    public void Text_moved_out_of_a_legacy_character_set_fails_as_changed()
+    {
+        var source = Set(MusicTagLayout.Id3, new MusicTag("TIT2", ["Êèíî"], LegacyText: true));
+        var output = Set(MusicTagLayout.Id3, new MusicTag("TIT2", ["Êèíî"]));
+
+        Assert.Equal("The tags changed TIT2.", TrimOnlyTags.Compare(source, output).Detail);
+    }
+
+    [Fact]
+    public void A_tag_the_output_gains_fails_unless_it_is_written_again_on_purpose()
+    {
+        var source = Set(MusicTagLayout.Id3, new MusicTag("TIT2", ["Song"]));
+        // FFmpeg merged a second ID3v2 tag the reader did not see.
+        var output = Set(MusicTagLayout.Id3, new MusicTag("TIT2", ["Song"]), new MusicTag("TPE1", ["Artist"]), new MusicTag("TXXX:lyrics-eng", ["la"]),
+            new MusicTag("TSSE", ["Lavf"]), new MusicTag("TXXX:optimisarr", ["v1"]));
+        var flac = TrimOnlyTags.Compare(Set(MusicTagLayout.Flac, new MusicTag("TITLE", ["T"])),
+            Set(MusicTagLayout.Flac, new MusicTag("TITLE", ["T"]), new MusicTag("ENCODER", ["Lavf"]), new MusicTag("OPTIMISARR", ["v1"]), new MusicTag("ARTIST", ["A"])));
+
+        Assert.Equal("The tags gained TPE1, TXXX:lyrics-eng.", TrimOnlyTags.Compare(source, output).Detail);
+        Assert.Equal("The tags gained ARTIST.", flac.Detail);
+    }
+
+    private static MusicTagSet Id3v1Only => new(MusicTagLayout.Id3, [
+        new("ID3V1:TITLE", ["Title"]), new("ID3V1:ARTIST", ["Artist"]), new("ID3V1:ALBUM", ["Album"]), new("ID3V1:YEAR", ["1999"]),
+        new("ID3V1:COMMENT", ["Comment"]), new("ID3V1:TRACK", ["5"]), new("ID3V1:GENRE", ["17"])], Id3Version: null, HasId3v1: true);
+
+    [Fact]
+    public void An_id3v1_only_file_may_gain_the_same_fields_as_id3v2_frames()
+    {
+        // FFmpeg 7.1 reads the ID3v1 fields and writes them as ID3v2.4 frames as well, with the genre by its name.
+        var output = new MusicTagSet(MusicTagLayout.Id3, [
+            new("TIT2", ["Title"]), new("TPE1", ["Artist"]), new("TALB", ["Album"]), new("TDRC", ["1999"]), new("TXXX:comment", ["Comment"]),
+            new("TRCK", ["5"]), new("TCON", ["Rock"]), new("TXXX:optimisarr", ["v1"]), new("TSSE", ["Lavf61.7.103"]), .. Id3v1Only.Tags], 4, true);
+
+        var comparison = TrimOnlyTags.Compare(Id3v1Only, output);
+
+        Assert.True(comparison.Kept, comparison.Detail);
+        Assert.False(TrimOnlyTags.Compare(Id3v1Only, output with { Tags = [.. output.Tags.Where(tag => tag.Key != "TCON"), new("TCON", ["Blues"])] }).Kept);
+        Assert.False(TrimOnlyTags.Compare(Id3v1Only, output with { Tags = [.. output.Tags, new("TPE2", ["Artist"])] }).Kept);
+        // With an ID3v2 tag of its own, the source's frames are the only ones expected.
+        Assert.False(TrimOnlyTags.Compare(Id3v1Only with { Id3Version = 4 }, output).Kept);
+    }
+
+    [Fact]
+    public void A_changed_id3_version_or_a_lost_id3v1_tag_fails()
+    {
+        var tags = new MusicTag[] { new("TIT2", ["T"]) };
+        var v23 = new MusicTagSet(MusicTagLayout.Id3, tags, 3, false);
+
+        Assert.Equal("The ID3v2 tag changed from version 2.3 to 2.4.", TrimOnlyTags.Compare(v23, v23 with { Id3Version = 4 }).Detail);
+        Assert.Equal("The ID3v1 tag was lost.", TrimOnlyTags.Compare(v23 with { HasId3v1 = true }, v23).Detail);
+        Assert.Equal("An ID3v1 tag was added.", TrimOnlyTags.Compare(v23, v23 with { HasId3v1 = true }).Detail);
+        // A file without an ID3v2 tag is given FFmpeg's own 2.4 tag.
+        Assert.True(TrimOnlyTags.Compare(v23 with { Tags = [], Id3Version = null }, v23 with { Tags = [], Id3Version = 4 }).Kept);
+    }
+
+    [Theory]
+    [InlineData("80s Rock")]
+    [InlineData("(Rock)")]
+    [InlineData("17")]
+    [InlineData(" (17)")]
+    public void A_genre_ffmpeg_might_read_as_a_number_leaves_the_file_alone(string genre)
+    {
+        Assert.Contains("TCON", TrimOnlyTags.Refusal(Mp3(4, Text(4, "TCON", genre))));
+    }
+
+    [Fact]
+    public void A_picture_whose_mime_type_ffmpeg_rewrites_leaves_the_file_alone()
+    {
+        var jpg = Mp3(3, Frame("APIC", [0, .. "image/jpg\0"u8.ToArray(), 3, 0, 0xFF, 0xD8]));
+        var flac = MusicTagReader.Read(".flac", new MusicTagBytes(Flac(FlacBlock(0, new byte[34]), FlacBlock(6, FlacPicture(3, "", [0xFF, 0xD8], "image/jpg"), last: true))));
+
+        Assert.Contains("APIC", TrimOnlyTags.Refusal(jpg));
+        Assert.Contains("PICTURE", TrimOnlyTags.Refusal(flac));
+        Assert.Null(TrimOnlyTags.Refusal(Mp3(3, Frame("APIC", [0, .. "image/png\0"u8.ToArray(), 3, 0, 0x89, 0x50]))));
+    }
+
+    [Fact]
+    public void Long_tag_names_are_shortened_so_the_refusal_fits()
+    {
+        var names = Enumerable.Range(0, 10).Select(index => (new string((char)('A' + index), 900), "a")).Concat(Enumerable.Range(0, 10).Select(index => (new string((char)('A' + index), 900), "b")));
+
+        var refusal = TrimOnlyTags.Refusal(FlacWith([.. names]));
+
+        Assert.NotNull(refusal);
+        Assert.True(refusal.Length <= TrimOnlyTags.MaximumRefusalLength, refusal);
+    }
+
+    [Theory]
+    [InlineData(17, true)]
+    [InlineData(191, true)]
+    [InlineData(255, true)]
+    [InlineData(192, false)]
+    [InlineData(254, false)]
+    public void An_id3v1_genre_ffmpeg_has_no_name_for_is_written_back_as_none(byte genre, bool kept)
+    {
+        // FFmpeg 7.1 writes the genres it names (0 to 191) back as they were, and every other number as 255.
+        var read = MusicTagReader.Read(".mp3", new MusicTagBytes([.. AudioFrames, .. Id3v1("Title", "Artist", 1, genre)]));
+
+        Assert.Equal(kept, TrimOnlyTags.Refusal(read) is null);
     }
 }
