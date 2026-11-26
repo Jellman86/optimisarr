@@ -1,6 +1,6 @@
 <script lang="ts">
   import { i18n } from '../i18n/i18n.svelte'
-  import { api, type BrowseResponse } from '../api'
+  import { api, ApiError, type BrowseResponse } from '../api'
   import { modal } from '../modal'
   import Icon from './Icon.svelte'
 
@@ -12,19 +12,63 @@
 
   let listing = $state<BrowseResponse | null>(null)
   let error = $state<string | null>(null)
+  let notice = $state<string | null>(null)
   let loading = $state(true)
 
   $effect(() => {
-    void navigate(initialPath || undefined)
+    void openInitial(initialPath)
   })
+
+  async function openInitial(path: string) {
+    const trimmed = path.trim()
+    if (!trimmed) {
+      await navigate(undefined)
+      return
+    }
+    loading = true
+    error = null
+    notice = null
+    try {
+      listing = await api.browse(trimmed)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      // A saved library or target folder may have been moved, unmounted or removed. Only then
+      // open the default folder so a replacement can be picked; any other failure (the server
+      // unreachable, an internal error) is shown as it is rather than hidden behind a fallback.
+      if (!isUnusablePath(err)) {
+        listing = null
+        error = reason
+        return
+      }
+      try {
+        listing = await api.browse(undefined)
+        notice = `${reason} ${i18n.m.shared.browse_showing_default}`
+      } catch (fallbackErr) {
+        listing = null
+        error = `${reason} · ${fallbackErr instanceof Error ? fallbackErr.message : i18n.m.shared.browse_failed}`
+      }
+    } finally {
+      loading = false
+    }
+  }
+
+  function isUnusablePath(err: unknown): boolean {
+    return err instanceof ApiError && (err.code === 'filesystem.notDirectory' || err.code === 'filesystem.accessDenied')
+  }
 
   async function navigate(path?: string) {
     loading = true
     error = null
+    notice = null
     try {
       listing = await api.browse(path)
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      const reason = err instanceof Error ? err.message : i18n.m.shared.browse_failed
+      if (listing) {
+        notice = reason
+      } else {
+        error = reason
+      }
     } finally {
       loading = false
     }
@@ -56,6 +100,9 @@
   </div>
 
   <div class="min-h-0 overflow-y-auto p-2">
+    {#if notice}
+      <p role="alert" class="callout tone-bad mb-2">{notice}</p>
+    {/if}
     {#if loading}
       <p class="p-4 text-center text-sm text-ink-3">{i18n.m.common.loading_short}</p>
     {:else if error}
