@@ -198,7 +198,7 @@ export const ja: Messages = {
     live_updates_paused: 'リアルタイム更新に再接続しています。それまでは、このページを数秒ごとに更新します。',
     loading: "Optimisarrをロード中...",
     loading_short: "読み込み中…",
-    page_load_failed: "このページを読み込めませんでした。このタブを開いた後に Optimisarr が更新された場合は、再読み込みすると最新のバージョンを取得します。",
+    page_load_failed: "このページを読み込めませんでした。このタブを開いた後に Optimisarr が更新された場合は、再読み込みすると最新版になります。",
     reload_page: "再読み込み",
     checking: "チェック中...",
     continue: "続行",

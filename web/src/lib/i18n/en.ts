@@ -200,7 +200,7 @@ export const en = {
     live_updates_paused: 'Live updates are reconnecting. Until then, this page refreshes every few seconds.',
     loading: 'Loading Optimisarr...',
     loading_short: 'Loading…',
-    page_load_failed: "This page didn’t load. If Optimisarr was updated since this tab opened, reloading fetches the current version.",
+    page_load_failed: "This page couldn't load. If Optimisarr was updated after you opened this tab, reload to get the current version.",
     reload_page: "Reload",
     checking: 'Checking...',
     continue: 'Continue',

@@ -11,9 +11,9 @@ import * as f from './docs-fixtures.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const output = resolve(web, '../docs/images')
 const port = Number(process.env.DOCS_PORT ?? 4197)
-// Both appearances by default, so the documentation can show either; --scheme=dark or
-// --scheme=light captures one.
-const schemeArgument = process.argv.find(arg => arg.startsWith('--scheme='))?.slice('--scheme='.length) ?? 'both'
+// The documentation shows the dark appearance. --scheme=light or --scheme=both captures the other
+// as well, for when a page needs it.
+const schemeArgument = process.argv.find(arg => arg.startsWith('--scheme='))?.slice('--scheme='.length) ?? 'dark'
 const schemes = schemeArgument === 'both' ? ['dark', 'light'] : [schemeArgument]
 if (!schemes.every(scheme => scheme === 'dark' || scheme === 'light')) throw Error(`Unknown --scheme=${schemeArgument}; use dark, light or both.`)
 const origin = `http://127.0.0.1:${port}`

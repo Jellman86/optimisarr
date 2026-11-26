@@ -198,7 +198,7 @@ export const fr: Messages = {
     live_updates_paused: 'Les mises à jour en direct se reconnectent. En attendant, cette page s’actualise à quelques secondes d’intervalle.',
     loading: 'Optimisarr en cours de chargement...',
     loading_short: 'Chargement…',
-    page_load_failed: "Cette page ne s’est pas chargée. Si Optimisarr a été mis à jour depuis l’ouverture de cet onglet, le rechargement récupère la version actuelle.",
+    page_load_failed: "Cette page n’a pas pu se charger. Si Optimisarr a été mis à jour après l’ouverture de cet onglet, rechargez pour obtenir la version actuelle.",
     reload_page: "Recharger",
     checking: 'Vérification en cours...',
     continue: 'Continuer',
