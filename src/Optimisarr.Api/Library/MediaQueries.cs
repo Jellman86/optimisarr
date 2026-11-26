@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
@@ -25,18 +26,23 @@ public sealed record MediaFileDto(
     // The Optimisarr version stamped into the file's metadata when it was produced by Optimisarr, or
     // null for an original/foreign file. Surfaced so the inventory can tell an optimised output apart
     // from a source and so a collision-style issue is diagnosable from the API.
-    string? OptimisedMarker);
+    string? OptimisedMarker,
+    // ffprobe's field order for the video ("tt", "bb", "tb", "bt" are interlaced; "progressive",
+    // "unknown"), or null when the file was probed before field order was recorded.
+    string? FieldOrder);
 
 /// <summary>
 /// Filters and paging for <see cref="MediaQueries.QueryAsync"/>. All optional; <see cref="PageSize"/>
 /// of 0 disables paging and returns every match. <see cref="Search"/> matches a case-insensitive
-/// substring of the relative path.
+/// substring of the relative path. <see cref="InterlacedOnly"/> keeps only files whose recorded field
+/// order says they are interlaced.
 /// </summary>
 public sealed record MediaQuery
 {
     public int? LibraryId { get; init; }
     public MediaFileStatus? Status { get; init; }
     public string? Search { get; init; }
+    public bool InterlacedOnly { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; }
 }
@@ -71,6 +77,10 @@ public static class MediaQueries
             var term = filter.Search.Trim();
             query = query.Where(file => EF.Functions.Like(file.RelativePath, $"%{term}%"));
         }
+        if (filter.InterlacedOnly)
+        {
+            query = query.Where(file => file.FieldOrder != null && VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder));
+        }
 
         var total = await query.CountAsync(cancellationToken);
 
@@ -98,7 +108,8 @@ public static class MediaQueries
                 file.SubtitleTrackCount,
                 file.ProbedAt,
                 file.ProbeError,
-                file.OptimisedMarker))
+                file.OptimisedMarker,
+                file.FieldOrder))
             .ToListAsync(cancellationToken);
 
         return new MediaQueryResult(items, total);

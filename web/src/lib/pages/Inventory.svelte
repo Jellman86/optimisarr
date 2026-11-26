@@ -21,9 +21,11 @@
   let libraries = $state<Library[]>([])
   let rows = $state<InventoryRow[]>([])
   let total = $state(0)
-  let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0 })
+  let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0, interlaced: 0 })
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<InventoryFilter>('all')
+  // A fact about the video, not a verdict, so it narrows whichever verdict filter is chosen.
+  let interlaced = $state(false)
   // What is typed shows at once; the search it asks for waits for a pause in typing, so each
   // keystroke does not refetch the library.
   let searchText = $state('')
@@ -61,23 +63,23 @@
   let bulkOutcomeTitle = $derived(bulkOutcomeKind === 'exclude' ? i18n.m.shared.batch_exclude : i18n.m.inventory.batch_reprobe_result)
 
   $effect(() => { void loadLibraries() })
-  $effect(() => { void loadInventory(selectedLibrary, show, page, search, sort) })
+  $effect(() => { void loadInventory(selectedLibrary, show, page, search, interlaced, sort) })
   onDestroy(() => { disposed = true; requestId++; clearTimeout(searchTimer) })
 
-  function reload() { return loadInventory(selectedLibrary, show, page, search, sort) }
+  function reload() { return loadInventory(selectedLibrary, show, page, search, interlaced, sort) }
 
   async function loadLibraries() {
     try { libraries = await api.libraries() }
     catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
-  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, query: string, order: InventorySort | null) {
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, query: string, interlacedOnly: boolean, order: InventorySort | null) {
     // A slow response from a previous filter must never replace the current selection.
     const request = ++requestId
     loading = true
     error = null
     try {
-      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, search: query || undefined, sort: order ?? undefined, page: pageNumber, pageSize })
+      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, search: query || undefined, interlaced: interlacedOnly, sort: order ?? undefined, page: pageNumber, pageSize })
       if (request !== requestId || disposed) return
       const lastPage = Math.max(1, Math.ceil(result.total / pageSize))
       if (pageNumber > lastPage) { page = lastPage; return }
@@ -244,6 +246,7 @@
   // A new search or order shows a different set of rows, so it starts from the first page and
   // drops the picks made among the old rows.
   function startOver() { page = 1; selected = null; selection.clear() }
+  function toggleInterlaced() { interlaced = !interlaced; startOver() }
   function applySearch(value: string) {
     clearTimeout(searchTimer)
     const query = value.trim()
@@ -329,7 +332,11 @@
   {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
-    <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
+    <div class="flex min-w-0 flex-wrap items-center gap-1">
+      <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
+      <span class="mx-1 hidden h-5 w-px self-center bg-(--divide-soft) sm:block" aria-hidden="true"></span>
+      <button type="button" class="filter-toggle" aria-pressed={interlaced} onclick={toggleInterlaced} data-inventory-interlaced>{#if interlaced}<Icon name="check" class="-ml-0.5 h-3.5 w-3.5" />{/if}{t(i18n.m.inventory.filter_interlaced, { count: counts.interlaced.toLocaleString() })}</button>
+    </div>
     <form role="search" class="relative w-full min-w-0 sm:w-72" onsubmit={submitSearch}>
       <label class="sr-only" for="inventory-search">{i18n.m.inventory.search_label}</label>
       <Icon name="search" class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink-4" />
@@ -384,7 +391,20 @@
         <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}<span class="min-w-0">{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span></span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
       </tr>
     {/each}
-    {#snippet empty()}<Icon name="film" class="h-7 w-7 text-ink-4" /><p>{search ? t(i18n.m.inventory.empty_search, { query: search }) : counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>{#if search}<button type="button" class="btn" onclick={clearSearch}>{i18n.m.inventory.clear_search}</button>{/if}{/snippet}
+    {#snippet empty()}
+      <Icon name="film" class="h-7 w-7 text-ink-4" />
+      {#if interlaced}
+        <p>{i18n.m.inventory.empty_interlaced}</p><p class="text-caption text-ink-3">{i18n.m.inventory.empty_interlaced_hint}</p>
+      {:else}
+        <p>{search ? t(i18n.m.inventory.empty_search, { query: search }) : counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>
+      {/if}
+      {#if interlaced || search}
+        <div class="flex flex-wrap justify-center gap-2">
+          {#if interlaced}<button type="button" class="btn" onclick={toggleInterlaced}>{i18n.m.inventory.clear_interlaced}</button>{/if}
+          {#if search}<button type="button" class="btn" onclick={clearSearch}>{i18n.m.inventory.clear_search}</button>{/if}
+        </div>
+      {/if}
+    {/snippet}
   </DataTable>
 </div>
 

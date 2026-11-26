@@ -216,7 +216,7 @@ async function mockSetup(page: Page, mock: Mock = {}) {
       const files = mock.inventory?.files ?? []
       return json(route, {
         items: files.map((file) => ({ file, eligible: true, reason: 'Video qualifies.' })), total: files.length,
-        counts: { all: mock.inventory?.all ?? files.length, eligible: files.length, skipped: 0, unprobed: mock.inventory?.unprobed ?? 0 },
+        counts: { all: mock.inventory?.all ?? files.length, eligible: files.length, skipped: 0, unprobed: mock.inventory?.unprobed ?? 0, interlaced: 0 },
       })
     }
     if (path === '/api/media/12/plan') return json(route, {
@@ -663,7 +663,7 @@ test('the last step waits while files are still being read, then says when none 
   await expect(page.locator('#setup-content')).toContainText('Still reading 9 files in the background. This doesn’t change them.')
   await expect(page.getByRole('button', { name: 'Finish and open the dashboard' })).toBeEnabled()
 
-  await page.route('**/api/inventory?**', route => route.fulfill({ json: { items: [], total: 0, counts: { all: 9, eligible: 0, skipped: 9, unprobed: 0 } } }))
+  await page.route('**/api/inventory?**', route => route.fulfill({ json: { items: [], total: 0, counts: { all: 9, eligible: 0, skipped: 9, unprobed: 0, interlaced: 0 } } }))
   await expect(page.locator('[data-setup-try-none]')).toContainText('No file can be made smaller yet.', { timeout: 10_000 })
 })
 

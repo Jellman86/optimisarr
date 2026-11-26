@@ -8801,6 +8801,13 @@
           },
           {
             "in": "query",
+            "name": "interlaced",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "sort",
             "schema": {
               "type": "string"

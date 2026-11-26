@@ -39,16 +39,16 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var all = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, default);
+        var all = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: false, default);
         Assert.Equal(3, all.Total);
-        Assert.Equal(new InventoryCounts(All: 3, Eligible: 1, Skipped: 1, Unprobed: 1), all.Counts);
+        Assert.Equal(new InventoryCounts(All: 3, Eligible: 1, Skipped: 1, Unprobed: 1, Interlaced: 0), all.Counts);
 
-        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.Default, default);
+        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.Default, interlacedOnly: false, default);
         var only = Assert.Single(eligible.Items);
         Assert.Equal("a-eligible.mkv", only.File.RelativePath);
         Assert.True(only.Eligible);
 
-        var unprobed = await inventory.QueryAsync(null, InventoryFilter.Unprobed, null, 1, 0, InventorySort.Default, default);
+        var unprobed = await inventory.QueryAsync(null, InventoryFilter.Unprobed, null, 1, 0, InventorySort.Default, interlacedOnly: false, default);
         Assert.Null(Assert.Single(unprobed.Items).Eligible);
     }
 
@@ -70,7 +70,7 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var page = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, page: 1, pageSize: 5, InventorySort.Default, default);
+        var page = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, page: 1, pageSize: 5, InventorySort.Default, interlacedOnly: false, default);
 
         Assert.Equal(7, page.Total);                       // filtered total, not the page size
         Assert.Equal(5, page.Items.Count);
@@ -91,7 +91,7 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, sort, default);
+        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, sort, interlacedOnly: false, default);
 
         Assert.Equal(expected, page.Items.Select(row => row.File.RelativePath));
     }
@@ -103,7 +103,7 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, default);
+        var page = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: false, default);
 
         // SQLite's default collation is binary, so the unsorted path order puts "B" before "a".
         Assert.Equal(["B-skipped.mkv", "a-eligible.mkv", "c-unprobed.mkv", "d-eligible.mkv"],
@@ -117,8 +117,8 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var first = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 2, InventorySort.SizeDescending, default);
-        var second = await inventory.QueryAsync(null, InventoryFilter.All, null, 2, 2, InventorySort.SizeDescending, default);
+        var first = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 2, InventorySort.SizeDescending, interlacedOnly: false, default);
+        var second = await inventory.QueryAsync(null, InventoryFilter.All, null, 2, 2, InventorySort.SizeDescending, interlacedOnly: false, default);
 
         Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], first.Items.Select(row => row.File.RelativePath));
         Assert.Equal(["c-unprobed.mkv", "B-skipped.mkv"], second.Items.Select(row => row.File.RelativePath));
@@ -132,12 +132,12 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.SizeDescending, default);
-        var searched = await inventory.QueryAsync(null, InventoryFilter.All, "eligible", 1, 0, InventorySort.NameDescending, default);
+        var eligible = await inventory.QueryAsync(null, InventoryFilter.Eligible, null, 1, 0, InventorySort.SizeDescending, interlacedOnly: false, default);
+        var searched = await inventory.QueryAsync(null, InventoryFilter.All, "eligible", 1, 0, InventorySort.NameDescending, interlacedOnly: false, default);
 
         Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], eligible.Items.Select(row => row.File.RelativePath));
         Assert.Equal(["d-eligible.mkv", "a-eligible.mkv"], searched.Items.Select(row => row.File.RelativePath));
-        Assert.Equal(new InventoryCounts(All: 2, Eligible: 2, Skipped: 0, Unprobed: 0), searched.Counts);
+        Assert.Equal(new InventoryCounts(All: 2, Eligible: 2, Skipped: 0, Unprobed: 0, Interlaced: 0), searched.Counts);
     }
 
     [Fact]
@@ -158,8 +158,8 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameAscending, default);
-        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameDescending, default);
+        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameAscending, interlacedOnly: false, default);
+        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.NameDescending, interlacedOnly: false, default);
 
         // Filename leads; identical filenames tie-break deterministically by full relative path.
         Assert.Equal(["Music\\Album\\01 - Track.flac", "Alpha/Arrival.mkv", "Zed/Arrival.mkv", "Films/Orbit/Orbit.mkv"],
@@ -185,12 +185,76 @@ public sealed class InventoryQueriesTests : IDisposable
         await using var readDb = new OptimisarrDbContext(_options);
         var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
 
-        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeAscending, default);
-        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeDescending, default);
+        var ascending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeAscending, interlacedOnly: false, default);
+        var descending = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.SizeDescending, interlacedOnly: false, default);
 
         // Equal sizes keep a stable, case-insensitive path order in both directions so paging stays deterministic.
         Assert.Equal(["A.mkv", "m.mkv", "z.mkv"], ascending.Items.Select(row => row.File.RelativePath));
         Assert.Equal(["A.mkv", "m.mkv", "z.mkv"], descending.Items.Select(row => row.File.RelativePath));
+    }
+
+    [Fact]
+    public async Task QueryAsync_lists_only_interlaced_files_when_asked()
+    {
+        await SeedFieldOrderLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var interlaced = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: true, default);
+
+        // Every interlaced field order counts; progressive, unknown, and never-probed files do not.
+        Assert.Equal(["bb.mkv", "bt.mkv", "tb.mkv", "tt.mkv"], interlaced.Items.Select(row => row.File.RelativePath));
+        Assert.Equal(4, interlaced.Total);
+        Assert.Equal(["bb", "bt", "tb", "tt"], interlaced.Items.Select(row => row.File.FieldOrder));
+    }
+
+    [Fact]
+    public async Task QueryAsync_counts_interlaced_files_in_scope_whether_or_not_the_filter_is_on()
+    {
+        await SeedFieldOrderLibraryAsync();
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var everything = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: false, default);
+        var interlaced = await inventory.QueryAsync(null, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: true, default);
+
+        Assert.Equal(7, everything.Total);
+        Assert.Equal(4, everything.Counts.Interlaced);
+        // With the filter on, the verdict tallies describe the interlaced files alone.
+        Assert.Equal(4, interlaced.Counts.All);
+        Assert.Equal(4, interlaced.Counts.Interlaced);
+    }
+
+    [Fact]
+    public async Task QueryAsync_combines_the_interlaced_filter_with_library_search_verdict_and_paging()
+    {
+        var films = await SeedFieldOrderLibraryAsync();
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            // An interlaced file in another library stays out of a one-library view.
+            var tv = new Library { Name = "TV", Path = "/data/tv", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(tv);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(Probed(tv.Id, "tt-recording.ts", "mpeg2video", fieldOrder: "tt"));
+            await db.SaveChangesAsync();
+        }
+        await using var readDb = new OptimisarrDbContext(_options);
+        var inventory = new InventoryQueries(readDb, new CandidateService(readDb));
+
+        var inFilms = await inventory.QueryAsync(films, InventoryFilter.All, null, 1, 0, InventorySort.Default, interlacedOnly: true, default);
+        var searched = await inventory.QueryAsync(null, InventoryFilter.All, "tt", 1, 0, InventorySort.Default, interlacedOnly: true, default);
+        var skipped = await inventory.QueryAsync(films, InventoryFilter.Skipped, null, 1, 0, InventorySort.Default, interlacedOnly: true, default);
+        var secondPage = await inventory.QueryAsync(films, InventoryFilter.All, null, 2, 3, InventorySort.NameAscending, interlacedOnly: true, default);
+
+        Assert.Equal(4, inFilms.Total);
+        Assert.DoesNotContain(inFilms.Items, row => row.File.RelativePath == "tt-recording.ts");
+        Assert.Equal(["tt-recording.ts", "tt.mkv"], searched.Items.Select(row => row.File.RelativePath).Order());
+        Assert.Equal(2, searched.Counts.Interlaced);
+        // The rules skip an interlaced source in a library that does not deinterlace.
+        Assert.Equal(4, skipped.Total);
+        Assert.All(skipped.Items, row => Assert.False(row.Eligible));
+        Assert.Equal(4, secondPage.Total);
+        Assert.Equal(["tt.mkv"], secondPage.Items.Select(row => row.File.RelativePath));
     }
 
     [Theory]
@@ -241,7 +305,23 @@ public sealed class InventoryQueriesTests : IDisposable
         await db.SaveChangesAsync();
     }
 
-    private static MediaFile Probed(int libraryId, string relativePath, string videoCodec, long sizeBytes = 5_000_000_000) => new()
+    // One file per field order ffprobe reports, plus a never-probed file, all re-encode candidates by codec.
+    private async Task<int> SeedFieldOrderLibraryAsync()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        foreach (var fieldOrder in new[] { "tt", "bb", "tb", "bt", "progressive", "unknown" })
+        {
+            db.MediaFiles.Add(Probed(library.Id, $"{fieldOrder}.mkv", "mpeg2video", fieldOrder: fieldOrder));
+        }
+        db.MediaFiles.Add(Probed(library.Id, "not-yet-read.mkv", "mpeg2video"));
+        await db.SaveChangesAsync();
+        return library.Id;
+    }
+
+    private static MediaFile Probed(int libraryId, string relativePath, string videoCodec, long sizeBytes = 5_000_000_000, string? fieldOrder = null) => new()
     {
         LibraryId = libraryId,
         Path = $"/data/films/{relativePath}",
@@ -252,6 +332,7 @@ public sealed class InventoryQueriesTests : IDisposable
         VideoCodec = videoCodec,
         Width = 1920,
         Height = 1080,
+        FieldOrder = fieldOrder,
         ProbedAt = DateTimeOffset.UtcNow
     };
 

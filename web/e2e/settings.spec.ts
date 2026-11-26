@@ -1185,3 +1185,32 @@ test('opening remote workers directly shows its own heading even when workers ar
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Remote workers')
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Remote workers')
 })
+
+test('a help tip longer than the window can be scrolled to its end', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 260 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.addInitScript(() => localStorage.setItem('optimisarr:locale', 'ru'))
+  await mockSettings(page)
+  await page.goto('/#/settings/encoding')
+  await expect(page.locator('main h1')).toBeVisible()
+  await page.locator('html').evaluate((element) => { element.style.fontSize = '125%' })
+  await page.locator('.workload-details summary').click()
+
+  // Find a tip whose text overflows the room it is given, and scroll it with the wheel.
+  const wrappers = page.locator('main span.group:has([role="tooltip"])')
+  let scrolled = false
+  for (const wrapper of await wrappers.all()) {
+    await wrapper.locator('button').scrollIntoViewIfNeeded()
+    await wrapper.locator('button').hover()
+    const tip = wrapper.locator('[role="tooltip"]')
+    await expect(tip).toBeVisible()
+    const overflows = await tip.evaluate((el) => el.scrollHeight > el.clientHeight + 4)
+    if (!overflows) continue
+    await tip.hover()
+    await page.mouse.wheel(0, 60)
+    await expect.poll(() => tip.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    scrolled = true
+    break
+  }
+  expect(scrolled).toBe(true)
+})

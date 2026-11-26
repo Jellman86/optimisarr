@@ -86,7 +86,7 @@ async function mockPreview(page: Page, preview: unknown = completedPreview) {
       return json(route, {
         items: [{ file: media, eligible: true, reason: 'Ready to optimise' }],
         total: 1,
-        counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0 },
+        counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     if (path === '/api/media/7/preview' && route.request().method() === 'POST') {
@@ -292,7 +292,7 @@ test('previewing another file while minimised replaces the old comparison and di
   await mockPreview(page)
   await page.route('**/api/inventory?**', route => json(route, {
     items: [media, { ...media, id: 8, relativePath: 'Second Film.mkv' }].map(file => ({ file, eligible: true, reason: 'Ready to optimise' })),
-    total: 2, counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0 },
+    total: 2, counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0, interlaced: 0 },
   }))
   await page.route('**/api/media/8/preview', route => json(route, { jobId: 42 }))
   await page.route('**/api/preview/42', route => route.request().method() === 'DELETE' ? route.fulfill({ status: 204 }) : json(route, { ...completedPreview, jobId: 42, mediaFileId: 8 }))
