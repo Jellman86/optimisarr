@@ -216,7 +216,7 @@ function countMinH11Overrides(text: string): number {
 // of one indicator, and each already stops under reduced motion.
 const cssTime = /(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s(?![\w-])/g
 function countRawDurations(text: string): number {
-  let count = text.match(/(?<![\w-])duration-\d+(?![\w-])/g)?.length ?? 0
+  let count = text.match(/(?<![\w-])(?:duration|delay)-(?:\d+|\[)/g)?.length ?? 0
   for (const match of text.matchAll(/(?<![\w-])transition(?:-duration|-delay)?\s*:([^;}]*)/g)) {
     count += match[1].match(cssTime)?.filter((time) => parseFloat(time) !== 0).length ?? 0
   }

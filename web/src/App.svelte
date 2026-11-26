@@ -46,7 +46,9 @@
   let failedPages = $state.raw<ReadonlySet<Loadable>>(new Set())
 
   function loadPage(name: Loadable) {
-    if (loadedPages[name]) return
+    // A failed page stays failed until a reload: importing it again can render it without the
+    // stylesheet whose earlier request failed, because the browser does not retry that link.
+    if (loadedPages[name] || failedPages.has(name)) return
     pageLoaders[name]().then(
       (module) => { loadedPages = { ...loadedPages, [name]: module.default } },
       // Most often the server was updated while this tab stayed open, and the chunk this build

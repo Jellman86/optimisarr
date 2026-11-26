@@ -35,6 +35,7 @@ test('a page visited for the first time takes focus on its heading once it has a
   // While it is on its way the page's room is held and, once the wait is noticeable, labelled.
   const pending = page.getByRole('status').filter({ hasText: 'Loading…' })
   await expect(pending).toBeVisible()
+  await expect(page.locator('.page-pending-label')).toBeVisible()
   expect((await pending.boundingBox())?.height).toBeGreaterThan(300)
   release()
 
@@ -57,4 +58,10 @@ test('a page that cannot be fetched says so and offers a reload, and the rest of
   await page.getByRole('navigation').getByRole('button', { name: 'Dashboard', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
   await expect(failure).toHaveCount(0)
+
+  // Even once the server answers again, the failed page waits for a reload rather than rendering
+  // without the parts whose requests already failed.
+  await page.unroute(schedulePage)
+  await page.getByRole('navigation').getByRole('button', { name: 'Schedule', exact: true }).click()
+  await expect(failure).toBeVisible()
 })

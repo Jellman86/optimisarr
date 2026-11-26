@@ -1012,9 +1012,11 @@ test('a longer explanation opens in the page, stays open while the control is us
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/video')
   await page.locator('html').evaluate(element => { element.style.fontSize = '125%' })
+  // Pages load on first visit, so wait for the rows before counting anything on them.
+  const explanations = page.locator('[data-setting-row] details')
+  await expect(explanations.first()).toBeAttached()
   // No explanation on this page hides in a hover bubble.
   await expect(page.locator('main [data-library-workflow] [role="tooltip"]')).toHaveCount(0)
-  const explanations = page.locator('[data-setting-row] details')
   expect(await explanations.count()).toBeGreaterThan(10)
   const crop = page.locator('[data-setting-row]').filter({ has: page.locator('#lib-noise') })
   const more = crop.locator('details')
