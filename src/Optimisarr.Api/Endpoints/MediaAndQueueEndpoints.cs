@@ -176,7 +176,8 @@ internal static class MediaAndQueueEndpoints
                 file.SubtitleTrackCount,
                 file.ProbedAt,
                 file.ProbeError,
-                file.OptimisedMarker));
+                file.OptimisedMarker,
+                file.FieldOrder));
         })
         .WithName("ProbeMedia");
 
@@ -204,13 +205,15 @@ internal static class MediaAndQueueEndpoints
         .WithName("CandidateSummary");
 
         // The Inventory view: discovered files paired with their rule verdict, filtered, counted, and paged
-        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring; `sort`
-        // is name/size/verdict with an _asc/_desc suffix (blank keeps path order). The response carries the
+        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring;
+        // `interlaced=true` keeps only files whose field order says they are interlaced; `sort` is
+        // name/size/verdict with an _asc/_desc suffix (blank keeps path order). The response carries the
         // page, the filtered total, and the per-filter tallies for the UI chips.
         app.MapGet("/api/inventory", async (
             int? libraryId,
             string? show,
             string? search,
+            bool? interlaced,
             string? sort,
             int? page,
             int? pageSize,
@@ -232,7 +235,7 @@ internal static class MediaAndQueueEndpoints
             }
 
             return Results.Ok(await inventory.QueryAsync(
-                libraryId, filter, search, page ?? 1, pageSize ?? 0, order, cancellationToken));
+                libraryId, filter, search, page ?? 1, pageSize ?? 0, order, interlaced ?? false, cancellationToken));
         })
         .WithName("GetInventory");
 

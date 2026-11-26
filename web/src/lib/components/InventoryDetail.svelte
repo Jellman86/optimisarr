@@ -1,8 +1,10 @@
 <script lang="ts">
   import { api, type InventoryRow } from '../api'
-  import { containerLabel, formatDuration, formatSize, languageList } from '../format'
+  import { containerLabel, formatDuration, formatSize, interlacedFieldOrder, languageList } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
+  import Chip from './Chip.svelte'
   import DetailDialog from './DetailDialog.svelte'
+  import InfoTip from './InfoTip.svelte'
   import Thumbnail from './Thumbnail.svelte'
   import Icon from './Icon.svelte'
 
@@ -34,6 +36,7 @@
   let artworkFailed = $state(false)
   let artworkLoaded = $state(false)
   let container = $derived(containerLabel(file.container, file.relativePath))
+  let fieldShownFirst = $derived(interlacedFieldOrder(file.fieldOrder))
   let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.onePlan.yes : i18n.m.onePlan.no)
 </script>
 
@@ -55,6 +58,12 @@
   {/snippet}
   {#snippet meta()}
     <span>{formatSize(file.sizeBytes)}</span>{#if container}<span>{container}</span>{/if}{#if file.durationSeconds !== null}<span>{formatDuration(file.durationSeconds)}</span>{/if}
+    {#if fieldShownFirst}
+      <span class="inline-flex items-center gap-1.5">
+        <Chip><span data-interlaced-tag>{i18n.m.inventory.tag_interlaced}</span></Chip>
+        <InfoTip label={i18n.m.inventory.field_order_label} text={t(i18n.m.inventory.interlaced_tip, { order: fieldShownFirst === 'top' ? i18n.m.inventory.field_order_top : i18n.m.inventory.field_order_bottom, code: file.fieldOrder ?? '' })} />
+      </span>
+    {/if}
   {/snippet}
   {#snippet actions()}
     <button class="btn" onclick={onprobe} disabled={probing}><Icon name="search" />{probing ? i18n.m.inventory.probing : file.status === 'Discovered' ? i18n.m.inventory.probe : i18n.m.inventory.reprobe}</button>

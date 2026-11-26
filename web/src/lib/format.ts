@@ -176,3 +176,13 @@ export function languageList(languages: string, unknown: string): string {
     .map((language) => (language.toLowerCase() === 'und' ? unknown : language))
     .join(', ')
 }
+
+// ffprobe's interlaced field orders name the coded field, then the displayed one: "tb" is coded top
+// first but shown bottom first. A person watching cares which field is shown first. Progressive,
+// "unknown" and a file probed before field order was recorded are not reported as interlaced, which
+// matches the server's own test (VideoFieldOrder.IsInterlaced).
+const FIELD_SHOWN_FIRST = new Map<string, 'top' | 'bottom'>([['tt', 'top'], ['bt', 'top'], ['bb', 'bottom'], ['tb', 'bottom']])
+
+export function interlacedFieldOrder(fieldOrder: string | null | undefined): 'top' | 'bottom' | null {
+  return (fieldOrder && FIELD_SHOWN_FIRST.get(fieldOrder)) || null
+}

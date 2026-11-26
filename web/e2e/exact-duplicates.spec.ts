@@ -6,7 +6,7 @@ async function mockInventory(page: Page) {
     const body = path === '/api/auth/status' ? { required: false }
       : path === '/api/setup' ? { version: 1, completed: true }
       : path === '/api/libraries' ? [{ id: 1, name: 'Films' }, { id: 2, name: 'Music' }]
-      : path === '/api/inventory' ? { items: [], total: 0, counts: { all: 0, eligible: 0, skipped: 0, unprobed: 0 } }
+      : path === '/api/inventory' ? { items: [], total: 0, counts: { all: 0, eligible: 0, skipped: 0, unprobed: 0, interlaced: 0 } }
       : path === '/api/jobs' ? [] : {}
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
   })

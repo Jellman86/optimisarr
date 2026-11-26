@@ -1148,6 +1148,8 @@ export type MediaFile = {
   probeError: string | null
   // The Optimisarr version stamped into the file when Optimisarr produced it, or null for a source.
   optimisedMarker: string | null
+  // ffprobe's field order ("tt", "bb", "tb", "bt" are interlaced), or null before it was recorded.
+  fieldOrder: string | null
 }
 
 export type Candidate = {
@@ -1255,6 +1257,8 @@ export type InventoryCounts = {
   eligible: number
   skipped: number
   unprobed: number
+  /** Interlaced files in the library and search scope, whichever verdict filter is chosen. */
+  interlaced: number
 }
 
 export type InventoryPage = {
@@ -1574,11 +1578,12 @@ export const api = {
   candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
 
   // The paginated Inventory view: a page of files with their verdicts, plus per-filter counts.
-  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; sort?: InventorySort; page?: number; pageSize?: number }) => {
+  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; interlaced?: boolean; sort?: InventorySort; page?: number; pageSize?: number }) => {
     const q = new URLSearchParams()
     if (params.libraryId !== undefined) q.set('libraryId', String(params.libraryId))
     if (params.show && params.show !== 'all') q.set('show', params.show)
     if (params.search) q.set('search', params.search)
+    if (params.interlaced) q.set('interlaced', 'true')
     if (params.sort) q.set('sort', params.sort)
     if (params.page !== undefined) q.set('page', String(params.page))
     if (params.pageSize !== undefined) q.set('pageSize', String(params.pageSize))

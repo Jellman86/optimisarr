@@ -1,9 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 export const inventoryFiles = [
-  { id: 7, libraryId: 1, relativePath: 'Films/Orbit (2025)/Orbit.2025.2160p.mkv', sizeBytes: 42_800_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, audioCodecs: 'truehd, aac', audioLanguages: 'eng, fra', audioTrackCount: 2, subtitleTrackCount: 4, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null },
-  { id: 8, libraryId: 1, relativePath: 'Films/Arrival/Arrival.2016.1080p.HEVC.mkv', sizeBytes: 8_200_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'hevc', width: 1920, height: 1080, durationSeconds: 6960, audioCodecs: 'dts', audioLanguages: 'eng', audioTrackCount: 1, subtitleTrackCount: 2, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null },
-  { id: 9, libraryId: 2, relativePath: 'Music/An extraordinarily long album name/01 - A very long track title with no artwork available.flac', sizeBytes: 28_400_000, status: 'Discovered', mediaKind: 'Audio', container: null, videoCodec: null, width: null, height: null, durationSeconds: null, audioCodecs: null, audioLanguages: null, audioTrackCount: null, subtitleTrackCount: null, probedAt: null, probeError: null, optimisedMarker: null },
+  { id: 7, libraryId: 1, relativePath: 'Films/Orbit (2025)/Orbit.2025.2160p.mkv', sizeBytes: 42_800_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, audioCodecs: 'truehd, aac', audioLanguages: 'eng, fra', audioTrackCount: 2, subtitleTrackCount: 4, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null, fieldOrder: 'progressive' },
+  { id: 8, libraryId: 1, relativePath: 'Films/Arrival/Arrival.2016.1080p.HEVC.mkv', sizeBytes: 8_200_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'hevc', width: 1920, height: 1080, durationSeconds: 6960, audioCodecs: 'dts', audioLanguages: 'eng', audioTrackCount: 1, subtitleTrackCount: 2, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null, fieldOrder: 'tt' },
+  { id: 9, libraryId: 2, relativePath: 'Music/An extraordinarily long album name/01 - A very long track title with no artwork available.flac', sizeBytes: 28_400_000, status: 'Discovered', mediaKind: 'Audio', container: null, videoCodec: null, width: null, height: null, durationSeconds: null, audioCodecs: null, audioLanguages: null, audioTrackCount: null, subtitleTrackCount: null, probedAt: null, probeError: null, optimisedMarker: null, fieldOrder: null },
 ]
 
 export const poster = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><defs><linearGradient id="sky" x2="1" y2="1"><stop stop-color="#153756"/><stop offset="1" stop-color="#050915"/></linearGradient><radialGradient id="star"><stop stop-color="#ffdfa0"/><stop offset=".5" stop-color="#b57745"/><stop offset="1" stop-color="#543249"/></radialGradient></defs><path fill="url(#sky)" d="M0 0h400v600H0z"/><circle cx="268" cy="205" r="170" fill="url(#star)"/><circle cx="315" cy="168" r="166" fill="#111c32"/><path d="M0 430L170 320l230 130v150H0" fill="#17283e"/><text x="34" y="516" font-family="sans-serif" font-size="57" fill="#f0e3c9" letter-spacing="10">ORBIT</text><text x="38" y="550" font-family="sans-serif" font-size="13" fill="#bdc7d5" letter-spacing="5">ARTWORK FIXTURE</text></svg>'
@@ -43,7 +43,10 @@ export async function mockInventory(page: Page) {
     if (path === '/api/inventory') {
       const library = url.searchParams.get('libraryId'), show = url.searchParams.get('show')
       const search = url.searchParams.get('search')?.toLowerCase(), sort = url.searchParams.get('sort')
-      const scoped = inventoryFiles.filter(f => (!library || f.libraryId === Number(library)) && (!search || f.relativePath.toLowerCase().includes(search)))
+      const interlacedOnly = url.searchParams.get('interlaced') === 'true'
+      const isInterlaced = (f: typeof inventoryFiles[number]) => ['tt', 'bb', 'tb', 'bt'].includes(f.fieldOrder ?? '')
+      const inScope = inventoryFiles.filter(f => (!library || f.libraryId === Number(library)) && (!search || f.relativePath.toLowerCase().includes(search)))
+      const scoped = inScope.filter(f => !interlacedOnly || isInterlaced(f))
       const items = scoped.filter(f => !show || (show === 'eligible' ? f.id === 7 : show === 'skipped' ? f.id === 8 : f.id === 9))
       // Eligible, then not yet probed, then skipped: the server's verdict order.
       const verdictRank = (f: typeof inventoryFiles[number]) => f.id === 7 ? 0 : f.id === 9 ? 1 : 2
@@ -57,7 +60,7 @@ export async function mockInventory(page: Page) {
           : column === 'verdict' ? sign * (verdictRank(a) - verdictRank(b))
           : sign * byName(a, b)) || byPath(a, b))
       }
-      return json(route, { items: items.map(file => ({ file, eligible: file.id === 9 ? null : file.id === 7, reason: file.id === 9 ? null : file.id === 7 ? 'Video codec differs from the library’s HEVC target.' : 'Already uses the target codec.' })), total: items.length, counts: { all: scoped.length, eligible: scoped.filter(f => f.id === 7).length, skipped: scoped.filter(f => f.id === 8).length, unprobed: scoped.filter(f => f.id === 9).length } })
+      return json(route, { items: items.map(file => ({ file, eligible: file.id === 9 ? null : file.id === 7, reason: file.id === 9 ? null : file.id === 7 ? 'Video codec differs from the library’s HEVC target.' : 'Already uses the target codec.' })), total: items.length, counts: { all: scoped.length, eligible: scoped.filter(f => f.id === 7).length, skipped: scoped.filter(f => f.id === 8).length, unprobed: scoped.filter(f => f.id === 9).length, interlaced: inScope.filter(isInterlaced).length } })
     }
     return json(route, {})
   })
@@ -111,7 +114,7 @@ test('a slower filter response cannot replace the latest selection', async ({ pa
   await page.route('**/api/inventory?**', async route => {
     if (new URL(route.request().url()).searchParams.get('show') !== 'eligible') return route.fallback()
     await gate
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: inventoryFiles[0], eligible: true, reason: 'Eligible' }], total: 1, counts: { all: 3, eligible: 1, skipped: 1, unprobed: 1 } }) })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: inventoryFiles[0], eligible: true, reason: 'Eligible' }], total: 1, counts: { all: 3, eligible: 1, skipped: 1, unprobed: 1, interlaced: 1 } }) })
   })
   await page.goto('/#/inventory')
   await page.getByRole('button', { name: 'Eligible (1)', exact: true }).click()
@@ -144,7 +147,7 @@ test('a successful probe refreshes the open file and its preview eligibility', a
   })
   await page.route('**/api/inventory?**', route => {
     if (!probed) return route.fallback()
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: updated, eligible: true, reason: 'Audio qualifies for the library’s Opus target.' }], total: 1, counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0 } }) })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: updated, eligible: true, reason: 'Audio qualifies for the library’s Opus target.' }], total: 1, counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0, interlaced: 0 } }) })
   })
   await page.goto('/#/inventory')
   await page.getByRole('button', { name: /01 - A very long/ }).click()
@@ -200,7 +203,7 @@ test('a file held back by its last failure can be tried again from its details',
     const item = retriedOnce
       ? { file, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null }
       : { file, eligible: false, reason: failedReason, retryJobId: 55 }
-    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0 } } })
+    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0, interlaced: 0 } } })
   })
   const retries: string[] = []
   await page.route('**/api/jobs/55/retry*', route => {
@@ -232,7 +235,7 @@ test('trying again from the Skipped filter keeps the details open to say it was 
     const show = new URL(route.request().url()).searchParams.get('show')
     const item = { file: inventoryFiles[1], eligible: false, reason: failedReason, retryJobId: 55 }
     const items = retried && show === 'skipped' ? [] : [retried ? { ...item, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null } : item]
-    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0 } } })
+    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0, interlaced: 0 } } })
   })
   let refuse = true
   await page.route('**/api/jobs/55/retry*', route => {
@@ -430,5 +433,77 @@ for (const width of [320, 375]) {
       expect(sort.height).toBeGreaterThanOrEqual(44)
     }
     expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+  })
+}
+
+for (const width of [1440, 375]) {
+  test(`an interlaced file is tagged with its field order and a progressive one is not, at ${width}px`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: width > 500 ? 900 : 700 })
+    await page.goto('/#/inventory')
+    await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Arrival 2016 1080p HEVC' })
+    const tag = dialog.locator('[data-interlaced-tag]')
+    await expect(tag).toHaveText('Interlaced')
+    await expect(tag).toBeInViewport()
+    // The field order sits behind the tag's information button, in words and in ffprobe's own code.
+    await dialog.getByRole('button', { name: 'About the field order' }).click()
+    await expect(dialog.getByRole('tooltip')).toContainText('top field first')
+    await expect(dialog.getByRole('tooltip')).toContainText('“tt”')
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+
+    // Progressive, and never probed: nothing to say, so no tag.
+    for (const name of [/Orbit.2025.2160p.mkv/, /01 - A very long/]) {
+      await page.getByRole('button', { name }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await expect(page.getByRole('dialog').locator('[data-interlaced-tag]')).toHaveCount(0)
+      await page.getByRole('button', { name: 'Close detail panel' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+    }
+  })
+
+  test(`the Interlaced filter lists only interlaced files and works with library and search, at ${width}px`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: width > 500 ? 900 : 700 })
+    const requests: URLSearchParams[] = []
+    page.on('request', request => { const url = new URL(request.url()); if (url.pathname === '/api/inventory') requests.push(url.searchParams) })
+    await page.goto('/#/inventory')
+    const toggle = page.getByRole('button', { name: 'Interlaced (1)', exact: true })
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(toggle).toBeInViewport()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+    await expect(page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ })).toBeVisible()
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    // The verdict tallies now describe the interlaced files, and a verdict tab narrows them further.
+    await expect(page.getByRole('button', { name: 'All (1)', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Skipped (1)', exact: true }).click()
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+    expect(requests.at(-1)?.get('show')).toBe('skipped')
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    await page.getByRole('button', { name: 'All (1)', exact: true }).click()
+
+    // A search that finds no interlaced file says so, and offers the whole list back.
+    await page.getByRole('searchbox', { name: 'Search files' }).fill('orbit')
+    await expect(page.getByText('No interlaced files match these filters.')).toBeVisible()
+    expect(requests.at(-1)?.get('search')).toBe('orbit')
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    await page.getByRole('button', { name: 'Clear search' }).first().click()
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+
+    // Another library has none: the tag stays on, and the empty list explains a file probed long ago.
+    await page.getByLabel('Library', { exact: true }).selectOption('2')
+    await expect(page.getByRole('button', { name: 'Interlaced (0)', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('No interlaced files match these filters.')).toBeVisible()
+    await expect(page.getByText(/Re-probe/)).toBeVisible()
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+    await page.getByRole('button', { name: 'Clear Interlaced filter', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Interlaced (0)', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: /01 - A very long/ })).toBeVisible()
+    expect(requests.at(-1)?.has('interlaced')).toBe(false)
   })
 }
