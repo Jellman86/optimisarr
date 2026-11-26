@@ -15,7 +15,7 @@ RUN npm run build
 FROM web-build AS sidecar-web-build
 RUN npm run build:sidecar
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS api-build
 WORKDIR /src
 COPY Optimisarr.slnx global.json ./
 COPY src/Optimisarr.Api/Optimisarr.Api.csproj src/Optimisarr.Api/
@@ -42,7 +42,7 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 # including the thread-pool backpressure fix required for bounded v1 measurement.
 FROM mwader/static-ffmpeg:9.0.2-1@sha256:f5d100184884eb3e82b0eb14bb5ebf98da99826ac824989720297fb9ef21c822 AS vmaf-ffmpeg
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS sidecar-build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS sidecar-build
 WORKDIR /src
 COPY global.json Directory.Build.props ./
 COPY src/Optimisarr.Core/ src/Optimisarr.Core/
@@ -52,7 +52,7 @@ COPY src/Optimisarr.Api/Metrics/LinuxSystemMetrics.cs src/Optimisarr.Api/Metrics
 RUN dotnet publish sidecars/linux/src/Optimisarr.Sidecar.Linux --configuration Release \
     -p:UseAppHost=false -warnaserror --output /app/sidecar
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS audio-quality-build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS audio-quality-build
 WORKDIR /src
 RUN apt-get -o Acquire::Retries=5 update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -60,7 +60,7 @@ COPY tools/audio-quality-native/ tools/audio-quality-native/
 COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh
 RUN bash scripts/build_audio_quality.sh /audio-build /audio-install
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS image-quality-build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS image-quality-build
 WORKDIR /src
 RUN apt-get -o Acquire::Retries=5 update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
     && rm -rf /var/lib/apt/lists/*
