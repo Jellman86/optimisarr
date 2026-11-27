@@ -904,6 +904,43 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
+    public void A_dolby_vision_mp4_with_nothing_to_remove_keeps_that_reason()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with { KeepSubtitleLanguages = new[] { "eng" } };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with { SubtitleLanguages = new string?[] { "eng" } };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("No removable tracks", decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.m4v", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mov", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mkv", "matroska,webm", true)]
+    [InlineData("Movies/Example (2020)/Example.ts", "mpegts", true)]
+    public void A_same_as_source_remux_refuses_dolby_vision_only_where_the_copy_stays_mp4(string relativePath, string container, bool eligible)
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            TargetContainer = "source",
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: container, isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, remux);
+
+        if (eligible) Assert.False(decision.Reason.StartsWith("Dolby Vision", StringComparison.Ordinal), decision.Reason);
+        else Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
     public void A_remux_into_mp4_leaves_dolby_vision_untouched()
     {
         var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with { TargetContainer = "mp4" };

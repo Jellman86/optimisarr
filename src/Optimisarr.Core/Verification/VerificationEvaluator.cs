@@ -624,7 +624,7 @@ public static class VerificationEvaluator
         if (input.OriginalDolbyVision is not { } source)
         {
             return Fail(DolbyVisionKeptCheckName,
-                "The original is Dolby Vision, but its Dolby Vision configuration could not be read, so the output cannot be shown to keep it.");
+                "The original is recorded as Dolby Vision, but no Dolby Vision configuration could be read from it, so the output cannot be shown to keep it. If the file was replaced since the last scan, scan the library again.");
         }
 
         if (input.OutputDolbyVision is not { } output)
