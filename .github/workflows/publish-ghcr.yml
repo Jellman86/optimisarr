@@ -2,12 +2,14 @@ name: Publish ghcr server image
 
 # Builds the Optimisarr server image from this fork and publishes it to
 # ghcr.io/gnolnos/optimisarr so an Unraid box can pull it directly.
-# The `unraid` tag is what the Unraid template (unraid/optimisarr.xml) references.
+# - The `unraid` tag is what the stable Unraid template (unraid/optimisarr.xml) references.
+# - The `dev` tag is what the dev Unraid template (templates/optimisarr.dev.xml in
+#   gnolnos/unraid-templates) references; it is emitted for pushes to the dev branch.
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'deploy/*']
+    branches: [main, dev, 'deploy/*', 'dev/*']
     # Docs, the Unraid template, and CI files never end up in the image, so touching them does
     # not need an image rebuild (any code path below still does).
     paths-ignore:
@@ -36,9 +38,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set short SHA tag
+      - name: Set image tags
         id: tags
-        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          sha="${GITHUB_SHA::7}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          ref="${GITHUB_REF}"
+          # dev branch (and dev/*) => :dev image for the dev Unraid template; anything else => :unraid.
+          # The short-SHA tag keeps exact rebuilds identifiable in both cases.
+          if [[ "$ref" == refs/heads/dev* ]]; then
+            echo "tags=${{ env.IMAGE_NAME }}:dev,${{ env.IMAGE_NAME }}:${sha}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${{ env.IMAGE_NAME }}:unraid,${{ env.IMAGE_NAME }}:${sha}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -55,10 +68,6 @@ jobs:
         with:
           context: .
           push: true
-          # `unraid` is the stable tag the Unraid template pulls; the SHA tag keeps
-          # exact rebuilds identifiable.
-          tags: |
-            ${{ env.IMAGE_NAME }}:unraid
-            ${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
