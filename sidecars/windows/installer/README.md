@@ -45,7 +45,7 @@ the worker again when its retained `pairing.dat` exists. Fresh installations and
 stay stopped until pairing. Drain the worker and wait for its jobs before upgrading: an upgrade
 restarts even a previously stopped paired service. Do not upgrade in the middle of work unless handing that job
 back is acceptable. Uninstall removes program files and service registration but retains
-`%ProgramData%\Optimisarr\Sidecar` and scratch/media data. Pairing storage is restricted to
+`%ProgramData%\Optimisarr\Sidecar`, including any `work-location` override, and scratch/media data. Pairing storage is restricted to
 Administrators and SYSTEM. Per-user preferences, including the sign-in setting, are user-owned;
 turn off sign-in before uninstalling if desired.
 

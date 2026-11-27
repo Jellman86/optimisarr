@@ -171,24 +171,59 @@ disable Smart App Control or other Windows protections to run a preview.
 
 ### Work directory and RAM scratch
 
-Jobs download their source and write their candidate into a scratch folder. By default that folder is
-`C:\OptimisarrWork`, which sits on the system drive — rarely where anyone wants hundreds of gigabytes
-of transcode scratch. Move it one of two ways, both read at service start in this order:
+Each job downloads its source and writes its candidate into its own folder under the work
+directory, `C:\OptimisarrWork` by default. That sits on the system drive, which is rarely where
+anyone wants tens of gigabytes of scratch. Move it in one of two ways, both read when the service
+starts, with the file taking precedence:
 
-1. **A durable override file**, `C:\ProgramData\Optimisarr\Sidecar\work-location`, one line holding the
-   folder (for example `D:\OptimisarrWork`). Survives updates and is easy to spot or script.
-2. **The environment variable** `OPTIMISARR_SIDECAR_WORK` (same knob the Linux worker uses).
+1. **The work-location file**, `%ProgramData%\Optimisarr\Sidecar\work-location`, holding one
+   line: the folder, for example `D:\OptimisarrWork`. Upgrades and uninstalls leave this folder in
+   place, so the setting survives them.
+2. **The machine-wide environment variable** `OPTIMISARR_SIDECAR_WORK`, the setting the Linux
+   worker reads too.
 
-Then restart the service. A blank entry or a bare drive root is ignored, so a bad override never throws
-scratch back onto `C:` by accident or takes the worker down.
+From an administrator PowerShell window, drain the worker and wait for its jobs, then:
 
-**RAM scratch:** Windows has no OS-level RAM filesystem (unlike macOS's `ram://` disks or Linux's tmpfs),
-so a "work on RAM" way of life means mounting a RAM drive yourself — for example with ImDisk — and
-pointing the work location at it (option 1 or 2 above), then restarting. It needs no special code: the
-RAM drive's own size bounds it, and the server only ever offers a job when this machine reports enough
-free scratch to hold it, so work that will not fit the RAM budget is simply never offered here — the same
-bounded behaviour Linux gets from a `size=` tmpfs mount, without the risk of pushing the whole system
-into swap. A second volume (a real disk) stays available as the fallback if you prefer bigger jobs there.
+```powershell
+$file = "$env:ProgramData\Optimisarr\Sidecar\work-location"
+Set-Content -LiteralPath $file -Value 'D:\OptimisarrWork' -Encoding utf8
+icacls $file /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
+icacls $file /setowner '*S-1-5-32-544'
+Restart-Service OptimisarrSidecar
+```
+
+Restarting hands back any running job, and the next ones use the new folder. The previous folder
+is not moved or emptied. Delete the file, or the variable, to go back to the default. Existing
+installations keep `C:\OptimisarrWork`, or their variable, until one is set.
+
+The folder must be a full path to a folder on a local drive: not a drive root such as `D:\`, not a
+network share, and without quotes. The service runs as LocalSystem, so it trusts the file only when
+it is owned by Administrators or SYSTEM and no other account can change it. The two `icacls` lines
+make that so whichever account wrote the file; without them, a file in a folder made by hand rather
+than by the installer can carry its author's own access and be refused. **A setting that cannot be used stops work
+rather than falling back to `C:\OptimisarrWork`.** The worker stays connected and reports no free
+working space, so the server offers it nothing. The Event Log entry written at start names the
+folder in use and where the setting came from, or says what is wrong with it.
+
+**RAM scratch.** Windows has no built-in RAM filesystem like Linux's tmpfs, and this sidecar does
+not create RAM disks the way the Mac sidecar does. To work in memory, mount a RAM drive with a tool
+such as ImDisk, give it a drive letter nothing else uses, and point the work location at a folder on
+it, such as `R:\OptimisarrWork`. Size it so a job's source and candidate fit with room to spare,
+and leave enough memory for FFmpeg and the rest of the machine. The drive's size is the limit:
+the server offers a job only when the worker reports enough free working space for it, as on a Linux
+worker with a sized tmpfs.
+
+- The start-up Event Log entry says whether Windows reports the volume as a RAM disk. Most RAM-drive
+  tools present an ordinary fixed disk, and the worker then treats it as a disk. When Windows does
+  report a RAM disk, the worker also counts working space against free memory, alongside running
+  more than one job and quality-first audio and image work. That can refuse work a pre-allocated
+  RAM drive would have held, but never the reverse.
+- If the RAM drive is missing, for example after a restart before the tool remounts it, the worker
+  reports no free working space and takes nothing. It never writes to another drive instead. Once
+  the drive is back, the folder is recreated on the next job. Do not mount a RAM drive into a
+  folder on another disk: while it is unmounted, the empty folder left behind is ordinary disk.
+- A RAM drive's contents are lost on restart. That loses only in-flight scratch: the original
+  never leaves the server, and the job runs again once it is handed back or its lease lapses.
 
 ### Worker placement and strict verification
 

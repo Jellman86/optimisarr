@@ -99,8 +99,14 @@ try {
     }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --verify-popover
     if ($LASTEXITCODE -ne 0) { throw 'Installed popover lost its anchor' }
+    # The work-location override sits beside the pairing so that an upgrade keeps it. Removed
+    # again straight after, so the paired worker below still uses its default folder.
+    $workLocation = Join-Path $pairing 'work-location'
+    Set-Content -LiteralPath $workLocation -Value 'D:\OptimisarrWork' -Encoding utf8
     Invoke-Msi '/i' 'unpaired-upgrade' $upgradePath
     $currentInstaller = $upgradePath
+    if (!(Test-Path -LiteralPath $workLocation) -or (Get-Content -LiteralPath $workLocation -Raw).Trim() -ne 'D:\OptimisarrWork') { throw 'Upgrade lost the work-location override' }
+    Remove-Item -LiteralPath $workLocation
     if ((Get-Service OptimisarrSidecar).Status -ne 'Stopped') { throw 'Unpaired upgrade started the worker' }
 
     # A loopback fixture issues only a disposable credential and always drains the worker.
