@@ -321,6 +321,19 @@ public static class CandidateEvaluator
         // conservative: no data, no removal.
         if (rules.TargetVideoCodec is null)
         {
+            // A copy keeps the Dolby Vision RPU in the video, but the shipped FFmpeg writes the
+            // configuration that tells a player to use it into MP4 only under -strict unofficial,
+            // and into MOV never. Copied there, the file would lose Dolby Vision and the
+            // "Dolby Vision kept" check would refuse it only after a full rewrite.
+            // Checked only where there is work to do, so a file with nothing to change keeps that reason.
+            var copyContainer = rules.TargetContainer is null
+                ? Path.GetExtension(media.RelativePath)
+                : Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath);
+            var dolbyVisionRefusal = media.IsDolbyVision && TranscodeSpecResolver.IsMp4Container(copyContainer)
+                ? CandidateDecision.Skipped(
+                    "Dolby Vision — copying it into an MP4 file would drop its Dolby Vision information; left untouched")
+                : null;
+
             var audioRemovals = media.AudioLanguages is null
                 ? (IReadOnlyList<int>)Array.Empty<int>()
                 : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);
@@ -340,7 +353,7 @@ public static class CandidateEvaluator
 
                 if (audioRemovals.Count + subtitleRemovals.Count > 0)
                 {
-                    return RemovalDecision(media, rules, audioRemovals, subtitleRemovals);
+                    return dolbyVisionRefusal ?? RemovalDecision(media, rules, audioRemovals, subtitleRemovals);
                 }
 
                 var languagesUnknown =
@@ -368,13 +381,13 @@ public static class CandidateEvaluator
 
             if (!alreadyClean)
             {
-                return CandidateDecision.Eligible($"Remux to {targetContainer} ({media.Container} → {targetContainer})");
+                return dolbyVisionRefusal ?? CandidateDecision.Eligible($"Remux to {targetContainer} ({media.Container} → {targetContainer})");
             }
 
             // A container-clean file can still carry tracks the kept-languages rules remove;
             // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
             return audioRemovals.Count + subtitleRemovals.Count > 0
-                ? RemovalDecision(media, rules, audioRemovals, subtitleRemovals)
+                ? dolbyVisionRefusal ?? RemovalDecision(media, rules, audioRemovals, subtitleRemovals)
                 : CandidateDecision.Skipped($"Already in the target container ({targetContainer})");
         }
 

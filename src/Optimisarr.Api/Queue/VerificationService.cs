@@ -63,7 +63,10 @@ public sealed record OriginalSnapshot(
     Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
     // A music file that kept its format and was only trimmed, so verification also proves the
     // audio between the cuts is the source's own.
-    Optimisarr.Core.Queue.AudioTrimOnlyPlan? AudioTrimOnly = null);
+    Optimisarr.Core.Queue.AudioTrimOnlyPlan? AudioTrimOnly = null,
+    // The library recorded the original as Dolby Vision, so a copied video stream must keep its
+    // configuration even if a fresh probe of the original no longer shows one.
+    bool IsDolbyVision = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -486,6 +489,9 @@ public sealed class VerificationService(
                 OutputVideoProfile: outputProbe.VideoProfile,
                 SubtitleTracksRemoved: reference.RemovedSubtitleStreamIndexes?.Count ?? 0,
                 RequireContainerUnchanged: reference.ContainerMustMatch,
+                OriginalIsDolbyVision: originalProbe.IsDolbyVision || reference.IsDolbyVision,
+                OriginalDolbyVision: originalProbe.DolbyVision,
+                OutputDolbyVision: outputProbe.DolbyVision,
                 OriginalContainer: originalProbe.Container,
                 OutputContainer: outputProbe.Container,
                 ExpectedAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
@@ -774,7 +780,8 @@ public sealed class VerificationService(
             DurationSeconds = original.Kind == MediaKind.Video ? clip.ExpectedDuration(original.DurationSeconds) : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
-            IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
+            IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr,
+            IsDolbyVision = clipProbe.Success ? clipProbe.IsDolbyVision : original.IsDolbyVision
         };
         var presentationOffset = 0.0;
         if (clip.VideoOnly && clip.StartSeconds is { } start and > 0)

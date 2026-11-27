@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Verification;
 
@@ -149,4 +150,9 @@ public sealed record VerificationInput(
     // A music file written as MP4 (M4A): its tag atoms, and its source's when that is MP4 too, read
     // natively. ffprobe reads QuickTime keys and iTunes atoms alike, while most music software reads
     // only iTunes atoms. Null for every other job.
-    Mp4TagEvidence? Mp4Tags = null);
+    Mp4TagEvidence? Mp4Tags = null,
+    // Whether the source is Dolby Vision, by its own probe or by the library's record of it, and the
+    // configuration record each file carries. A copied video stream must keep the source's record.
+    bool OriginalIsDolbyVision = false,
+    DolbyVisionConfiguration? OriginalDolbyVision = null,
+    DolbyVisionConfiguration? OutputDolbyVision = null);
