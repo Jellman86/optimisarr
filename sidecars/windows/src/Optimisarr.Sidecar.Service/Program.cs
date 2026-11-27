@@ -1,9 +1,12 @@
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using Microsoft.Extensions.Options;
+using Optimisarr.Core.Workers;
 using Optimisarr.Sidecar.Core.Capabilities;
 using Optimisarr.Sidecar.Core.Session;
 
@@ -98,6 +101,7 @@ public static class Program
                 reportJob: line => logger.LogInformation("{Line}", line),
                 monitor: services.GetRequiredService<WorkerMonitor>(),
                 warn: line => logger.LogWarning("{Line}", line));
+            logger.Log(ScratchLocation.Usable ? LogLevel.Information : LogLevel.Warning, "{Line}", DescribeScratchLocation());
             return session;
         });
         builder.Services.AddHostedService<SidecarWorker>();
@@ -157,6 +161,7 @@ public static class Program
             var pairing = await session.PairAsync(serverAddress, pin, cancellationToken);
             var capabilities = await probe(cancellationToken);
             Console.WriteLine($"Paired with {serverAddress} as worker {pairing.WorkerId}.");
+            Console.WriteLine(DescribeScratchLocation());
             // Said plainly at pairing rather than left to be discovered as silence: the server's
             // capability matching is fail-closed, so a machine that proved no encoders is never
             // offered anything and would otherwise look simply ignored.
@@ -184,31 +189,77 @@ public static class Program
     }
 
     /// <summary>
-    /// Where a job's source and candidate would live. Overridable because the default sits on the
-    /// system drive, which is rarely where anyone wants hundreds of gigabytes of scratch video.
+    /// Where a job's source and candidate live: see <see cref="WorkLocation"/>. Read once per start,
+    /// so the jobs, their admission and the tray can never disagree about it. A change takes a
+    /// service restart, and stopping the service hands running jobs back first.
     /// </summary>
-    internal static string ScratchDirectory()
-    {
-        var overrideFile = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "Optimisarr", "Sidecar", WorkLocation.DefaultOverrideFileName);
+    internal static WorkLocationChoice ScratchLocation => StartLocation.Value;
 
-        string? fromFile = null;
+    private static readonly Lazy<WorkLocationChoice> StartLocation = new(() =>
+    {
+        var (configured, problem) = ReadOverrideFile(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Optimisarr", "Sidecar", WorkLocation.OverrideFileName));
+        return WorkLocation.Resolve(configured, Environment.GetEnvironmentVariable(WorkLocation.EnvironmentVariable), problem);
+    });
+
+    /// <summary>Rights that would let an account change the override file or who may change it.</summary>
+    private const FileSystemRights Changes = FileSystemRights.WriteData | FileSystemRights.AppendData
+        | FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership
+        | (FileSystemRights)0x40000000 /* GENERIC_WRITE */ | (FileSystemRights)0x10000000 /* GENERIC_ALL */;
+
+    /// <summary>
+    /// The override file's one line, or why it must not be used. Absent means not configured; any
+    /// other failure is a problem, never a silent fall-through to the next setting.
+    /// </summary>
+    internal static (string? Configured, string? Problem) ReadOverrideFile(string path)
+    {
         try
         {
-            if (File.Exists(overrideFile))
+            if (new FileInfo(path).LinkTarget is not null)
             {
-                var text = File.ReadAllText(overrideFile);
-                fromFile = text.Length == 0 ? null : text;
+                return (null, "The work-location file is a link, so it was not trusted. Replace it with an ordinary file.");
             }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            // An unreadable override must not take the worker down: fall through to the env knob.
-        }
 
-        return WorkLocation.Resolve(fromFile, Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK"));
+            // The access is checked on the handle the text is read through, so the file cannot be
+            // swapped between the check and the read.
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length > WorkLocation.MaximumOverrideFileBytes)
+            {
+                return (null, "The work-location file is far longer than one folder path, so it was not read.");
+            }
+
+            var security = stream.GetAccessControl();
+            var writers = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Where(rule => rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & Changes) != 0)
+                .Select(rule => rule.IdentityReference.Value);
+            if (WorkLocation.OverrideFileTrustProblem(security.GetOwner(typeof(SecurityIdentifier))?.Value, writers) is { } untrusted)
+            {
+                return (null, untrusted);
+            }
+
+            using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+            return WorkLocation.ReadOverrideText(reader.ReadToEnd());
+        }
+        catch (Exception missing) when (missing is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return (null, null);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or IdentityNotMappedException)
+        {
+            return (null, $"The work-location file could not be read ({error.Message}).");
+        }
     }
+
+    /// <summary>The tray's free-space figure: none when there is no usable work location.</summary>
+    internal static long FreeScratchBytesNow() =>
+        ScratchLocation.Path is { } scratch ? FreeScratchBytes(scratch) : 0;
+
+    /// <summary>The start-up line naming where work goes, and whether Windows calls it a RAM disk.</summary>
+    internal static string DescribeScratchLocation() =>
+        WorkLocation.Describe(ScratchLocation,
+            ScratchLocation.Path is { } scratch ? NativeWorkingVolume.Read(scratch, () => null)?.UsesMemory : null);
 
     /// <summary>
     /// How many jobs this machine takes at once: one unless the machine-wide
@@ -336,7 +387,9 @@ public static class Program
         Action<string>? warn = null)
     {
         var prober = new CapabilityProber(new ProcessCommandRunner());
-        var scratch = ScratchDirectory();
+        // Null when a configured location cannot be used: the worker then reports no working
+        // space and claims nothing, rather than working somewhere nobody chose.
+        var scratch = ScratchLocation.Path;
         // Read once: the number offered to the server and the admission guarding it must agree.
         var (concurrency, concurrencyProblem) = ConfiguredConcurrency();
         if (concurrencyProblem is not null)
@@ -347,13 +400,13 @@ public static class Program
         probe = async token =>
         {
             var ffmpeg = FindFfmpeg();
-            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), concurrency, token);
-            if (ffmpeg is not null)
+            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, scratch is null ? 0 : FreeScratchBytes(scratch), concurrency, token);
+            if (ffmpeg is not null && scratch is not null)
             {
                 var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, token);
                 proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? concurrency : 0 };
             }
-            return NativeWorkerResources.Refresh(proved, scratch);
+            return scratch is null ? NativeWorkerResources.Unavailable(proved) : NativeWorkerResources.Refresh(proved, scratch);
         };
         var capture = probe;
 
@@ -365,6 +418,18 @@ public static class Program
         var client = new SidecarClient(control, new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "Optimisarr", "Sidecar"), FindFfmpeg(), Path.Combine(Path.GetDirectoryName(FindFfmpeg() ?? "") ?? "", "ffprobe.exe")));
         var loadSampler = new MachineLoadSampler();
+
+        if (scratch is null)
+        {
+            return new SidecarSession(
+                client,
+                new DpapiCredentialStore(),
+                capture,
+                load: loadSampler.Sample,
+                delay: Task.Delay,
+                report: report,
+                refreshCapabilities: NativeWorkerResources.Unavailable);
+        }
 
         var runner = new JobRunner(
             client,

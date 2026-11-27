@@ -9,11 +9,19 @@ public static class NativeWorkerResources
     public static SidecarCapabilities Refresh(SidecarCapabilities capabilities, string scratchRoot)
     {
         var resources = PerceptualJobRuntime.ReadResources(scratchRoot);
-        var proof = capabilities.Perceptual ?? new WorkerPerceptualCapabilities();
         if (resources is null)
-            return capabilities with { FreeScratchBytes = 0, Perceptual = proof with { AvailableMemoryBytes = null, ScratchUsesMemory = null } };
+            return Unavailable(capabilities);
+        var proof = capabilities.Perceptual ?? new WorkerPerceptualCapabilities();
         var available = PerceptualJobResourcePool.Shared.Available(resources.Volume, resources.Disk, resources.Memory);
         return capabilities with { FreeScratchBytes = available.Disk ?? 0,
             Perceptual = proof with { AvailableMemoryBytes = available.Memory, ScratchUsesMemory = resources.UsesMemory } };
     }
+
+    /// <summary>
+    /// No working space to offer: its volume cannot be read, or no usable location is configured.
+    /// The server offers nothing to a worker reporting this, whatever it can encode.
+    /// </summary>
+    public static SidecarCapabilities Unavailable(SidecarCapabilities capabilities) =>
+        capabilities with { FreeScratchBytes = 0, Perceptual = (capabilities.Perceptual ?? new WorkerPerceptualCapabilities())
+            with { AvailableMemoryBytes = null, ScratchUsesMemory = null } };
 }
