@@ -29,7 +29,7 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.Contains(result.Errors, error => error.Contains("path mapping"));
     }
 
-    [Fact]
+    [PosixFact]
     public void An_imported_path_mapping_written_for_a_windows_manager_is_accepted()
     {
         var sonarr = new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true, RemotePathPrefix: @"D:\TV", LocalPathPrefix: "/data/tv");

@@ -11,7 +11,7 @@ public sealed class ArrWebhookPathResolverTests
         new(3, "/data/movies/"),
     ];
 
-    [Fact]
+    [PosixFact]
     public void A_path_the_manager_shares_with_optimisarr_resolves_to_its_library()
     {
         var resolved = ArrWebhookPathResolver.Resolve("/data/movies/Film (2020)/Film.mkv", null, Libraries);
@@ -21,7 +21,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.Equal("/data/movies/Film (2020)/Film.mkv", found.LocalPath);
     }
 
-    [Fact]
+    [PosixFact]
     public void The_longest_matching_library_root_wins()
     {
         var resolved = ArrWebhookPathResolver.Resolve("/data/tv/anime/Show/S01E01.mkv", null, Libraries);
@@ -29,7 +29,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.Equal(2, Assert.IsType<WebhookPathResolution.InLibrary>(resolved).LibraryId);
     }
 
-    [Theory]
+    [PosixTheory]
     [InlineData("/data/tvshows/Show/S01E01.mkv")]
     [InlineData("/elsewhere/Show/S01E01.mkv")]
     [InlineData("/data/tv")]
@@ -38,7 +38,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.IsType<WebhookPathResolution.NotInLibrary>(ArrWebhookPathResolver.Resolve(path, null, Libraries));
     }
 
-    [Theory]
+    [PosixTheory]
     [InlineData("/data/tv/../../etc/passwd")]
     [InlineData("/data/tv/Show/../../../etc/shadow.mkv")]
     [InlineData("/data/tv/Show/..")]
@@ -51,7 +51,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.IsType<WebhookPathResolution.Refused>(ArrWebhookPathResolver.Resolve(path, null, Libraries));
     }
 
-    [Fact]
+    [PosixFact]
     public void A_mapping_translates_the_managers_mount_to_optimisarrs()
     {
         var mapping = new ArrPathMapping("/tv", "/data/tv");
@@ -63,7 +63,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.Equal("/data/tv/Show/Season 01/S01E01.mkv", found.LocalPath);
     }
 
-    [Fact]
+    [PosixFact]
     public void A_mapping_matches_whole_folders_not_string_prefixes()
     {
         var mapping = new ArrPathMapping("/tv", "/data/tv");
@@ -72,7 +72,7 @@ public sealed class ArrWebhookPathResolverTests
             ArrWebhookPathResolver.Resolve("/tvshows/Show/S01E01.mkv", mapping, Libraries));
     }
 
-    [Fact]
+    [PosixFact]
     public void A_windows_manager_path_maps_onto_a_linux_library()
     {
         var mapping = new ArrPathMapping(@"D:\Media\TV\", "/data/tv");
@@ -83,7 +83,7 @@ public sealed class ArrWebhookPathResolverTests
         Assert.Equal("/data/tv/Show/Season 01/S01E01.mkv", found.LocalPath);
     }
 
-    [Fact]
+    [PosixFact]
     public void A_mapping_cannot_be_used_to_climb_out_of_a_library()
     {
         var mapping = new ArrPathMapping("/tv", "/data/tv");
@@ -92,7 +92,7 @@ public sealed class ArrWebhookPathResolverTests
             ArrWebhookPathResolver.Resolve("/tv/../movies/Film/Film.mkv", mapping, Libraries));
     }
 
-    [Fact]
+    [PosixFact]
     public void A_path_outside_the_mapping_is_still_matched_as_given()
     {
         var mapping = new ArrPathMapping("/tv", "/data/tv");

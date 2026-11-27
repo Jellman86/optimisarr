@@ -490,7 +490,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Contains("arr.pathMapping.invalid", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PosixFact]
     public async Task Saving_a_connection_without_the_mapping_fields_keeps_the_saved_mapping()
     {
         await using var hook = await CreateWebhookAsync(remote: "/tv", local: "/data/tv");

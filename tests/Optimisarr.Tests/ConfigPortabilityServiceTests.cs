@@ -517,7 +517,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(rescan, (await restored.ArrConnections.SingleAsync()).RescanAfterChanges);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_backup_carries_the_path_mapping_but_never_the_webhook_password()
     {
         await using (var db = CreateDb())
