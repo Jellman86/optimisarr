@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>One entry of a Windows access list, reduced to what deciding trust needs.</summary>
@@ -128,7 +129,7 @@ public sealed record WorkRootVerdict(WorkRootAction Action, string? Problem = nu
 /// whichever the machine gives a service's new folders. Anything else inside means somebody keeps
 /// their own files there, and the folder is refused and left exactly as it is.</para>
 /// </summary>
-public static class WorkRootPolicy
+public static partial class WorkRootPolicy
 {
     /// <summary>
     /// A file the service keeps in the work folder and holds open while it runs. An empty folder
@@ -137,12 +138,21 @@ public static class WorkRootPolicy
     /// </summary>
     public const string SentinelName = ".optimisarr-work-folder";
 
-    /// <summary>Whether a name in the work folder is one the service itself creates there.</summary>
+    /// <summary>
+    /// Whether a name in the work folder is one the service itself creates there: the job folders
+    /// <c>job-&lt;id&gt;</c> and <c>job-&lt;id&gt;-&lt;lease&gt;-&lt;run&gt;</c>, the native workspaces
+    /// <c>native-job-&lt;id&gt;-&lt;lease&gt;-&lt;owner&gt;</c> and <c>native-capability-&lt;owner&gt;</c>,
+    /// and its control folder and sentinel. A rebuild deletes these, so the match is exact: a
+    /// folder of someone's own that merely starts with "job-" must never be taken for one.
+    /// </summary>
     public static bool IsServiceEntry(string name) =>
         string.Equals(name, NativeScratchWorkspace.ControlDirectoryName, StringComparison.OrdinalIgnoreCase)
         || string.Equals(name, SentinelName, StringComparison.OrdinalIgnoreCase)
-        || HasSuffixAfter(name, "job-")
-        || HasSuffixAfter(name, "native-");
+        || ServiceEntryName().IsMatch(name);
+
+    [GeneratedRegex(@"\A(?:job-[0-9]+(?:-[0-9a-f]{32}-[0-9a-f]{32})?|native-job-[0-9]+-[0-9a-f]{32}-[0-9a-f]{32}|native-capability-[0-9a-f]{32})\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ServiceEntryName();
 
     public static WorkRootVerdict Decide(string root, WorkRootFacts facts, bool allowUnprotected)
     {
@@ -205,9 +215,6 @@ public static class WorkRootPolicy
 
     private static bool Tainted(WorkRootEntry entry) =>
         entry.IsLink || !WorkAccess.IsTrusted(entry.Owner) || WorkAccess.UntrustedWriters(WorkAccess.OrEveryone(entry.Access)).Count > 0;
-
-    private static bool HasSuffixAfter(string name, string prefix) =>
-        name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
     private static string Names(IReadOnlyList<string> names) =>
         string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");

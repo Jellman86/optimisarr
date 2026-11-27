@@ -48,6 +48,8 @@ public static class ScratchTree
 
             foreach (var name in entry.Names().ToArray())
             {
+                // Closed at the end of each pass: a child's name only goes when its handle closes,
+                // and the folder cannot be removed while any name is left in it.
                 using var child = entry.Open(name);
                 Delete(child, depth + 1);
             }

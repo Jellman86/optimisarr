@@ -268,8 +268,10 @@ internal static class WindowsFileApi
     public static int CreateDirectory(string path) => CreateDirectoryInherited(path, IntPtr.Zero) ? 0 : Marshal.GetLastPInvokeError();
 
     /// <summary>
-    /// Deletes the object the handle opened: a link as a link, since it was opened as one. POSIX
-    /// semantics remove the name at once; FAT and older Windows fall back to removal on close.
+    /// Deletes the object the handle opened: a link as a link, since it was opened as one. The name
+    /// goes when this handle closes (POSIX semantics, even if others still hold it open; FAT and
+    /// older Windows wait for the last handle), so a folder's children must be closed before the
+    /// folder itself is deleted.
     /// </summary>
     public static void DeleteThroughHandle(SafeFileHandle handle)
     {

@@ -45,7 +45,7 @@ public sealed class WorkRootTests
         // SYSTEM, but carrying the drive root's inherited "Authenticated Users: Modify", and
         // holding only what the service itself puts there.
         var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(AuthenticatedUsers, Modify)],
-            Entries: [Entry(".optimisarr-native", writable: true), Entry("job-1", writable: true), Entry("native-job-1-a-b", writable: true)]), false);
+            Entries: [Entry(".optimisarr-native", writable: true), Entry("job-1", writable: true), Entry("native-job-1-0123456789abcdef0123456789abcdef-fedcba9876543210fedcba9876543210", writable: true)]), false);
 
         Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
         Assert.Contains("created again", verdict.Notice);
@@ -125,6 +125,16 @@ public sealed class WorkRootTests
     }
 
     [Fact]
+    public void A_changeable_folder_holding_someones_own_job_folder_is_refused_not_rebuilt()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(Users, Modify)],
+            Entries: [Entry("job-applications", writable: true), Entry("native-instruments", writable: true)]), false);
+
+        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
+        Assert.Contains("job-applications", verdict.Problem);
+    }
+
+    [Fact]
     public void A_changeable_folder_whose_contents_were_not_read_is_refused_not_rebuilt()
     {
         var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(Users, Modify)]), false);
@@ -137,11 +147,18 @@ public sealed class WorkRootTests
     [InlineData(".optimisarr-native", true)]
     [InlineData(".optimisarr-work-folder", true)]
     [InlineData("job-5", true)]
-    [InlineData("job-5-0123abcd-4567", true)]
+    [InlineData("job-5-0123456789abcdef0123456789abcdef-0123456789abcdef0123456789abcdef", true)]
     [InlineData("JOB-5", true)]
-    [InlineData("native-job-5-a-b", true)]
-    [InlineData("native-capability-a", true)]
+    [InlineData("native-job-5-0123456789abcdef0123456789abcdef-0123456789abcdef0123456789abcdef", true)]
+    [InlineData("native-capability-0123456789abcdef0123456789abcdef", true)]
     [InlineData("job-", false)]
+    [InlineData("job-applications", false)]
+    [InlineData("job-5-cv", false)]
+    [InlineData("job-5-0123abcd-4567", false)]
+    [InlineData("native-instruments", false)]
+    [InlineData("native-job-5-a-b", false)]
+    [InlineData("native-capability-a", false)]
+    [InlineData("job-5\n", false)]
     [InlineData("native-", false)]
     [InlineData("jobs", false)]
     [InlineData("holiday.mkv", false)]
