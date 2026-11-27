@@ -429,7 +429,9 @@ internal static class WorkerLeaseEndpoints
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
+                        lastReason = requiredProtocol == WorkerProtocol.KeyframeIntervalVersion
+                            ? "This library's keyframe interval requires an updated sidecar (protocol 15)."
+                            : requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
                             ? "Soundtrack quality requires an updated sidecar with exact duration and decoder pre-roll preparation (protocol 14)."
                             : requiredProtocol == WorkerProtocol.TrackBitrateVersion
                             ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."

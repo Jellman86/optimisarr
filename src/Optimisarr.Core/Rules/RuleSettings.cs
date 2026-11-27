@@ -114,6 +114,12 @@ public sealed record RuleSettings
     /// </summary>
     public Queue.NoiseReduction NoiseReduction { get; init; }
 
+    /// <summary>
+    /// The longest gap between keyframes in a video re-encode, in whole seconds, or null for the
+    /// encoder's own default. Longer saves a little space and makes seeking slower.
+    /// </summary>
+    public int? KeyframeIntervalSeconds { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 

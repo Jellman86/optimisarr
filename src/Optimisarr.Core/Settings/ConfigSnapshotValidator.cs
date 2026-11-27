@@ -92,6 +92,8 @@ public static class ConfigSnapshotValidator
             if (library.AudioSilenceThresholdDb is { } silenceDb && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidThreshold(silenceDb)
                 || library.AudioSilenceMinimumSeconds is { } silenceSeconds && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidMinimum(silenceSeconds))
                 errors.Add($"{where} silence trimming: {Optimisarr.Core.Queue.SilenceTrimSettings.RangeError}");
+            if (library.KeyframeIntervalSeconds is { } keyframeSeconds && !Optimisarr.Core.Queue.KeyframeInterval.IsValidSeconds(keyframeSeconds))
+                errors.Add($"{where} keyframe interval must be between {Optimisarr.Core.Queue.KeyframeInterval.MinimumSeconds} and {Optimisarr.Core.Queue.KeyframeInterval.MaximumSeconds} seconds.");
             if (library.MinimumTrackRemovalSavingPercent is { } trackSavingPercent && !TrackSavingMinimum.ValidPercent(trackSavingPercent)
                 || library.MinimumTrackRemovalSavingBytes is { } trackSavingBytes && !TrackSavingMinimum.ValidBytes(trackSavingBytes))
                 errors.Add($"{where}: {TrackSavingMinimum.RangeError}");

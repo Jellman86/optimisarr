@@ -127,7 +127,9 @@ public sealed record LibrarySnapshot(
     bool? TrimSilenceWithoutConverting = null,
     // Null on an older snapshot means no minimum, which is how those libraries behaved.
     double? MinimumTrackRemovalSavingPercent = null,
-    long? MinimumTrackRemovalSavingBytes = null);
+    long? MinimumTrackRemovalSavingBytes = null,
+    // Null, including on an older snapshot, means the encoder default those libraries always used.
+    int? KeyframeIntervalSeconds = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

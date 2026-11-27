@@ -219,6 +219,7 @@
               {#if plan.picture}
                 {t(i18n.m.librarySummary.video_encode, { codec: codecName(plan.picture.codec) })}
                 {#if qualitySentence}{' '}{qualitySentence}{/if}
+                {#if plan.picture.keyframeIntervalSeconds}{' '}{t(i18n.m.librarySummary.video_keyframes, { seconds: plan.picture.keyframeIntervalSeconds })}{/if}
                 {' '}{pictureChanges.length > 0 ? pictureChanges.join(' ') : i18n.m.librarySummary.video_picture_kept}
                 {#if pictureChanges.length > 0}<span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.librarySummary.tag_changes_picture}</span>{/if}
               {:else}

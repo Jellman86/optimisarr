@@ -590,6 +590,32 @@ these files usually come out smaller.
 - With super-resolution, noise is reduced before the engine sees the picture. Real-CUGAN's own noise
   level then applies on top.
 
+### Keyframe interval
+
+**Keyframe interval** sets the longest gap between keyframes when a library re-encodes video. A
+keyframe is a point a player can seek or resume from. Find it under **Configure → Video →
+Encoder**. It is blank, the **Encoder default**, unless you set it, and the encoder then keeps its
+own interval, as every library did before.
+
+Set a whole number of seconds from 1 to 20. A longer interval makes the file slightly smaller, but
+seeking and resuming are slower, and a media server that cuts streams at keyframes makes longer
+segments. Seconds, rather than frames, mean the same thing at any frame rate. Each job counts the
+interval in frames from the file's own frame rate, read just before it encodes, so 10 seconds is 240
+frames at 24 fps (23.976 fps included). With a frame-rate cap it is counted at the reduced rate.
+A variable-frame-rate file is counted at its average rate, so its keyframes are about that far
+apart. If a file's frame rate can't be read, that job keeps the encoder default.
+
+- The interval is a maximum. Scene cuts still add keyframes, and Optimisarr sets no minimum and
+  leaves scene-cut detection as it is.
+- Every supported encoder takes it as its GOP length (FFmpeg's `-g`): x264, x265, SVT-AV1, NVIDIA
+  NVENC, Intel Quick Sync, VA-API and Apple VideoToolbox.
+- It applies only when the library re-encodes video. Remux and track cleanup copy the video, so its
+  keyframes stay where they are.
+- Every result goes through the same checks. The keyframe spacing is not itself checked.
+- **Optimise this file…** and the library's overview say when it is set, and backups carry it.
+- Remote workers need protocol 15 for these jobs. An older worker is not offered them, and says it
+  needs an update; a library set to **Only on workers** waits for an updated worker.
+
 ### Assess re-encoded video soundtracks
 
 Soundtrack samples leave a 100 ms margin at the file end to avoid encoder padding. Each prepared sample must still contain its assigned frames within the 64-frame resampling allowance; missing audio is never padded. Coverage in the report shows what was actually assessed.

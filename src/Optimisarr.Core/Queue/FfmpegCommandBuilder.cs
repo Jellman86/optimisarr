@@ -111,6 +111,12 @@ public sealed record TranscodeSpec(
     /// generated presentation times; +genpts would mistime its reordered pictures (SourceTimestampFacts).</summary>
     public bool RegeneratePresentationTimestamps { get; init; } = true;
 
+    /// <summary>
+    /// The longest run of frames between keyframes a video re-encode may produce, or null for the
+    /// encoder's own default. Counted at the rate the encode produces (see <see cref="KeyframeInterval"/>).
+    /// </summary>
+    public int? KeyframeIntervalFrames { get; init; }
+
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
 
@@ -503,6 +509,8 @@ public static class FfmpegCommandBuilder
             args.Add("-preset");
             args.Add(spec.Preset);
         }
+
+        AppendKeyframeInterval(args, spec);
 
         // Advanced encoder options, resolved for this exact encoder. A family with no equivalent
         // contributes nothing here, so an Auto-mode library that lands on QSV simply encodes as it
@@ -967,6 +975,27 @@ public static class FfmpegCommandBuilder
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// The GOP length, as <c>-g</c>, which libx264, libx265, SVT-AV1, NVENC, QSV, VA-API and
+    /// VideoToolbox each read as their maximum keyframe distance. No minimum and no scene-cut
+    /// option go with it, so each encoder keeps adding keyframes at cuts as it always has.
+    /// </summary>
+    internal static void AppendKeyframeInterval(List<string> args, TranscodeSpec spec)
+    {
+        if (spec.KeyframeIntervalFrames is not { } frames)
+        {
+            return;
+        }
+
+        if (frames is < 1 or > KeyframeInterval.MaximumFrames)
+        {
+            throw new ArgumentOutOfRangeException(nameof(spec), frames, "The keyframe interval is outside the supported range.");
+        }
+
+        args.Add("-g");
+        args.Add(frames.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;

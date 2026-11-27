@@ -251,6 +251,7 @@ public sealed class ConfigPortabilityService(
             library.KeepSubtitleLanguages = keepSubtitleLanguages;
             library.MinimumTrackRemovalSavingPercent = snapshot.MinimumTrackRemovalSavingPercent;
             library.MinimumTrackRemovalSavingBytes = snapshot.MinimumTrackRemovalSavingBytes;
+            library.KeyframeIntervalSeconds = snapshot.KeyframeIntervalSeconds;
             library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
             // Configs exported before AVIF was withdrawn remain importable; move the stale target
             // to the same proven WebP fallback as the database migration.
@@ -680,7 +681,8 @@ public sealed class ConfigPortabilityService(
         library.AudioSilenceMinimumSeconds,
         library.TrimSilenceWithoutConverting,
         library.MinimumTrackRemovalSavingPercent,
-        library.MinimumTrackRemovalSavingBytes);
+        library.MinimumTrackRemovalSavingBytes,
+        library.KeyframeIntervalSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

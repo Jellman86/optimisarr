@@ -1175,6 +1175,9 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("KeyframeIntervalSeconds")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset?>("LastAutoDedupeAt")
                         .HasColumnType("TEXT");
 

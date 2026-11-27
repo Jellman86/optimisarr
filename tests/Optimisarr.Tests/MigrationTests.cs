@@ -161,6 +161,27 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(library.MinimumTrackRemovalSavingBytes);
     }
 
+    [Fact]
+    public async Task Keyframe_interval_migration_leaves_existing_libraries_on_the_encoder_default()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261126231643_RecordTrackSizesForTrackCleanupMinimum");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        var library = await db.Libraries.SingleAsync();
+        Assert.Equal("Films", library.Name);
+        Assert.Null(library.KeyframeIntervalSeconds);
+    }
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
         "optimisarr-tests",

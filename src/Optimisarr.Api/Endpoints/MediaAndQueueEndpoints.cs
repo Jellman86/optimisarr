@@ -784,7 +784,8 @@ internal sealed record MediaPlanDto(
         plan.Picture is { } picture
             ? new MediaPlanPictureDto(
                 picture.Codec, picture.Crf, picture.Width, picture.Height, picture.ShrinkToHeight, picture.FrameRateCap,
-                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales)
+                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales,
+                picture.KeyframeIntervalSeconds)
             : null,
         plan.Sound,
         plan.AudioTracks,
@@ -825,7 +826,8 @@ internal sealed record MediaPlanPictureDto(
     bool Deinterlace,
     bool CropBlackBars,
     string NoiseReduction,
-    bool Upscales);
+    bool Upscales,
+    int? KeyframeIntervalSeconds);
 
 /// <summary>Enums are sent as their names, as the rest of the API sends them.</summary>
 internal sealed record MediaPlanImageDto(string Format, int Quality, string ResizeMode, int ResizeValue, bool RecompressesLossy);

@@ -110,6 +110,7 @@ public static class SuperResolutionCommandBuilder
         {
             args.AddRange(["-preset", spec.Preset]);
         }
+        FfmpegCommandBuilder.AppendKeyframeInterval(args, spec);
         if (spec.Tuning is { IsEmpty: false } tuning)
         {
             args.AddRange(EncoderTuningPolicy.Resolve(resolvedEncoder, tuning));

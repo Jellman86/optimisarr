@@ -735,6 +735,15 @@
     form.encoderPreset != null && options.legacyEncoderPresets.includes(form.encoderPreset),
   )
 
+  // Blank is the encoder default; anything else is whole seconds within the server's bounds.
+  const keyframeIntervalSet = $derived(form.keyframeIntervalSeconds != null && String(form.keyframeIntervalSeconds) !== '')
+  const keyframeError = $derived(
+    showVideoOptions && !isNoEncodeProfile && keyframeIntervalSet
+      && !(Number.isInteger(Number(form.keyframeIntervalSeconds)) && Number(form.keyframeIntervalSeconds) >= 1 && Number(form.keyframeIntervalSeconds) <= 20)
+      ? i18n.m.libraryEditor.keyframe_invalid
+      : null,
+  )
+
   $effect(() => {
     const path = editingId !== null && form.moveOnComplete ? form.targetFolder?.trim() : ''
     targetFolderCheck = null
@@ -766,6 +775,7 @@
       && !audioLanguageError
       && !subtitleLanguageError
       && !encoderEffortError
+      && !keyframeError
       && !(!isNoEncodeProfile && vmafError)
       && !verificationError
       && !targetFolderProblem,
@@ -1239,6 +1249,7 @@
       // Coerced like the hardlink switch: an older server omits the field.
       deinterlaceVideo: library.deinterlaceVideo ?? false,
       noiseReduction: library.noiseReduction ?? 'Off',
+      keyframeIntervalSeconds: library.keyframeIntervalSeconds ?? null,
       // Coerced like the hardlink switch: an older server omits the field, and undefined
       // must read as off rather than blank the editor.
       superResolutionEnabled: library.superResolutionEnabled ?? false,
@@ -1396,6 +1407,8 @@
       optimiseDolbyVision: form.optimiseDolbyVision,
       deinterlaceVideo: form.deinterlaceVideo,
       noiseReduction: form.noiseReduction,
+      // A cleared number input binds as null or ''; either means the encoder default.
+      keyframeIntervalSeconds: keyframeIntervalSet ? Number(form.keyframeIntervalSeconds) : null,
       superResolutionEnabled: form.superResolutionEnabled,
       superResolutionQualityCheck: form.superResolutionQualityCheck,
       superResolutionEngine: form.superResolutionEngine,
@@ -1483,6 +1496,7 @@
     if (audioLanguageError
       || subtitleLanguageError
       || encoderEffortError
+      || keyframeError
       || verificationError
       || (!isNoEncodeProfile && vmafError)) return
     saving = true
@@ -1602,7 +1616,7 @@
         : 'checks',
   )
   const hasValidationError = $derived(
-    !!(audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError) || targetFolderProblem),
+    !!(audioLanguageError || subtitleLanguageError || encoderEffortError || keyframeError || verificationError || (!isNoEncodeProfile && vmafError) || targetFolderProblem),
   )
   // The built-in presets side by side, as the server sends them, so none of them is a mystery.
   const presetColumns = $derived(encodeProfiles.flatMap((profile) => options.ruleProfileSpecs.filter((spec) => spec.profile === profile)))
@@ -2105,6 +2119,17 @@
             {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
           </select>
           {#if encoderEffortError}<p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>{/if}
+        </SettingRow>
+        <!-- Every supported encoder honours a GOP length, so this row is never disabled. Blank keeps
+             the encoder's own default, which is exactly what every library did before. -->
+        <SettingRow label={i18n.m.libraries.keyframe_label} sentence={i18n.m.libraryEditor.keyframe_sentence} more={i18n.m.libraries.keyframe_tip} controlId="lib-keyframes">
+          <span class="inline-flex items-center gap-2 whitespace-nowrap text-sm">
+            <input id="lib-keyframes" class="input w-36" type="number" min="1" max="20" step="1" placeholder={i18n.m.libraries.keyframe_default}
+              aria-invalid={keyframeError ? 'true' : 'false'} aria-describedby={keyframeError ? 'lib-keyframes-error' : undefined}
+              bind:value={form.keyframeIntervalSeconds} />
+            <span class="text-ink-3">{i18n.m.libraries.keyframe_unit}</span>
+          </span>
+          {#if keyframeError}<p id="lib-keyframes-error" class="mt-1 text-xs text-bad" role="alert">{keyframeError}</p>{/if}
         </SettingRow>
         <SettingRow label={i18n.m.libraries.max_bitrate} sentence={i18n.m.libraryEditor.max_bitrate_sentence} more={i18n.m.libraries.max_bitrate_tip} controlId="lib-maxbitrate"
           disabledReason={ignoredReason('maxBitrate')} reasonLink={ignoredReason('maxBitrate') ? settingsLink('encoding', i18n.m.settings.room_encoding) : null}>
@@ -2644,6 +2669,7 @@
         <div class="mt-2 flex flex-wrap gap-2">
           {#if audioLanguageError || subtitleLanguageError}<button class="btn" onclick={() => goPage('audio', 'library-languages')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
           {#if encoderEffortError}<button class="btn" onclick={() => goPage('video', 'library-encoder')}>{encoderEffortError}</button>{/if}
+          {#if keyframeError}<button class="btn" onclick={() => goPage('video', 'library-encoder')}>{keyframeError}</button>{/if}
           {#if !isNoEncodeProfile && vmafError}<button class="btn" onclick={() => goPage('video', 'library-quality')}>{vmafError}</button>{/if}
           {#if verificationError}<button class="btn" onclick={() => goPage(verificationErrorPage)}>{verificationError}</button>{/if}
           {#if targetFolderProblem}<button class="btn" onclick={() => goPage('schedule', 'library-files-choice')}>{targetFolderProblem}</button>{/if}
