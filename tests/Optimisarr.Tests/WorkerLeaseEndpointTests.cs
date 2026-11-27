@@ -1022,6 +1022,42 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal("240", arguments[arguments.IndexOf("-g") + 1]);
     }
 
+    [Fact]
+    public async Task A_protocol_15_amd_worker_is_given_its_cpu_encoder_instead_of_amf()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous AMD", 1, ["libx265", "hevc_amf"], [], protocolMaximum: 15);
+        await QueueAJob();
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Equal("libx265", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.DoesNotContain("-qp_i", arguments);
+    }
+
+    [Fact]
+    public async Task A_current_amd_worker_receives_an_amf_constant_quality_command_with_the_keyframe_interval()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Current AMD", 1, ["libx265", "hevc_amf"], []);
+        var jobId = await QueueAJob();
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Equal("hevc_amf", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.Equal("cqp", arguments[arguments.IndexOf("-rc") + 1]);
+        Assert.Contains("-qp_i", arguments);
+        Assert.Equal("240", arguments[arguments.IndexOf("-g") + 1]);
+        Assert.DoesNotContain("-hwaccel", arguments);
+    }
+
     private async Task SetKeyframeInterval(int jobId, int seconds)
     {
         using var scope = _api.Services.CreateScope();

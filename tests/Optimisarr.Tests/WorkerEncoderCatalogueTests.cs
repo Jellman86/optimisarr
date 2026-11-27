@@ -66,7 +66,7 @@ public sealed class WorkerEncoderCatalogueTests
         // #425: the queue's CPU mode is a software-encoding policy, not a description of the
         // server's GPU. A worker that proved both families must be given its CPU encoder.
         var selection = WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.Cpu, ["libx265", "hevc_nvenc"]);
+            "hevc", EncoderMode.Cpu, ["libx265", "hevc_nvenc"], WorkerProtocol.Current);
 
         Assert.True(selection.Succeeded);
         Assert.Equal("libx265", selection.EncoderName);
@@ -76,7 +76,7 @@ public sealed class WorkerEncoderCatalogueTests
     public void Cpu_mode_refuses_a_worker_that_proved_no_cpu_encoder()
     {
         var selection = WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.Cpu, ["hevc_nvenc"]);
+            "hevc", EncoderMode.Cpu, ["hevc_nvenc"], WorkerProtocol.Current);
 
         Assert.False(selection.Succeeded);
     }
@@ -87,7 +87,7 @@ public sealed class WorkerEncoderCatalogueTests
         // The server's NVENC choice must not strand an Intel worker: it uses the best hardware
         // it proved, exactly as Auto would choose for it.
         var selection = WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.NvidiaNvenc, ["libx265", "hevc_qsv"]);
+            "hevc", EncoderMode.NvidiaNvenc, ["libx265", "hevc_qsv"], WorkerProtocol.Current);
 
         Assert.True(selection.Succeeded);
         Assert.Equal("hevc_qsv", selection.EncoderName);
@@ -99,7 +99,7 @@ public sealed class WorkerEncoderCatalogueTests
     public void A_ten_bit_h264_source_keeps_the_worker_on_its_cpu_encoder(EncoderMode mode)
     {
         var selection = WorkerEncoderCatalogue.Select(
-            "h264", mode, ["libx264", "h264_nvenc"], sourceBitDepth: 10);
+            "h264", mode, ["libx264", "h264_nvenc"], WorkerProtocol.Current, sourceBitDepth: 10);
 
         Assert.True(selection.Succeeded);
         Assert.Equal("libx264", selection.EncoderName);
@@ -109,7 +109,7 @@ public sealed class WorkerEncoderCatalogueTests
     public void Auto_mode_still_prefers_the_workers_proved_hardware_encoder()
     {
         var selection = WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.Auto, ["libx265", "hevc_nvenc"]);
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_nvenc"], WorkerProtocol.Current);
 
         Assert.True(selection.Succeeded);
         Assert.Equal("hevc_nvenc", selection.EncoderName);
@@ -119,7 +119,7 @@ public sealed class WorkerEncoderCatalogueTests
     public void A_worker_is_given_another_encoder_for_a_job_intel_qsv_failed()
     {
         var selection = WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.Auto, ["libx265", "hevc_qsv", "hevc_vaapi"], avoidIntelQsv: true);
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_qsv", "hevc_vaapi"], WorkerProtocol.Current, avoidIntelQsv: true);
 
         Assert.Equal("hevc_vaapi", selection.EncoderName);
     }
@@ -128,13 +128,43 @@ public sealed class WorkerEncoderCatalogueTests
     public void An_amd_worker_is_offered_its_proved_amf_encoder_under_auto_and_vendor_amd()
     {
         Assert.Equal("hevc_amf", WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.Auto, ["libx265", "hevc_amf"]).EncoderName);
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_amf"], WorkerProtocol.Current).EncoderName);
 
         Assert.Equal("hevc_amf", WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_amf"]).EncoderName);
+            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_amf"], WorkerProtocol.Current).EncoderName);
 
         // The server naming AMD must not strand a worker that only proved Intel (as with NVENC).
         Assert.Equal("hevc_qsv", WorkerEncoderCatalogue.Select(
-            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_qsv"]).EncoderName);
+            "hevc", EncoderMode.AmdAmf, ["libx265", "hevc_qsv"], WorkerProtocol.Current).EncoderName);
+    }
+
+    [Fact]
+    public void An_amd_worker_on_an_older_protocol_keeps_encoding_with_its_cpu_encoder()
+    {
+        // A sidecar before protocol 16 advertises its proved AMF encoders but refuses AMF's -qp_i and
+        // -qp_p, so it keeps the work it already did rather than being handed jobs it would refuse.
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_amf"], WorkerProtocol.AmfConstantQualityVersion - 1);
+
+        Assert.Equal("libx265", selection.EncoderName);
+    }
+
+    [Fact]
+    public void An_amd_only_worker_on_an_older_protocol_is_not_offered_the_job()
+    {
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["hevc_amf"], WorkerProtocol.AmfConstantQualityVersion - 1);
+
+        Assert.False(selection.Succeeded);
+    }
+
+    [Fact]
+    public void An_amd_av1_encoder_is_not_offered_because_its_quantiser_scale_is_not_the_quality_scale()
+    {
+        // av1_amf reads -qp_i/-qp_p as a 0-255 quantiser index, not the 0-51 scale Optimisarr's
+        // quality number is on, so the same number would mean a different, untested quality.
+        Assert.Empty(WorkerEncoderCatalogue.Describe(["av1_amf"]));
+        Assert.Equal("libsvtav1", WorkerEncoderCatalogue.Select(
+            "av1", EncoderMode.Auto, ["libsvtav1", "av1_amf"], WorkerProtocol.Current).EncoderName);
     }
 }

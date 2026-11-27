@@ -634,6 +634,16 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Amf_decodes_in_software_even_when_hardware_decoding_is_on()
+    {
+        // AMF takes system-memory frames; a decoder that left them on another GPU API would not feed it.
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: "hevc_amf", hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-hwaccel_output_format", args);
+    }
+
+    [Fact]
     public void Amf_uses_cqp_quality_without_a_device_init_or_hwupload()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { Preset = null }, videoEncoder: "hevc_amf");
@@ -1655,6 +1665,8 @@ public sealed class FfmpegCommandBuilderTests
     [InlineData("av1_qsv")]
     [InlineData("hevc_vaapi")]
     [InlineData("hevc_videotoolbox")]
+    [InlineData("hevc_amf")]
+    [InlineData("h264_amf")]
     public void A_keyframe_interval_reaches_every_encoder_family_as_its_gop_length(string encoder)
     {
         var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { KeyframeIntervalFrames = 240 }, videoEncoder: encoder).ToList();

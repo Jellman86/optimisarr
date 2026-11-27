@@ -2369,6 +2369,7 @@ public sealed partial class QueueDispatcher(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     remoteWorker.VideoEncoders,
+                    remoteWorker.ProtocolVersion,
                     sourceBitDepth,
                     job.AvoidIntelQsv)
                 : await ResolveVideoEncoderAsync(
@@ -4577,7 +4578,7 @@ public sealed partial class QueueDispatcher(
         return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth, avoidIntelQsv);
     }
 
-    // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc,
+    // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc, hevc_amf,
     // hevc_videotoolbox); the software libraries (libx265, libx264, libsvtav1) are not. Used to
     // flag GPU-backed work.
     private static bool IsHardwareEncoder(string? encoder) =>
@@ -4585,6 +4586,7 @@ public sealed partial class QueueDispatcher(
         && (encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase)
             || encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase)
             || encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase)
+            || encoder.EndsWith("_amf", StringComparison.OrdinalIgnoreCase)
             || encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase));
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");

@@ -24,7 +24,8 @@ public static class WorkerProtocol
     /// <summary>The newest contract version this build speaks.</summary>
     // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
     // Protocol 15 accepts a library's keyframe interval as a bounded GOP length (-g).
-    public const int Current = 15;
+    // Protocol 16 accepts AMD AMF's constant-quality quantisers (-qp_i, -qp_p).
+    public const int Current = 16;
 
     // Advertise this only once all native runners and strict verification implement the contract.
     public const int PerceptualQualityVersion = 11;
@@ -41,7 +42,11 @@ public static class WorkerProtocol
     /// <summary>Video encodes that cap the distance between keyframes (<c>-g</c>).</summary>
     public const int KeyframeIntervalVersion = 15;
 
+    /// <summary>AMD AMF encodes, whose constant quality is set as <c>-qp_i</c> and <c>-qp_p</c>.</summary>
+    public const int AmfConstantQualityVersion = 16;
+
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
+        arguments.Any(argument => argument is "-qp_i" or "-qp_p") ? AmfConstantQualityVersion :
         arguments.Contains("-g") ? KeyframeIntervalVersion :
         arguments.Any(argument => argument.StartsWith("-b:a:", StringComparison.Ordinal)) ? TrackBitrateVersion :
         kind == MediaKind.Image ? PerceptualQualityVersion : arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5

@@ -985,8 +985,8 @@ public static class FfmpegCommandBuilder
     }
 
     /// <summary>
-    /// The GOP length, as <c>-g</c>, which libx264, libx265, SVT-AV1, NVENC, QSV, VA-API and
-    /// VideoToolbox each read as their maximum keyframe distance. No minimum and no scene-cut
+    /// The GOP length, as <c>-g</c>, which libx264, libx265, SVT-AV1, NVENC, QSV, VA-API,
+    /// VideoToolbox and AMD AMF each read as their maximum keyframe distance. No minimum and no scene-cut
     /// option go with it, so each encoder keeps adding keyframes at cuts as it always has.
     /// </summary>
     internal static void AppendKeyframeInterval(List<string> args, TranscodeSpec spec)

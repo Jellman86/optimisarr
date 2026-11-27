@@ -162,7 +162,7 @@ public static class DiagnosticEventCapture
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static string? Hash(string? text) => text is null ? null : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-    private static string? SafeEncoder(string? value) => value is "libx264" or "libx265" or "libsvtav1" or "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" or "h264_qsv" or "hevc_qsv" or "av1_qsv" or "h264_vaapi" or "hevc_vaapi" or "av1_vaapi" or "h264_videotoolbox" or "hevc_videotoolbox" ? value : null;
+    private static string? SafeEncoder(string? value) => value is "libx264" or "libx265" or "libsvtav1" or "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" or "h264_qsv" or "hevc_qsv" or "av1_qsv" or "h264_vaapi" or "hevc_vaapi" or "av1_vaapi" or "h264_amf" or "hevc_amf" or "av1_amf" or "h264_videotoolbox" or "hevc_videotoolbox" ? value : null;
     private static string? SafeDecoder(string? value) => value is "cuda" or "videotoolbox" or "qsv" or "d3d11va" or "dxva2" or "vaapi" ? value : null;
     private static string? SafeVersion(string? value) => value is { Length: <= 64 } && System.Text.RegularExpressions.Regex.IsMatch(value, @"\A[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,40}| \([0-9]{1,12}\))?\z") ? value : null;
 }

@@ -448,7 +448,9 @@ internal static class WorkerLeaseEndpoints
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == WorkerProtocol.KeyframeIntervalVersion
+                        lastReason = requiredProtocol == WorkerProtocol.AmfConstantQualityVersion
+                            ? "AMD AMF encoding requires an updated sidecar (protocol 16)."
+                            : requiredProtocol == WorkerProtocol.KeyframeIntervalVersion
                             ? "This library's keyframe interval requires an updated sidecar (protocol 15)."
                             : requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
                             ? "Soundtrack quality requires an updated sidecar with exact duration and decoder pre-roll preparation (protocol 14)."
@@ -1505,6 +1507,7 @@ internal static class WorkerLeaseEndpoints
                 targetCodec,
                 encoderMode,
                 capabilities.VideoEncoders,
+                capabilities.ProtocolVersion,
                 avoidIntelQsv: job.AvoidIntelQsv).Succeeded;
     }
 
