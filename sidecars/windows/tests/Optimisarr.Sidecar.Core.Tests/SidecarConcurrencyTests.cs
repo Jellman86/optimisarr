@@ -60,8 +60,8 @@ public sealed class SidecarConcurrencyTests
         var pool = new PerceptualJobResourcePool();
         var admission = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), pool);
 
-        using var first = admission.TryReserve(Assignment(sourceBytes: 10 * GiB));
-        var second = admission.TryReserve(Assignment(sourceBytes: 10 * GiB));
+        using var first = admission.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
+        var second = admission.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
 
         Assert.NotNull(first);
         Assert.Null(second);
@@ -74,9 +74,9 @@ public sealed class SidecarConcurrencyTests
         var pool = new PerceptualJobResourcePool();
         var admission = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), pool);
 
-        admission.TryReserve(Assignment(sourceBytes: 10 * GiB))!.Dispose();
+        admission.TryReserve(Assignment(sourceBytes: 10 * GiB), out _)!.Dispose();
 
-        using var next = admission.TryReserve(Assignment(sourceBytes: 10 * GiB));
+        using var next = admission.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
         Assert.NotNull(next);
     }
 
@@ -87,7 +87,7 @@ public sealed class SidecarConcurrencyTests
         // scratch and to native measurements, not to a job working on an ordinary disk.
         var admission = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), new());
 
-        using var reservation = admission.TryReserve(Assignment(sourceBytes: 10 * GiB));
+        using var reservation = admission.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
         Assert.NotNull(reservation);
     }
 
@@ -98,10 +98,10 @@ public sealed class SidecarConcurrencyTests
         var known = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, 20 * GiB, true), pool);
         var unknown = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, true), new());
 
-        using var reservation = known.TryReserve(Assignment(sourceBytes: 10 * GiB));
+        using var reservation = known.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
         Assert.NotNull(reservation);
         Assert.Equal(5 * GiB, pool.Available(_root, 25 * GiB, 20 * GiB).Memory);
-        Assert.Null(unknown.TryReserve(Assignment(sourceBytes: 10 * GiB)));
+        Assert.Null(unknown.TryReserve(Assignment(sourceBytes: 10 * GiB), out _));
     }
 
     [Fact]
@@ -110,8 +110,8 @@ public sealed class SidecarConcurrencyTests
         var unreadable = new ConcurrentScratchAdmission(_root, _ => null, new());
         var readable = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), new());
 
-        Assert.Null(unreadable.TryReserve(Assignment(sourceBytes: 1 * GiB)));
-        Assert.Null(readable.TryReserve(Assignment(sourceBytes: 0)));
+        Assert.Null(unreadable.TryReserve(Assignment(sourceBytes: 1 * GiB), out _));
+        Assert.Null(readable.TryReserve(Assignment(sourceBytes: 0), out _));
     }
 
     [Fact]
@@ -167,6 +167,91 @@ public sealed class SidecarConcurrencyTests
         await guarded(Pairing(), PerceptualJobFixture.Assignment(), CancellationToken.None);
 
         Assert.True(ran);
+    }
+
+    [Fact]
+    public void A_disk_job_is_not_refused_over_memory_other_jobs_hold()
+    {
+        // A quality-first job holds memory in the same pool. An ordinary disk job charges none, so
+        // whether the machine's memory figure is low or unreadable must not turn it away.
+        var pool = new PerceptualJobResourcePool();
+        using var qualityFirst = pool.TryAcquire(_root, 1 * GiB, 4 * GiB, 25 * GiB, 8 * GiB);
+        Assert.NotNull(qualityFirst);
+        var lowMemory = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, 1 * GiB, false), pool);
+        var unreadableMemory = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), pool);
+
+        using var first = lowMemory.TryReserve(Assignment(sourceBytes: 4 * GiB), out var firstRefusal);
+        using var second = unreadableMemory.TryReserve(Assignment(sourceBytes: 4 * GiB), out var secondRefusal);
+
+        Assert.NotNull(first);
+        Assert.Null(firstRefusal);
+        Assert.NotNull(second);
+        Assert.Null(secondRefusal);
+    }
+
+    [Fact]
+    public void Each_refusal_names_its_actual_cause()
+    {
+        var pool = new PerceptualJobResourcePool();
+        var readable = new ConcurrentScratchAdmission(_root, _ => new(_root, 25 * GiB, null, false), pool);
+        var unreadable = new ConcurrentScratchAdmission(_root, _ => null, new());
+        var small = new ConcurrentScratchAdmission(_root, _ => new(_root, 1 * GiB, null, false), new());
+
+        Assert.Null(readable.TryReserve(Assignment(sourceBytes: 0), out var unsized));
+        Assert.Null(unreadable.TryReserve(Assignment(sourceBytes: 1 * GiB), out var unread));
+        Assert.Null(small.TryReserve(Assignment(sourceBytes: 10 * GiB), out var tooSmall));
+        using var running = readable.TryReserve(Assignment(sourceBytes: 10 * GiB), out _);
+        Assert.Null(readable.TryReserve(Assignment(sourceBytes: 10 * GiB), out var crowded));
+
+        Assert.Equal(ConcurrentScratchAdmission.SizeUnknown, unsized);
+        Assert.Equal(ConcurrentScratchAdmission.SpaceUnreadable, unread);
+        Assert.Equal(ConcurrentScratchAdmission.TooLittleSpace, tooSmall);
+        Assert.Equal(ConcurrentScratchAdmission.OtherJobsHoldSpace, crowded);
+        Assert.Equal(4, new[] { unsized, unread, tooSmall, crowded }.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task A_handed_back_job_reports_why()
+    {
+        var admission = new ConcurrentScratchAdmission(_root, _ => null, new());
+        var guarded = admission.Guard(
+            (_, assignment, _) => Task.FromResult(new JobOutcome(assignment.JobId, true, "done")),
+            (_, _, _) => Task.CompletedTask);
+
+        var outcome = await guarded(Pairing(), Assignment(sourceBytes: 1 * GiB), CancellationToken.None);
+
+        Assert.Equal(ConcurrentScratchAdmission.SpaceUnreadable, outcome.Detail);
+    }
+
+    [Fact]
+    public async Task One_job_at_a_time_runs_the_job_as_given()
+    {
+        // The path every Windows worker has run so far: no extra hold, so nothing it accepted
+        // before can now be handed back.
+        Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> run =
+            (_, assignment, _) => Task.FromResult(new JobOutcome(assignment.JobId, true, "done"));
+
+        var chosen = ConcurrentScratchAdmission.ForConcurrency(1, _root, run,
+            (_, _, _) => throw new InvalidOperationException("Nothing should be handed back."), _ => null, new());
+
+        Assert.Same(run, chosen);
+        Assert.True((await chosen(Pairing(), Assignment(sourceBytes: 1 * GiB), CancellationToken.None)).Delivered);
+    }
+
+    [Fact]
+    public async Task More_than_one_job_at_a_time_holds_each_jobs_working_space()
+    {
+        var released = 0;
+        var ran = false;
+        var chosen = ConcurrentScratchAdmission.ForConcurrency(2, _root,
+            (_, assignment, _) => { ran = true; return Task.FromResult(new JobOutcome(assignment.JobId, true, "done")); },
+            (_, _, _) => { released++; return Task.CompletedTask; }, _ => null, new());
+
+        var outcome = await chosen(Pairing(), Assignment(sourceBytes: 1 * GiB), CancellationToken.None);
+
+        Assert.False(ran);
+        Assert.Equal(1, released);
+        Assert.True(outcome.CapacityBlocked);
     }
 
     private static Assignment Assignment(long sourceBytes) => new(

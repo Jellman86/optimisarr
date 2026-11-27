@@ -413,7 +413,8 @@ public sealed class WorkerHeartbeatEndpointTests
         Assert.Equal(0.42, gpu);
 
         // One figure without the other is a normal state: a worker with no readable accelerator
-        // still knows its CPU.
+        // still knows its CPU. A worker that read its CPU but not its GPU is saying the GPU cannot
+        // be read now, so the old GPU figure goes rather than showing that load for ever.
         using var cpuOnly = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
         {
             freeScratchBytes = 1024L,
@@ -423,7 +424,7 @@ public sealed class WorkerHeartbeatEndpointTests
         cpuOnly.EnsureSuccessStatusCode();
         (cpu, gpu) = await ReportedLoad(admin, workerId);
         Assert.Equal(0.1, cpu);
-        Assert.Equal(0.42, gpu);
+        Assert.Null(gpu);
     }
 
     [Fact]

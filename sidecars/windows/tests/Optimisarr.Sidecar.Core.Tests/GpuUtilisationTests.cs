@@ -183,10 +183,115 @@ public sealed class GpuUtilisationTests
         Assert.Equal(0.3, sampler.Sample()!.GpuBusyFraction);
     }
 
+    [Fact]
+    public void A_caller_that_asks_only_every_30_seconds_still_gets_a_figure()
+    {
+        // Check-ins come every 30 s and lease renewals about every 15 s. Refreshing only when
+        // asked would hand each of them a figure older than the 15 s cutoff, so always nothing.
+        var clock = new ManualClock();
+        var pending = new Queue<Action>();
+        var reads = 0;
+        using var reading = new BackgroundGpuReading(() => { reads++; return 0.6; }, clock, start: pending.Enqueue);
+
+        Assert.Null(reading.Current());
+        for (var check = 0; check < 4; check++)
+        {
+            for (var second = 0; second < 30; second++)
+            {
+                // Each background read finishes within the second it was started in.
+                while (pending.TryDequeue(out var work)) work();
+                clock.Advance(TimeSpan.FromSeconds(1));
+            }
+            while (pending.TryDequeue(out var work)) work();
+
+            Assert.Equal(0.6, reading.Current());
+        }
+        Assert.True(reads >= 4 * 30 / 5, $"expected a read every five seconds, got {reads}");
+    }
+
+    [Fact]
+    public void Reading_stops_once_nobody_has_asked_for_two_minutes_and_resumes_when_asked()
+    {
+        var clock = new ManualClock();
+        var reads = 0;
+        using var reading = new BackgroundGpuReading(() => { reads++; return 0.2; }, clock, start: work => work());
+
+        reading.Current();
+        clock.Advance(TimeSpan.FromMinutes(10));
+        var readsWhileIdle = reads;
+        clock.Advance(TimeSpan.FromMinutes(10));
+
+        Assert.True(readsWhileIdle <= 2 * 60 / 5 + 2, $"kept reading for nobody: {readsWhileIdle} reads");
+        Assert.Equal(readsWhileIdle, reads);
+        Assert.Equal(0, clock.ActiveTimers);
+
+        Assert.Equal(0.2, reading.Current());
+        Assert.Equal(1, clock.ActiveTimers);
+    }
+
+    [Fact]
+    public void Disposing_stops_the_background_reads()
+    {
+        var clock = new ManualClock();
+        var reads = 0;
+        var reading = new BackgroundGpuReading(() => { reads++; return 0.2; }, clock, start: work => work());
+
+        reading.Current();
+        reading.Dispose();
+        var readsAtDisposal = reads;
+        clock.Advance(TimeSpan.FromMinutes(1));
+        reading.Current();
+
+        Assert.Equal(readsAtDisposal, reads);
+        Assert.Equal(0, clock.ActiveTimers);
+    }
+
+    /// <summary>
+    /// A clock whose timers fire only as <see cref="Advance"/> passes their due time, so a
+    /// refresh cadence can be walked step by step without real time passing.
+    /// </summary>
     private sealed class ManualClock : TimeProvider
     {
+        private readonly List<ManualTimer> _timers = [];
         private DateTimeOffset _now = new(2026, 11, 27, 12, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => _now;
-        public void Advance(TimeSpan by) => _now += by;
+        public int ActiveTimers => _timers.Count(timer => timer.Due is not null);
+
+        public void Advance(TimeSpan by)
+        {
+            var target = _now + by;
+            while (_timers.Where(timer => timer.Due <= target).MinBy(timer => timer.Due) is { } next)
+            {
+                _now = next.Due!.Value;
+                next.Due = next.Period > TimeSpan.Zero ? _now + next.Period : null;
+                next.Fire();
+            }
+            _now = target;
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(this, () => callback(state));
+            timer.Change(dueTime, period);
+            _timers.Add(timer);
+            return timer;
+        }
+
+        private sealed class ManualTimer(ManualClock clock, Action fire) : ITimer
+        {
+            public DateTimeOffset? Due { get; set; }
+            public TimeSpan Period { get; private set; }
+            public void Fire() => fire();
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                Due = dueTime == Timeout.InfiniteTimeSpan ? null : clock._now + dueTime;
+                Period = period == Timeout.InfiniteTimeSpan ? TimeSpan.Zero : period;
+                return true;
+            }
+
+            public void Dispose() => Due = null;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
     }
 }

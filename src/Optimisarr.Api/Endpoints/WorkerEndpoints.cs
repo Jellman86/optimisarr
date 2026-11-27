@@ -566,11 +566,14 @@ internal static class WorkerEndpoints
     }
 
     /// <summary>
-    /// Stores whichever load figures the worker actually sent. Silence leaves the previous reading
-    /// alone rather than blanking it: a sidecar that could not read its counters this once has not
-    /// stopped being busy, and an older one that never reports must not clear what a newer one did.
-    /// Out-of-range values are dropped rather than clamped, since a figure outside 0-1 means the
-    /// sender is confused and guessing on its behalf would hide that.
+    /// Stores whichever load figures the worker actually sent. A report with no figures leaves the
+    /// previous reading alone rather than blanking it: a sidecar that could not read its counters
+    /// this once has not stopped being busy, and an older one that never reports must not clear
+    /// what a newer one did. A report with a CPU figure but no GPU one does clear the GPU figure:
+    /// that worker is measuring and cannot read its GPU now, and keeping the old number would show
+    /// a load from whenever it last could, for ever. Out-of-range values are dropped rather than
+    /// clamped, since a figure outside 0-1 means the sender is confused and guessing on its behalf
+    /// would hide that.
     /// </summary>
     internal static void RecordLoad(Worker worker, double? cpu, double? gpu)
     {
@@ -584,6 +587,10 @@ internal static class WorkerEndpoints
         {
             worker.GpuBusyFraction = gpuValue;
             recorded = true;
+        }
+        else if (recorded)
+        {
+            worker.GpuBusyFraction = null;
         }
         if (recorded)
         {

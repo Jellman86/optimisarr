@@ -103,7 +103,14 @@ public static class Program
         builder.Services.AddHostedService<SidecarWorker>();
 
         using var host = builder.Build();
-        await host.RunAsync();
+        try
+        {
+            await host.RunAsync();
+        }
+        finally
+        {
+            BackgroundGpuReading.Shared.Dispose();
+        }
         return 0;
     }
 
@@ -362,13 +369,6 @@ public static class Program
             }
             finally { monitor?.Remove(assignment.JobId); }
         };
-        // One job at a time keeps the path every Windows worker has run so far. More than one
-        // must hold each job's working space, or jobs that each fit could together overfill it.
-        if (concurrency > 1)
-        {
-            runAssignment = new ConcurrentScratchAdmission(scratch).Guard(runAssignment, client.ReleaseForCapacityAsync);
-        }
-
         return new SidecarSession(
             client,
             new DpapiCredentialStore(),
@@ -377,6 +377,6 @@ public static class Program
             delay: Task.Delay,
             report: report,
             refreshCapabilities: cap => NativeWorkerResources.Refresh(cap, scratch),
-            runJob: runAssignment);
+            runJob: ConcurrentScratchAdmission.ForConcurrency(concurrency, scratch, runAssignment, client.ReleaseForCapacityAsync));
     }
 }

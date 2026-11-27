@@ -80,8 +80,9 @@ verification.
 **GPU load** comes from the Windows `GPU Engine` performance counters, the source Task Manager
 uses, so AMD and Intel GPUs report it as well as NVIDIA. The figure is the busiest encode, decode,
 video-processing, 3D, compute or copy engine on any GPU in the machine, including work by other
-programs; it is not split per GPU. It is read in the background every five seconds and shows a
-dash when it cannot be read or is more than fifteen seconds old. `nvidia-smi` is used only where
+programs; it is not split per GPU. It is read in the background every five seconds while the
+worker is checking in or the tray is open, and shows a dash when it cannot be read or is more
+than fifteen seconds old. `nvidia-smi` is used only where
 the counters are unavailable. The figure is for display; it does not decide which jobs a worker
 is offered.
 
@@ -100,10 +101,14 @@ writes a warning to the Event Log. Remove the variable and restart to return to 
 
 The worker reports this number to the server as its job slots. It does not assign jobs to a
 particular GPU: two jobs use whichever encoders their libraries chose, so they can share one
-GPU. Allow for each job's CPU, GPU and working space. While more than one job is allowed, each job
-holds the working space the server estimated for it (one and a half times the source) until it
-finishes; quality-first jobs already reserve their own larger workspace. A job that would not fit
-beside the others is handed back to the server without being fetched.
+GPU. Allow for each job's CPU, GPU and working space. Older NVIDIA consumer drivers cap how many
+NVENC encodes can run at once, so keep the number within what your driver allows. The worker takes
+at most one new job per check-in (every 30 seconds), so each one is offered against free space that
+already counts the jobs started before it. While more than one job is allowed, each job holds the
+working space the server estimated for it (one and a half times the source) until it finishes;
+quality-first jobs already reserve their own larger workspace. A job that would not fit beside the
+others is handed back to the server without being fetched, and the worker says which: other
+running jobs, too little free space, space that could not be read, or a job of unknown size.
 
 ## Capabilities
 
