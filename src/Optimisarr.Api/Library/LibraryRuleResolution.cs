@@ -69,6 +69,7 @@ internal static class LibraryRuleResolution
             OptimiseDolbyVision = library.OptimiseDolbyVision,
             DeinterlaceVideo = library.DeinterlaceVideo,
             NoiseReduction = library.NoiseReduction,
+            KeyframeIntervalSeconds = library.KeyframeIntervalSeconds,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
             ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
             SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),

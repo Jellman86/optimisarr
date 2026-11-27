@@ -988,6 +988,51 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_protocol_14_worker_is_not_offered_a_keyframe_interval_and_the_job_waits()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous GOP", 1, ["libx265"], [], protocolMaximum: 14);
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(jobId));
+        using var check = _api.Services.CreateScope();
+        var workerId = await WorkerIdNamed("Previous GOP");
+        var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
+        Assert.Contains("protocol 15", savedWorker.LastProblem);
+    }
+
+    [Fact]
+    public async Task A_current_worker_receives_the_keyframe_interval_in_frames_of_the_source_rate()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Current GOP", 1, ["libx265"], []);
+        var jobId = await QueueAJob();
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        // The fixture probe reports 24000/1001, so ten seconds is 240 frames.
+        Assert.Equal("240", arguments[arguments.IndexOf("-g") + 1]);
+    }
+
+    private async Task SetKeyframeInterval(int jobId, int seconds)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var libraryId = await db.Jobs.Where(j => j.Id == jobId).Select(j => j.LibraryId).SingleAsync();
+        var library = await db.Libraries.SingleAsync(l => l.Id == libraryId);
+        library.KeyframeIntervalSeconds = seconds;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task A_worker_job_keeps_the_servers_soundtrack_bitrate_evidence()
     {
         // The server chooses a worker job's soundtrack bitrates, so it must also keep why. Without

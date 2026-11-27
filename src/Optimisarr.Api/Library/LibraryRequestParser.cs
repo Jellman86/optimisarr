@@ -105,7 +105,9 @@ internal readonly record struct ParsedLibrary(
     double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds,
     bool TrimSilenceWithoutConverting = false,
     double? MinimumTrackRemovalSavingPercent = null,
-    long? MinimumTrackRemovalSavingBytes = null);
+    long? MinimumTrackRemovalSavingBytes = null,
+    // Null keeps the encoder's own keyframe interval.
+    int? KeyframeIntervalSeconds = null);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -331,6 +333,12 @@ internal static class LibraryRequestParser
         if (request.MaxFrameRate is { } frameRateCap && (frameRateCap < 24 || frameRateCap > 120))
         {
             error = "Frame-rate cap must be between 24 and 120 fps, or blank for none.";
+            return false;
+        }
+
+        if (request.KeyframeIntervalSeconds is { } keyframeSeconds && !KeyframeInterval.IsValidSeconds(keyframeSeconds))
+        {
+            error = $"Keyframe interval must be between {KeyframeInterval.MinimumSeconds} and {KeyframeInterval.MaximumSeconds} seconds, or blank for the encoder default.";
             return false;
         }
 
@@ -723,7 +731,8 @@ internal static class LibraryRequestParser
             request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds,
             request.TrimSilenceWithoutConverting ?? false,
             request.MinimumTrackRemovalSavingPercent,
-            request.MinimumTrackRemovalSavingBytes);
+            request.MinimumTrackRemovalSavingBytes,
+            request.KeyframeIntervalSeconds);
         error = null;
         return true;
     }

@@ -15,6 +15,7 @@ public enum AssignmentCommandError: Error, Equatable, Sendable {
     case unknownHardwareDecoder(String)
     case invalidColourMetadata(option: String)
     case invalidSoundtrackBitrate(String)
+    case invalidKeyframeInterval(String)
 }
 
 /// The server's argument array, checked before this machine will run it.
@@ -43,8 +44,12 @@ public struct AssignmentCommand: Sendable, Equatable {
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0", "-itsoffset",
-        "-ss", "-t", "-movflags", "-hwaccel", "-color_range:v:0", "-bsf:v:0",
+        "-ss", "-t", "-movflags", "-hwaccel", "-color_range:v:0", "-bsf:v:0", "-g",
     ]
+
+    /// The largest keyframe interval the server sends, in frames: twenty seconds at the fastest
+    /// rate it probes. Mirrors `KeyframeInterval.MaximumFrames`.
+    static let maximumGopLength = 20_000
 
     /// The one hardware decoder this platform has. The server names it only when this machine
     /// proved it by a real decode; anything else would be a command for some other machine.
@@ -84,6 +89,8 @@ public struct AssignmentCommand: Sendable, Equatable {
             let value = body[index + 1]
             if isIndexedAudioBitrate(token) {
                 guard isAudioBitrateValue(value) else { throw AssignmentCommandError.invalidSoundtrackBitrate(value) }
+            } else if token == "-g" {
+                guard isGopLength(value) else { throw AssignmentCommandError.invalidKeyframeInterval(value) }
             } else if token == "-itsoffset" {
                 guard let offset = Double(value), offset.isFinite, offset >= 0, offset <= 86400 else { throw AssignmentCommandError.unknownOption(value) }
             } else if token == "-color_range:v:0" {
@@ -132,6 +139,12 @@ public struct AssignmentCommand: Sendable, Equatable {
         let suffix = String(token.dropFirst(5))
         guard let index = Int(suffix), (0..<8).contains(index) else { return false }
         return suffix == String(index)
+    }
+
+    // A keyframe interval (protocol 15): a canonical whole number of frames.
+    private static func isGopLength(_ value: String) -> Bool {
+        guard let frames = Int(value), (1...maximumGopLength).contains(frames) else { return false }
+        return value == String(frames)
     }
 
     private static func isAudioBitrateValue(_ value: String) -> Bool {

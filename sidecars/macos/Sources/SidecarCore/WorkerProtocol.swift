@@ -10,7 +10,8 @@ public enum WorkerProtocol {
     public static let minimum = 1
     // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
     // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
-    public static let maximum = 14
+    // Protocol 15 accepts a bounded keyframe interval (-g).
+    public static let maximum = 15
 }
 
 /// What this machine has *proved* it can do.

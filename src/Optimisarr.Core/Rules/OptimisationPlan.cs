@@ -21,7 +21,9 @@ public sealed record PlannedPicture(
     bool Deinterlace,
     bool CropBlackBars,
     NoiseReduction NoiseReduction,
-    bool Upscales);
+    bool Upscales,
+    // Seconds, as the library sets it; the job counts it in frames once it has probed the rate.
+    int? KeyframeIntervalSeconds = null);
 
 /// <summary>What happens to an image. <see cref="RecompressesLossy"/> is true when the source is
 /// already a compressed image, so it loses quality a second time.</summary>
@@ -167,7 +169,8 @@ public static class OptimisationPlanner
                 VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, media.FieldOrder),
                 rules.CropBlackBars,
                 rules.NoiseReduction,
-                upscales)
+                upscales,
+                rules.KeyframeIntervalSeconds)
             : null;
 
         return new OptimisationPlan(

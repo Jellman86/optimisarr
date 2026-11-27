@@ -1370,7 +1370,7 @@ The release check closes that gap:
     on the server only. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p measured
     about 6 seconds per frame, so practical use needs a fast GPU. Workers often have one, for
     example a desktop NVIDIA card.
-    - **Protocol:** a super-resolution assignment kind (protocol 15) carrying the frozen engine
+    - **Protocol:** a super-resolution assignment kind (a protocol after 15) carrying the frozen engine
       options and expected upscaled size. Workers advertise the capability only after a real
       sample run proves the engine, models and Vulkan device. Older workers never receive these
       jobs, and a worker-only library waits rather than falling back silently.

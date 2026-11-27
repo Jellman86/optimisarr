@@ -596,7 +596,9 @@ internal sealed record SaveLibraryRequest(
     string? NoiseReduction = null,
     // Null sets no minimum, so a client that leaves these out saves a library without one.
     double? MinimumTrackRemovalSavingPercent = null,
-    long? MinimumTrackRemovalSavingBytes = null);
+    long? MinimumTrackRemovalSavingBytes = null,
+    // Null keeps the encoder's own keyframe interval, so a client that leaves it out saves none.
+    int? KeyframeIntervalSeconds = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -707,7 +709,8 @@ internal sealed record LibraryDto(
     double AudioSilenceMinimumSeconds,
     bool TrimSilenceWithoutConverting,
     double? MinimumTrackRemovalSavingPercent,
-    long? MinimumTrackRemovalSavingBytes)
+    long? MinimumTrackRemovalSavingBytes,
+    int? KeyframeIntervalSeconds)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -807,7 +810,8 @@ internal sealed record LibraryDto(
         library.AudioSilenceMinimumSeconds,
         library.TrimSilenceWithoutConverting,
         library.MinimumTrackRemovalSavingPercent,
-        library.MinimumTrackRemovalSavingBytes);
+        library.MinimumTrackRemovalSavingBytes,
+        library.KeyframeIntervalSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

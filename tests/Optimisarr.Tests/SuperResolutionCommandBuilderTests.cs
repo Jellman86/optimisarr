@@ -296,4 +296,16 @@ public sealed class SuperResolutionCommandBuilderTests
         Assert.Equal(new[] { "-map_metadata", "1" }, Pair(args, "-map_metadata"));
         Assert.Equal(new[] { "-map_chapters", "1" }, Pair(args, "-map_chapters"));
     }
+
+    [Fact]
+    public void An_upscale_keeps_the_library_keyframe_interval()
+    {
+        var args = Encoder(Spec() with { KeyframeIntervalFrames = 240 });
+
+        Assert.Equal("240", After(args, "-g"));
+    }
+
+    [Fact]
+    public void An_upscale_without_a_keyframe_interval_keeps_the_encoder_default() =>
+        Assert.DoesNotContain("-g", Encoder(Spec()));
 }

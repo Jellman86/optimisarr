@@ -107,6 +107,45 @@ public sealed class AssignmentCommandTests
         Assert.NotNull(Refuse(["-i", "{{input}}", "-c:a", "aac", token, value, "{{output}}.mkv"]));
     }
 
+    [Theory]
+    [InlineData("libx265")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("av1_qsv")]
+    public void A_server_command_with_a_keyframe_interval_fits_the_advertised_contract(string encoder)
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("{{input}}", "{{output}}.mkv", "hevc", 22, "medium", false)
+            { KeyframeIntervalFrames = 240 };
+        var arguments = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, videoEncoder: encoder);
+
+        Assert.Contains("-g", arguments);
+        Assert.Null(Refuse(arguments));
+        Assert.True(WorkerProtocol.Maximum >= Optimisarr.Core.Workers.WorkerProtocol.MinimumForEncodeCommand(arguments));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("240")]
+    [InlineData("20000")]
+    public void A_gop_length_within_the_server_bounds_is_accepted(string frames)
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:v:0", "libx265", "-g", frames, "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("20001")]
+    [InlineData("0240")]
+    [InlineData("+240")]
+    [InlineData("240.0")]
+    [InlineData("1e3")]
+    [InlineData("240/x")]
+    public void A_gop_length_outside_the_server_bounds_is_refused(string frames)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", "-c:v:0", "libx265", "-g", frames, "{{output}}.mkv"]));
+    }
+
     [Fact]
     public void The_command_the_server_actually_sends_is_accepted()
     {

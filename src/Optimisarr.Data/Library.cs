@@ -99,6 +99,12 @@ public sealed class Library
     /// <summary>How strongly video re-encodes reduce noise. Off by default.</summary>
     public NoiseReduction NoiseReduction { get; set; }
 
+    /// <summary>
+    /// The longest gap between keyframes in a video re-encode, in whole seconds, or null for the
+    /// encoder's own default. Null on upgrade, so existing libraries encode exactly as before.
+    /// </summary>
+    public int? KeyframeIntervalSeconds { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 

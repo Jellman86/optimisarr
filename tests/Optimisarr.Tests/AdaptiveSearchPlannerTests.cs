@@ -77,6 +77,24 @@ public sealed class AdaptiveSearchPlannerTests
     }
 
     [Fact]
+    public void A_sample_is_encoded_with_the_same_keyframe_interval_as_the_final_encode()
+    {
+        // The search judges candidates by size and quality; a different GOP from the final encode
+        // would bias both.
+        var step = AdaptiveSearchPlanner.Plan(24, Spec() with { KeyframeIntervalFrames = 240 }, videoEncoder: "hevc_videotoolbox",
+            outputExtension: ".mkv", Windows, VerificationPolicy.Default with { QualityGateEnabled = true, ClipVmafEnabled = true },
+            referenceWidth: 1920, referenceHeight: 1080, referenceIsHdr: false, hdrConvertedToSdr: false,
+            sourceVideoDurationSeconds: 1389.638, referenceFrameRate: 24000d / 1001d, referenceContainerLeadSeconds: 0.021,
+            crop: null, decimation: null);
+
+        foreach (var sample in step!.SampleCommands)
+        {
+            var command = sample.ToList();
+            Assert.Equal("240", command[command.IndexOf("-g") + 1]);
+        }
+    }
+
+    [Fact]
     public void Each_window_is_encoded_as_a_clip_of_video_alone()
     {
         var step = Plan();

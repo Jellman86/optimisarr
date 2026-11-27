@@ -185,6 +185,7 @@ internal static class LibraryEndpoints
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
                 MinimumTrackRemovalSavingPercent = parsed.MinimumTrackRemovalSavingPercent,
                 MinimumTrackRemovalSavingBytes = parsed.MinimumTrackRemovalSavingBytes,
+                KeyframeIntervalSeconds = parsed.KeyframeIntervalSeconds,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
                 TargetImageFormat = parsed.TargetImageFormat,
                 ImageQuality = parsed.ImageQuality,
@@ -340,6 +341,7 @@ internal static class LibraryEndpoints
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.MinimumTrackRemovalSavingPercent = parsed.MinimumTrackRemovalSavingPercent;
             library.MinimumTrackRemovalSavingBytes = parsed.MinimumTrackRemovalSavingBytes;
+            library.KeyframeIntervalSeconds = parsed.KeyframeIntervalSeconds;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
             library.TargetImageFormat = parsed.TargetImageFormat;
             library.ImageQuality = parsed.ImageQuality;

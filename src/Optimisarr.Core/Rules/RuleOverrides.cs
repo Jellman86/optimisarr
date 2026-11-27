@@ -21,6 +21,7 @@ public sealed record RuleOverrides
     public bool? OptimiseDolbyVision { get; init; }
     public bool? DeinterlaceVideo { get; init; }
     public Queue.NoiseReduction? NoiseReduction { get; init; }
+    public int? KeyframeIntervalSeconds { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public bool? ExcludeHardLinkedFiles { get; init; }
     public IReadOnlyList<string>? SkipSourceCodecs { get; init; }

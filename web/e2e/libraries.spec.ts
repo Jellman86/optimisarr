@@ -1838,6 +1838,40 @@ test('a library can choose how strongly to reduce noise, is off until it does, a
   expect((await saved).postDataJSON()).toMatchObject({ noiseReduction: 'Light' })
 })
 
+test('a keyframe interval is the encoder default until a library sets whole seconds within the bounds', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/video')
+  const seconds = page.getByLabel('Keyframe interval', { exact: true })
+  await expect(seconds).toHaveValue('')
+  await expect(seconds).toHaveAttribute('placeholder', 'Encoder default')
+  await expect(row(page, 'Keyframe interval')).toContainText('Longest gap between seek points. Longer is slightly smaller, slower to seek.')
+
+  await seconds.fill('25')
+  await expect(row(page, 'Keyframe interval').getByRole('alert')).toHaveText(
+    'Keyframe interval must be a whole number of seconds from 1 to 20, or blank for the encoder default.')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+
+  await seconds.fill('10')
+  await expect(row(page, 'Keyframe interval').getByRole('alert')).toHaveCount(0)
+  // It moves where a player can seek, not what the picture shows.
+  await expect(row(page, 'Keyframe interval').locator('[data-setting-tag]')).toHaveCount(0)
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ keyframeIntervalSeconds: 10 })
+})
+
+test('clearing a keyframe interval saves the encoder default', async ({ page }) => {
+  await mockLibraries(page, { ...library, keyframeIntervalSeconds: 10 })
+  await page.goto('/#/libraries/1/configure/video')
+  const seconds = page.getByLabel('Keyframe interval', { exact: true })
+  await expect(seconds).toHaveValue('10')
+
+  await seconds.fill('')
+  const saved = savedRequest(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ keyframeIntervalSeconds: null })
+})
+
 test('interlaced and Dolby Vision files are left alone until a library asks, in plain choices', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/video')
