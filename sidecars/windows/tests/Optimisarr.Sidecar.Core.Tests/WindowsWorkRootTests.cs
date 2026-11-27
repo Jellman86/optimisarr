@@ -164,14 +164,19 @@ public sealed class WindowsWorkRootTests : IDisposable
         var logs = Directory.CreateDirectory(Path.Combine(job, "logs")).FullName;
         File.WriteAllText(Path.Combine(logs, "vmaf.json"), "{}");
         using var folder = WindowsScratchEntry.TryOpen(job)!;
-        using var held = folder.Open("logs");
 
-        // Holding it does not stop another account emptying it and converting it in place.
-        File.Delete(Path.Combine(logs, "vmaf.json"));
-        WindowsLinks.ConvertToJunction(logs, outside);
+        // A POSIX-style delete takes the name away when the deleting handle closes, as the walk
+        // closes each child before removing its parent, so the junction is checked after that.
+        using (var held = folder.Open("logs"))
+        {
+            // Holding it does not stop another account emptying it and converting it in place.
+            File.Delete(Path.Combine(logs, "vmaf.json"));
+            WindowsLinks.ConvertToJunction(logs, outside);
 
-        Assert.Empty(held.Names());
-        ScratchTree.Delete(held);
+            Assert.Empty(held.Names());
+            ScratchTree.Delete(held);
+        }
+
         Assert.True(File.Exists(Path.Combine(outside, "precious")));
         Assert.False(Directory.Exists(logs));
     }
