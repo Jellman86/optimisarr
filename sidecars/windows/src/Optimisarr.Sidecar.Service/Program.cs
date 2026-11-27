@@ -1,6 +1,4 @@
 using System.Runtime.Versioning;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -61,8 +59,16 @@ public static class Program
 
     public static async Task PairForTrayAsync(string address, string pin, CancellationToken token)
     {
-        var session = Build(out _);
-        await session.PairAsync(address, pin, token);
+        var session = Build(ScratchLocation, OpenWorkFolder(ScratchLocation, mayChange: false, notice: null), out _);
+        try
+        {
+            await session.PairAsync(address, pin, token);
+        }
+        finally
+        {
+            // The tray keeps running after pairing; it must not go on holding the service's folder.
+            ReleaseWorkFolder();
+        }
     }
 
     private static bool Has(string[] args, string flag) =>
@@ -95,13 +101,20 @@ public static class Program
             // record somewhere, or a machine that hands every job straight back looks identical to
             // one that is simply never offered any.
             var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Optimisarr.Sidecar");
+            Action<string> warn = line => logger.LogWarning("{Line}", line);
+            // Only the service creates the work folder or resets its access: it is the account
+            // that will own it, and the one that has to.
+            var workFolder = OpenWorkFolder(ScratchLocation, mayChange: true, notice: warn);
             var session = Build(
+                ScratchLocation,
+                workFolder,
                 out Func<CancellationToken, Task<SidecarCapabilities>> _,
                 report: status => Log(logger, status),
                 reportJob: line => logger.LogInformation("{Line}", line),
                 monitor: services.GetRequiredService<WorkerMonitor>(),
-                warn: line => logger.LogWarning("{Line}", line));
-            logger.Log(ScratchLocation.Usable ? LogLevel.Information : LogLevel.Warning, "{Line}", DescribeScratchLocation());
+                warn: warn);
+            var (line, sound) = DescribeScratchLocationAtStart();
+            logger.Log(sound ? LogLevel.Information : LogLevel.Warning, "{Line}", line);
             return session;
         });
         builder.Services.AddHostedService<SidecarWorker>();
@@ -114,6 +127,7 @@ public static class Program
         finally
         {
             BackgroundGpuReading.Shared.Dispose();
+            _workRoot?.Dispose();
         }
         return 0;
     }
@@ -155,13 +169,13 @@ public static class Program
             return 2;
         }
 
-        var session = Build(out var probe);
+        var session = Build(ScratchLocation, OpenWorkFolder(ScratchLocation, mayChange: false, notice: Console.Error.WriteLine), out var probe);
         try
         {
             var pairing = await session.PairAsync(serverAddress, pin, cancellationToken);
             var capabilities = await probe(cancellationToken);
             Console.WriteLine($"Paired with {serverAddress} as worker {pairing.WorkerId}.");
-            Console.WriteLine(DescribeScratchLocation());
+            Console.WriteLine(DescribeScratchLocationAtStart().Line);
             // Said plainly at pairing rather than left to be discovered as silence: the server's
             // capability matching is fail-closed, so a machine that proved no encoders is never
             // offered anything and would otherwise look simply ignored.
@@ -186,6 +200,10 @@ public static class Program
             }
             return 1;
         }
+        finally
+        {
+            ReleaseWorkFolder();
+        }
     }
 
     /// <summary>
@@ -200,66 +218,57 @@ public static class Program
         var (configured, problem) = ReadOverrideFile(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "Optimisarr", "Sidecar", WorkLocation.OverrideFileName));
-        return WorkLocation.Resolve(configured, Environment.GetEnvironmentVariable(WorkLocation.EnvironmentVariable), problem);
+        // The machine's value only, wherever this runs: a pairing prompt inherits its user's own
+        // environment, and the service must not learn a location from whoever happened to pair it.
+        return WorkLocation.Resolve(configured,
+            Environment.GetEnvironmentVariable(WorkLocation.EnvironmentVariable, EnvironmentVariableTarget.Machine), problem);
     });
 
-    /// <summary>Rights that would let an account change the override file or who may change it.</summary>
-    private const FileSystemRights Changes = FileSystemRights.WriteData | FileSystemRights.AppendData
-        | FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership
-        | (FileSystemRights)0x40000000 /* GENERIC_WRITE */ | (FileSystemRights)0x10000000 /* GENERIC_ALL */;
+    /// <summary>The work folder as this process holds it; null when there is no usable location.</summary>
+    private static WindowsWorkRoot? _workRoot;
 
     /// <summary>
-    /// The override file's one line, or why it must not be used. Absent means not configured; any
-    /// other failure is a problem, never a silent fall-through to the next setting.
+    /// Checks the work folder and holds it for the life of the process: see <see cref="WindowsWorkRoot"/>.
+    /// Returns the check to repeat before each check-in and each job.
     /// </summary>
-    internal static (string? Configured, string? Problem) ReadOverrideFile(string path)
+    internal static Func<string?> OpenWorkFolder(WorkLocationChoice location, bool mayChange, Action<string>? notice)
     {
-        try
+        if (location.Path is not { } path)
         {
-            if (new FileInfo(path).LinkTarget is not null)
-            {
-                return (null, "The work-location file is a link, so it was not trusted. Replace it with an ordinary file.");
-            }
-
-            // The access is checked on the handle the text is read through, so the file cannot be
-            // swapped between the check and the read.
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            if (stream.Length > WorkLocation.MaximumOverrideFileBytes)
-            {
-                return (null, "The work-location file is far longer than one folder path, so it was not read.");
-            }
-
-            var security = stream.GetAccessControl();
-            var writers = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Where(rule => rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & Changes) != 0)
-                .Select(rule => rule.IdentityReference.Value);
-            if (WorkLocation.OverrideFileTrustProblem(security.GetOwner(typeof(SecurityIdentifier))?.Value, writers) is { } untrusted)
-            {
-                return (null, untrusted);
-            }
-
-            using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
-            return WorkLocation.ReadOverrideText(reader.ReadToEnd());
+            return () => null;
         }
-        catch (Exception missing) when (missing is FileNotFoundException or DirectoryNotFoundException)
-        {
-            return (null, null);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or IdentityNotMappedException)
-        {
-            return (null, $"The work-location file could not be read ({error.Message}).");
-        }
+
+        _workRoot ??= WindowsWorkRoot.Open(path,
+            WorkLocation.AllowsUnprotected(Environment.GetEnvironmentVariable(WorkLocation.AllowUnprotectedVariable, EnvironmentVariableTarget.Machine)),
+            mayChange, notice);
+        return _workRoot.Recheck;
     }
 
-    /// <summary>The tray's free-space figure: none when there is no usable work location.</summary>
-    internal static long FreeScratchBytesNow() =>
-        ScratchLocation.Path is { } scratch ? FreeScratchBytes(scratch) : 0;
+    private static void ReleaseWorkFolder()
+    {
+        _workRoot?.Dispose();
+        _workRoot = null;
+    }
 
-    /// <summary>The start-up line naming where work goes, and whether Windows calls it a RAM disk.</summary>
-    internal static string DescribeScratchLocation() =>
-        WorkLocation.Describe(ScratchLocation,
-            ScratchLocation.Path is { } scratch ? NativeWorkingVolume.Read(scratch, () => null)?.UsesMemory : null);
+    /// <summary>The override file's one line, or why it must not be used: see <see cref="WindowsWorkLocationFile.Read"/>.</summary>
+    internal static (string? Configured, string? Problem) ReadOverrideFile(string path) => WindowsWorkLocationFile.Read(path);
+
+    /// <summary>The tray's free-space figure: none when there is no usable work location or folder.</summary>
+    internal static long FreeScratchBytesNow() =>
+        ScratchLocation.Path is { } scratch && _workRoot is { Problem: null } ? FreeScratchBytes(scratch) : 0;
+
+    /// <summary>
+    /// The start-up line naming where work goes, and whether Windows calls it a RAM disk; and
+    /// whether all is well. A refused location or folder, or a volume whose free space cannot be
+    /// read, is a warning: each means this machine takes no jobs.
+    /// </summary>
+    internal static (string Line, bool Sound) DescribeScratchLocationAtStart()
+    {
+        var location = ScratchLocation;
+        var problem = location.Path is null ? null : _workRoot?.Problem;
+        var memoryBacked = location.Path is { } scratch && problem is null ? NativeWorkingVolume.Read(scratch, () => null)?.UsesMemory : null;
+        return (WorkLocation.Describe(location, memoryBacked, problem), location.Usable && problem is null && memoryBacked is not null);
+    }
 
     /// <summary>
     /// How many jobs this machine takes at once: one unless the machine-wide
@@ -278,7 +287,7 @@ public static class Program
     {
         try
         {
-            Directory.CreateDirectory(scratch);
+            // Only read: the work folder is created, already locked, by the service at start.
             return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(scratch))!).AvailableFreeSpace;
         }
         catch (Exception exception) when (
@@ -379,56 +388,106 @@ public static class Program
         }
     }
 
-    private static SidecarSession Build(
+    /// <summary>
+    /// What a test puts in place of the network, the credential store, the encoder probe, the load
+    /// reading and the wait between check-ins. Production passes none.
+    /// </summary>
+    internal sealed record BuildSeams(
+        SidecarClient Client,
+        ICredentialStore Store,
+        Func<long, int, CancellationToken, Task<SidecarCapabilities>> ProveEncoders,
+        Func<MachineLoad?> Load,
+        Func<TimeSpan, CancellationToken, Task> Delay);
+
+    /// <param name="location">Where work goes, or why it cannot go anywhere.</param>
+    /// <param name="workFolderProblem">The work folder's check, repeated before every check-in and
+    /// job: null while it is sound. Its first refusal is logged, as is its recovery.</param>
+    internal static SidecarSession Build(
+        WorkLocationChoice location,
+        Func<string?> workFolderProblem,
         out Func<CancellationToken, Task<SidecarCapabilities>> probe,
         Action<SessionStatus>? report = null,
         Action<string>? reportJob = null,
         WorkerMonitor? monitor = null,
-        Action<string>? warn = null)
+        Action<string>? warn = null,
+        BuildSeams? seams = null)
     {
+        warn ??= Console.Error.WriteLine;
         var prober = new CapabilityProber(new ProcessCommandRunner());
         // Null when a configured location cannot be used: the worker then reports no working
-        // space and claims nothing, rather than working somewhere nobody chose.
-        var scratch = ScratchLocation.Path;
+        // space and no slots, and claims nothing, rather than working somewhere nobody chose.
+        var scratch = location.Path;
         // Read once: the number offered to the server and the admission guarding it must agree.
         var (concurrency, concurrencyProblem) = ConfiguredConcurrency();
         if (concurrencyProblem is not null)
         {
-            (warn ?? Console.Error.WriteLine)(concurrencyProblem);
+            warn(concurrencyProblem);
         }
 
+        string? lastProblem = null;
+        var gate = new Lock();
+        string? WorkFolderProblem()
+        {
+            var problem = workFolderProblem();
+            lock (gate)
+            {
+                if (problem != lastProblem)
+                {
+                    if (problem is not null) warn($"Work folder {scratch} cannot be used: {problem} No jobs are taken until it is corrected.");
+                    else if (lastProblem is not null) reportJob?.Invoke($"Work folder {scratch} is usable again.");
+                    lastProblem = problem;
+                }
+            }
+            return problem;
+        }
+
+        // The slots the probe proved. Kept apart from the capabilities the session carries forward,
+        // so a refusal that reports none does not outlast the problem that caused it.
+        var provedSlots = 0;
         probe = async token =>
         {
-            var ffmpeg = FindFfmpeg();
-            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, scratch is null ? 0 : FreeScratchBytes(scratch), concurrency, token);
-            if (ffmpeg is not null && scratch is not null)
+            var usable = scratch is not null && WorkFolderProblem() is null;
+            var free = usable ? FreeScratchBytes(scratch!) : 0;
+            SidecarCapabilities proved;
+            if (seams is not null)
             {
-                var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, token);
-                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? concurrency : 0 };
+                proved = await seams.ProveEncoders(free, concurrency, token);
             }
-            return scratch is null ? NativeWorkerResources.Unavailable(proved) : NativeWorkerResources.Refresh(proved, scratch);
+            else
+            {
+                var ffmpeg = FindFfmpeg();
+                proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, free, concurrency, token);
+                if (ffmpeg is not null && usable)
+                {
+                    var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch!, token);
+                    proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? concurrency : 0 };
+                }
+            }
+            provedSlots = proved.MaxConcurrency;
+            return usable ? NativeWorkerResources.Refresh(proved, scratch!) : NativeWorkerResources.Refused(proved);
         };
         var capture = probe;
 
         // One client for control traffic, another for transfers. A whole-video upload must not sit
         // behind the same 30-second timeout as a check-in, and a check-in must not queue behind a
         // 40 GB download on a connection-limited handler.
-        var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        var client = new SidecarClient(control, new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        var client = seams?.Client ?? new SidecarClient(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }, new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "Optimisarr", "Sidecar"), FindFfmpeg(), Path.Combine(Path.GetDirectoryName(FindFfmpeg() ?? "") ?? "", "ffprobe.exe")));
-        var loadSampler = new MachineLoadSampler();
+        var store = seams?.Store ?? new DpapiCredentialStore();
+        Func<MachineLoad?> load = seams?.Load ?? new MachineLoadSampler().Sample;
+        Func<TimeSpan, CancellationToken, Task> delay = seams?.Delay ?? Task.Delay;
 
         if (scratch is null)
         {
             return new SidecarSession(
                 client,
-                new DpapiCredentialStore(),
+                store,
                 capture,
-                load: loadSampler.Sample,
-                delay: Task.Delay,
+                load: load,
+                delay: delay,
                 report: report,
-                refreshCapabilities: NativeWorkerResources.Unavailable);
+                refreshCapabilities: NativeWorkerResources.Refused);
         }
 
         var runner = new JobRunner(
@@ -437,7 +496,7 @@ public static class Program
             new ProcessTranscoder(),
             FindFfmpeg() ?? "ffmpeg.exe",
             scratch,
-            loadSampler.Sample,
+            load,
             reportJob,
             observe: monitor is null ? null : monitor.Observe,
             wantsPreview: monitor is null ? null : () => monitor.WantsPreviews,
@@ -453,14 +512,31 @@ public static class Program
             }
             finally { monitor?.Remove(assignment.JobId); }
         };
+        var admitted = ConcurrentScratchAdmission.ForConcurrency(concurrency, scratch, runAssignment, client.ReleaseForCapacityAsync);
+
+        // Checked again as each job arrives, not only at the last check-in: the folder is about to
+        // be written through with SYSTEM's rights, so it must be sound now.
+        Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> runJob = async (pairing, assignment, token) =>
+        {
+            if (WorkFolderProblem() is { } problem)
+            {
+                await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, Delivered: false, problem, CapacityBlocked: true);
+            }
+
+            return await admitted(pairing, assignment, token);
+        };
+
         return new SidecarSession(
             client,
-            new DpapiCredentialStore(),
+            store,
             capture,
-            load: loadSampler.Sample,
-            delay: Task.Delay,
+            load: load,
+            delay: delay,
             report: report,
-            refreshCapabilities: cap => NativeWorkerResources.Refresh(cap, scratch),
-            runJob: ConcurrentScratchAdmission.ForConcurrency(concurrency, scratch, runAssignment, client.ReleaseForCapacityAsync));
+            refreshCapabilities: capabilities => WorkFolderProblem() is null
+                ? NativeWorkerResources.Refresh(capabilities with { MaxConcurrency = provedSlots }, scratch)
+                : NativeWorkerResources.Refused(capabilities),
+            runJob: runJob);
     }
 }

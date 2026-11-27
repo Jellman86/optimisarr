@@ -14,6 +14,10 @@ public sealed class JobRunnerTests : IDisposable
     private readonly string _scratch = Path.Combine(
         Path.GetTempPath(), "optimisarr-jobtests", Guid.NewGuid().ToString("N"));
 
+    // The work folder exists before any job does: the service creates and checks it at start, and
+    // a job's own folder is only ever created inside it.
+    public JobRunnerTests() => Directory.CreateDirectory(_scratch);
+
     private static Assignment Assignment() => new(
         LeaseId: Guid.NewGuid(),
         JobId: 5888,

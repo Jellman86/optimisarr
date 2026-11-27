@@ -12,6 +12,8 @@ public sealed class WorkLocationTests
     private const string System = "S-1-5-18";
     private const string Administrators = "S-1-5-32-544";
     private const string Users = "S-1-5-32-545";
+    private const uint FullControl = 0x1F01FF;
+    private const uint ReadAndExecute = 0x1200A9;
 
     [Fact]
     public void The_durable_override_file_wins_over_env_and_default()
@@ -115,6 +117,41 @@ public sealed class WorkLocationTests
     }
 
     [Theory]
+    [InlineData(@"D:\CON")]
+    [InlineData(@"D:\work\nul")]
+    [InlineData(@"D:\Aux.txt\jobs")]
+    [InlineData(@"D:\prn.")]
+    [InlineData(@"D:\com1")]
+    [InlineData(@"D:\COM9.log")]
+    [InlineData(@"D:\lpt1\work")]
+    [InlineData(@"D:\LPT9")]
+    [InlineData("D:\\com\u00B9")]
+    [InlineData(@"D:\conin$")]
+    public void A_path_naming_a_device_is_refused(string path)
+    {
+        Assert.Contains("device", WorkLocation.PathProblem(path));
+    }
+
+    [Theory]
+    [InlineData(@"D:\console")]
+    [InlineData(@"D:\com10")]
+    [InlineData(@"D:\lpt\work")]
+    [InlineData(@"D:\nul-free")]
+    public void A_folder_name_that_only_starts_like_a_device_is_usable(string path)
+    {
+        Assert.Null(WorkLocation.PathProblem(path));
+    }
+
+    [Fact]
+    public void A_path_too_long_to_leave_room_for_job_folders_is_refused()
+    {
+        var longest = @"D:\" + new string('w', WorkLocation.MaximumPathLength - 3);
+
+        Assert.Null(WorkLocation.PathProblem(longest));
+        Assert.Contains("long", WorkLocation.PathProblem(longest + "w"));
+    }
+
+    [Theory]
     [InlineData(@"D:\OptimisarrWork")]
     [InlineData(@"R:\Optimisarr Work\jobs")]
     [InlineData(@"D:\work.d\scratch")]
@@ -147,8 +184,8 @@ public sealed class WorkLocationTests
     [Fact]
     public void An_override_file_only_administrators_and_system_control_is_trusted()
     {
-        Assert.Null(WorkLocation.OverrideFileTrustProblem(Administrators, [System, Administrators]));
-        Assert.Null(WorkLocation.OverrideFileTrustProblem(System, [System]));
+        Assert.Null(WorkLocation.OverrideFileTrustProblem(Administrators, [new(System, FullControl), new(Administrators, FullControl)]));
+        Assert.Null(WorkLocation.OverrideFileTrustProblem(System, [new(System, FullControl), new(Users, ReadAndExecute)]));
     }
 
     [Fact]
@@ -156,14 +193,49 @@ public sealed class WorkLocationTests
     {
         // A hand-made ProgramData folder lets users create files in it. The file decides where a
         // LocalSystem service creates and deletes folders, so a user-made one must not count.
-        Assert.Contains("not owned", WorkLocation.OverrideFileTrustProblem("S-1-5-21-1-2-3-1001", [System, Administrators]));
+        Assert.Contains("not owned", WorkLocation.OverrideFileTrustProblem("S-1-5-21-1-2-3-1001", [new(System, FullControl)]));
         Assert.Contains("not owned", WorkLocation.OverrideFileTrustProblem(null, []));
     }
 
-    [Fact]
-    public void An_override_file_an_ordinary_user_can_change_is_not_trusted()
+    [Theory]
+    [InlineData(0x1301BFu)]   // modify
+    [InlineData(0x100u)]      // write attributes only
+    [InlineData(0x40000000u)] // generic write
+    public void An_override_file_an_ordinary_user_can_change_is_not_trusted(uint rights)
     {
-        Assert.Contains("can be changed", WorkLocation.OverrideFileTrustProblem(Administrators, [System, Administrators, Users]));
+        Assert.Contains("can be changed", WorkLocation.OverrideFileTrustProblem(Administrators, [new(System, FullControl), new(Users, rights)]));
+    }
+
+    [Theory]
+    [InlineData(false, false, 1u, null)]
+    [InlineData(true, false, 1u, "link")]
+    [InlineData(false, true, 1u, "folder")]
+    [InlineData(false, false, 2u, "hard link")]
+    public void Only_an_ordinary_singly_linked_override_file_is_read(bool isLink, bool isDirectory, uint links, string? problem)
+    {
+        var found = WorkLocation.OverrideFileShapeProblem(isLink, isDirectory, links);
+
+        if (problem is null) Assert.Null(found);
+        else Assert.Contains(problem, found);
+    }
+
+    [Fact]
+    public void An_override_file_saved_as_utf16_reads_as_its_path()
+    {
+        // Notepad's "Unicode" and Windows PowerShell 5's Out-File both write UTF-16 with a mark.
+        var bytes = global::System.Text.Encoding.Unicode.GetPreamble().Concat(global::System.Text.Encoding.Unicode.GetBytes("R:\\Arbeit\u00E9\r\n")).ToArray();
+
+        Assert.Equal(("R:\\Arbeit\u00E9", null), WorkLocation.ReadOverrideBytes(bytes));
+    }
+
+    [Fact]
+    public void An_override_file_saved_as_utf8_with_or_without_a_mark_reads_as_its_path()
+    {
+        var plain = global::System.Text.Encoding.UTF8.GetBytes("D:\\OptimisarrWork\n");
+        var marked = global::System.Text.Encoding.UTF8.GetPreamble().Concat(plain).ToArray();
+
+        Assert.Equal((@"D:\OptimisarrWork", null), WorkLocation.ReadOverrideBytes(plain));
+        Assert.Equal((@"D:\OptimisarrWork", null), WorkLocation.ReadOverrideBytes(marked));
     }
 
     [Fact]
@@ -180,6 +252,28 @@ public sealed class WorkLocationTests
         Assert.Contains("own size", disk);
         Assert.Contains("Bad path.", refused);
         Assert.Contains("takes no jobs", refused);
+    }
+
+    [Fact]
+    public void The_start_up_line_says_why_a_refused_work_folder_takes_no_jobs()
+    {
+        var line = WorkLocation.Describe(new(@"D:\OptimisarrWork", WorkLocationSource.OverrideFile, null), memoryBacked: false,
+            workFolderProblem: "It is owned by somebody else.");
+
+        Assert.Contains(@"D:\OptimisarrWork", line);
+        Assert.Contains("owned by somebody else", line);
+        Assert.Contains("takes no jobs", line);
+    }
+
+    [Fact]
+    public void A_worker_that_cannot_use_its_work_folder_takes_no_jobs_at_all()
+    {
+        var proved = SidecarCapabilities.Nothing("box") with { FreeScratchBytes = 500, MaxConcurrency = 2 };
+
+        var reported = NativeWorkerResources.Refused(proved);
+
+        Assert.Equal(0, reported.FreeScratchBytes);
+        Assert.Equal(0, reported.MaxConcurrency);
     }
 
     [Fact]

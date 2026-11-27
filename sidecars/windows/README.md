@@ -197,13 +197,67 @@ is not moved or emptied. Delete the file, or the variable, to go back to the def
 installations keep `C:\OptimisarrWork`, or their variable, until one is set.
 
 The folder must be a full path to a folder on a local drive: not a drive root such as `D:\`, not a
-network share, and without quotes. The service runs as LocalSystem, so it trusts the file only when
-it is owned by Administrators or SYSTEM and no other account can change it. The two `icacls` lines
-make that so whichever account wrote the file; without them, a file in a folder made by hand rather
-than by the installer can carry its author's own access and be refused. **A setting that cannot be used stops work
-rather than falling back to `C:\OptimisarrWork`.** The worker stays connected and reports no free
-working space, so the server offers it nothing. The Event Log entry written at start names the
-folder in use and where the setting came from, or says what is wrong with it.
+network share, without quotes, no longer than 200 characters, and without a folder named after a
+device (`CON`, `NUL`, `AUX`, `PRN`, `COM1`–`COM9`, `LPT1`–`LPT9`, with or without an extension).
+The service runs as LocalSystem, so it trusts the file only when it is an ordinary file with one
+name, owned by Administrators or SYSTEM, and no other account can do more than read it. The two
+`icacls` lines make that so whichever account wrote the file; without them, a file in a folder made
+by hand rather than by the installer can carry its author's own access and be refused. If it is
+still refused, delete the file and create it again from the administrator window: a file that
+other accounts could once change, or a link or second hard link in its place, is never trusted.
+**A setting that cannot be used stops work rather than falling back to `C:\OptimisarrWork`.** The
+worker stays connected but offers the server no working space and no job slots, so it is offered
+nothing. The Event Log entry written at start names the folder in use and where the setting came
+from, or says what is wrong with it; it is a warning whenever the worker cannot take jobs.
+
+#### Who can use the work folder
+
+The work folder is where a service running as SYSTEM creates and deletes files, so it is for SYSTEM
+and Administrators only. By default Windows lets any signed-in account create folders at the root
+of a drive and change anything beneath them; left like that, any of them could replace the work
+folder, or a job's folder inside it, with a junction, and the service would then write and delete
+wherever it pointed.
+
+- **A new work folder** is created by the service with SYSTEM and Administrators full control,
+  nothing inherited from the drive, and is checked every time the service starts.
+- **An existing folder the service created earlier** (owned by SYSTEM, still carrying the drive's
+  access for other accounts) is locked down automatically when the service starts, and the Event
+  Log records that it was. Files already inside keep their own access; each job's folder is made
+  fresh, and leftovers are removed without following any link in them.
+- **A folder anyone else owns, or one Administrators own that other accounts can change** (one you
+  created by hand, for instance), is refused, and the Event Log entry gives the fix. From an
+  administrator window, either delete it and let the service create it, or lock it yourself:
+
+  ```powershell
+  icacls 'D:\OptimisarrWork' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
+  icacls 'D:\OptimisarrWork' /setowner '*S-1-5-32-544'
+  Restart-Service OptimisarrSidecar
+  ```
+
+- **A folder reached through a link** is refused: the work folder or any folder above it that is a
+  junction, symbolic link or a volume mounted into a folder. Use the drive's own letter.
+- **A job's folder** (`job-<id>`) is created only where nothing exists. A plain folder an earlier run
+  left behind is cleared first; a link, a file, or a folder another account made stops that job and
+  hands it back.
+
+While the service runs it holds the work folder and every folder above it open, so none of them can
+be renamed, deleted or replaced, and a RAM drive holding them cannot be unmounted cleanly. Stop the
+service first. It checks the folder again before every check-in and every job, and stops taking work
+the moment the folder fails.
+
+**Drives without access control.** FAT32 and exFAT, which many RAM-drive tools format by default,
+have no owners or permissions, so the folder cannot be protected: any account on the machine could
+redirect the files the worker writes and deletes there. Such a work folder is refused. Format the
+drive as NTFS if the tool allows it. To accept the risk instead, on a machine where every account
+is trusted, set the machine-wide variable and restart the service:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OPTIMISARR_SIDECAR_WORK_ALLOW_UNPROTECTED', '1', 'Machine')
+Restart-Service OptimisarrSidecar
+```
+
+The Event Log then warns at every start that the folder is unprotected. Only `1` counts; remove the
+variable to refuse such drives again. Links are refused even with it set.
 
 **RAM scratch.** Windows has no built-in RAM filesystem like Linux's tmpfs, and this sidecar does
 not create RAM disks the way the Mac sidecar does. To work in memory, mount a RAM drive with a tool
@@ -220,8 +274,11 @@ worker with a sized tmpfs.
   RAM drive would have held, but never the reverse.
 - If the RAM drive is missing, for example after a restart before the tool remounts it, the worker
   reports no free working space and takes nothing. It never writes to another drive instead. Once
-  the drive is back, the folder is recreated on the next job. Do not mount a RAM drive into a
-  folder on another disk: while it is unmounted, the empty folder left behind is ordinary disk.
+  the drive is back, the next check-in recreates the locked folder and ordinary jobs resume.
+  **Restart the service after remounting** to get quality-first audio and image work back: the
+  worker proves it can do that work in the work folder only when the service starts.
+- Give the RAM drive its own letter. A RAM drive mounted into a folder on another disk is a link,
+  and is refused; while unmounted, the empty folder left behind would be ordinary disk anyway.
 - A RAM drive's contents are lost on restart. That loses only in-flight scratch: the original
   never leaves the server, and the job runs again once it is handed back or its lease lapses.
 

@@ -136,9 +136,10 @@ A job downloads its source and writes its candidate before sending it back, toge
 a half times the size of the original. Somewhere with room, ideally not the system drive — though a
 single-volume machine is fine, and a second drive is not worth adding for this alone:
 
-```powershell
-New-Item -ItemType Directory -Force -Path <drive>:\OptimisarrWork
-```
+Do not create the folder yourself. Point the worker at it with the work-location file (see
+[work directory and RAM scratch](../README.md#work-directory-and-ram-scratch)) and the service
+creates it at start, locked to SYSTEM and Administrators. A folder made by hand carries the drive's
+access for every account and is refused until it is locked; the README gives the `icacls` lines.
 
 ### 6. Graphics driver
 

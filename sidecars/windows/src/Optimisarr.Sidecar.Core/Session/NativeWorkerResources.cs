@@ -24,4 +24,11 @@ public static class NativeWorkerResources
     public static SidecarCapabilities Unavailable(SidecarCapabilities capabilities) =>
         capabilities with { FreeScratchBytes = 0, Perceptual = (capabilities.Perceptual ?? new WorkerPerceptualCapabilities())
             with { AvailableMemoryBytes = null, ScratchUsesMemory = null } };
+
+    /// <summary>
+    /// No work folder this machine may use at all: no room and no slots. Zero slots means the
+    /// session never asks for a job, rather than asking and handing each one straight back.
+    /// </summary>
+    public static SidecarCapabilities Refused(SidecarCapabilities capabilities) =>
+        Unavailable(capabilities) with { MaxConcurrency = 0 };
 }

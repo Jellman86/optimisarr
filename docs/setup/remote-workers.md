@@ -86,7 +86,10 @@ The Windows sidecar works in `C:\OptimisarrWork` unless an administrator moves i
 `work-location` file under `%ProgramData%\Optimisarr\Sidecar` or the `OPTIMISARR_SIDECAR_WORK`
 variable. It does not create or manage RAM disks, but it can work on a RAM drive you mount
 yourself, whose size then limits the jobs it is offered. A configured location that cannot be used,
-or a RAM drive that is missing, stops the worker taking jobs instead of falling back to `C:`; see
+or a RAM drive that is missing, stops the worker taking jobs instead of falling back to `C:`. The
+work folder is for SYSTEM and Administrators only: the service creates it that way, locks down one
+it created before, and refuses one anyone else made until it is locked, a folder reached through a
+link, or one on a FAT or exFAT drive unless an administrator accepts that risk; see
 [work directory and RAM scratch](../../sidecars/windows/README.md#work-directory-and-ram-scratch).
 It takes one job at a time unless `OPTIMISARR_SIDECAR_CONCURRENCY` allows up to four; see
 [running more than one job](../../sidecars/windows/README.md#running-more-than-one-job-at-a-time).

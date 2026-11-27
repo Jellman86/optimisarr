@@ -42,6 +42,18 @@ public static class WorkLocation
     public const string EnvironmentVariable = "OPTIMISARR_SIDECAR_WORK";
     public const string DefaultPath = @"C:\OptimisarrWork";
 
+    /// <summary>
+    /// The machine-wide variable that accepts a work folder on a drive without access control.
+    /// Only the value <c>1</c> counts: anything else, or nothing, keeps such a drive refused.
+    /// </summary>
+    public const string AllowUnprotectedVariable = "OPTIMISARR_SIDECAR_WORK_ALLOW_UNPROTECTED";
+
+    /// <summary>
+    /// Long enough for any sensible folder, and short enough that a job's own folder and files
+    /// beneath it stay inside the 260 characters older Windows tools still assume.
+    /// </summary>
+    public const int MaximumPathLength = 200;
+
     /// <summary>Longer than any sensible one-line path, short enough that reading it costs nothing.</summary>
     public const int MaximumOverrideFileBytes = 4096;
 
@@ -70,32 +82,74 @@ public static class WorkLocation
             : Choose(fromEnvironment, WorkLocationSource.Environment);
     }
 
+    /// <summary>Whether the machine-wide opt-in for a drive without access control is set.</summary>
+    public static bool AllowsUnprotected(string? value) => value?.Trim() == "1";
+
     /// <summary>
     /// What an ordinary user may never have done to the override file. It decides where a
     /// LocalSystem service creates and deletes folders, so it is trusted only when it is owned by,
-    /// and writable only by, SYSTEM, Administrators or TrustedInstaller. The installer gives the
+    /// and changeable only by, SYSTEM, Administrators or TrustedInstaller. The installer gives the
     /// folder exactly that access; a hand-made folder may not.
     /// </summary>
     /// <param name="ownerSid">The file's owner, or null when it could not be read.</param>
-    /// <param name="writers">Every principal an allow entry lets change the file or its access.</param>
-    public static string? OverrideFileTrustProblem(string? ownerSid, IEnumerable<string> writers)
+    /// <param name="access">The file's access list. Any right beyond reading counts as a change.</param>
+    public static string? OverrideFileTrustProblem(string? ownerSid, IEnumerable<AccessEntry> access)
     {
-        if (ownerSid is null || !TrustedPrincipals.Contains(ownerSid))
+        if (!WorkAccess.IsTrusted(ownerSid))
         {
             return $"The work-location file is not owned by Administrators or SYSTEM, so it was not trusted. {FixAccess}";
         }
 
-        return writers.Any(writer => !TrustedPrincipals.Contains(writer))
+        return WorkAccess.UntrustedWriters(access).Count > 0
             ? $"The work-location file can be changed by accounts other than Administrators and SYSTEM, so it was not trusted. {FixAccess}"
             : null;
     }
 
+    /// <summary>
+    /// The override file must be an ordinary file with one name. A link could be pointed elsewhere
+    /// after it was checked, and a second hard link in a folder an ordinary account controls would
+    /// let that account rewrite the file through a name nobody looks at.
+    /// </summary>
+    public static string? OverrideFileShapeProblem(bool isLink, bool isDirectory, uint links)
+    {
+        if (isLink)
+        {
+            return "The work-location file is a link, so it was not trusted. Replace it with an ordinary file.";
+        }
+
+        if (isDirectory)
+        {
+            return "The work-location file is a folder. Replace it with a file holding one line.";
+        }
+
+        return links == 1
+            ? null
+            : "The work-location file has another name (a hard link) elsewhere on the drive, so it was not trusted. Delete it and create it again.";
+    }
+
+    /// <summary>
+    /// The override file's bytes as one path. A byte-order mark decides the encoding, which is how
+    /// Notepad and both PowerShells mark UTF-16; without one the text is read as UTF-8.
+    /// </summary>
+    public static (string? Path, string? Problem) ReadOverrideBytes(byte[] bytes)
+    {
+        using var reader = new StreamReader(new MemoryStream(bytes), System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return ReadOverrideText(reader.ReadToEnd());
+    }
+
     /// <summary>One line for the Event Log at start, so the location in use is never a guess.</summary>
-    public static string Describe(WorkLocationChoice choice, bool? memoryBacked)
+    /// <param name="workFolderProblem">Why the chosen folder itself was refused, if it was.</param>
+    public static string Describe(WorkLocationChoice choice, bool? memoryBacked, string? workFolderProblem = null)
     {
         if (choice.Path is null)
         {
             return $"No work location: {choice.Problem} This worker takes no jobs until it is corrected and the service is restarted.";
+        }
+
+        if (workFolderProblem is not null)
+        {
+            // Checked again before every check-in, so ordinary work resumes once it is put right.
+            return $"Work folder {choice.Path} cannot be used: {workFolderProblem} This worker takes no jobs until it is corrected.";
         }
 
         var from = choice.Source switch
@@ -143,6 +197,11 @@ public static class WorkLocation
             return $"\"{path}\" is the root of a drive. Use a folder on it, such as {path[0]}:\\OptimisarrWork.";
         }
 
+        if (path.Length > MaximumPathLength)
+        {
+            return $"\"{path}\" is too long: keep it to {MaximumPathLength} characters, so each job's own folder and files fit beneath it.";
+        }
+
         if (path.AsSpan(2).IndexOfAny(Forbidden) >= 0 || path.Any(char.IsControl))
         {
             return $"\"{path}\" contains characters Windows does not allow in a folder name. Write the path without quotes.";
@@ -156,6 +215,11 @@ public static class WorkLocation
         if (components.Any(component => component is "." or ".."))
         {
             return $"\"{path}\" contains \".\" or \"..\". Name the folder directly.";
+        }
+
+        if (components.FirstOrDefault(NamesDevice) is { } device)
+        {
+            return $"\"{path}\" contains \"{device}\", which Windows reserves for a device rather than a folder. Choose another name.";
         }
 
         return components.Any(component => component.EndsWith(' ') || component.EndsWith('.'))
@@ -197,17 +261,34 @@ public static class WorkLocation
 
     private static bool IsSeparator(char c) => c is '\\' or '/';
 
+    /// <summary>
+    /// CON, NUL, COM1 and the rest open a device in every folder, with or without an extension:
+    /// "D:\\work\\nul.txt" is the null device, not a file. Windows also ignores trailing spaces
+    /// before the extension when it decides.
+    /// </summary>
+    private static bool NamesDevice(string component)
+    {
+        var stem = component.Split('.')[0].TrimEnd(' ');
+        if (ReservedDeviceNames.Contains(stem))
+        {
+            return true;
+        }
+
+        return stem.Length == 4
+            && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase))
+            && (char.IsAsciiDigit(stem[3]) || stem[3] is '\u00B9' or '\u00B2' or '\u00B3');
+    }
+
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+    };
+
     // A colon after the drive would name an alternate data stream, not a folder.
     private static readonly char[] Forbidden = ['<', '>', '"', '|', '?', '*', ':'];
 
     private const string FixAccess =
         "From an administrator command prompt, run: icacls \"%ProgramData%\\Optimisarr\\Sidecar\\work-location\" /inheritance:r /grant:r *S-1-5-18:F *S-1-5-32-544:F "
-        + "then: icacls \"%ProgramData%\\Optimisarr\\Sidecar\\work-location\" /setowner *S-1-5-32-544 and restart the service.";
-
-    private static readonly HashSet<string> TrustedPrincipals = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "S-1-5-18",
-        "S-1-5-32-544",
-        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
-    };
+        + "then: icacls \"%ProgramData%\\Optimisarr\\Sidecar\\work-location\" /setowner *S-1-5-32-544 and restart the service. "
+        + "If the file still carries other accounts' access, delete it and create it again from the administrator prompt.";
 }
