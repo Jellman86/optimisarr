@@ -11,6 +11,25 @@ from .monitor import LinuxObserver
 from .workers import Workers, free_port
 
 
+# Only a job directory, never /work itself: a missing scratch root must still fail. Any job's
+# directory may vanish, because find walks every job under /work, not only the one asked for.
+VANISHED_JOB = re.compile(r"find: \W?/work/job-\d+(/[^\n]*?)?\W?: No such file or directory")
+
+
+def work_listing(result):
+    """The files find printed, treating a job directory that vanished mid-walk as empty.
+
+    The worker deletes a job's directory when the job completes. find can list /work, then fail to
+    open the directory it just saw, and exit 1 even with -ignore_readdir_race. Only that race is
+    tolerated; any other error is raised."""
+    if result.returncode == 0:
+        return result.stdout
+    errors = [line for line in result.stderr.splitlines() if line.strip()]
+    if result.returncode == 1 and errors and all(VANISHED_JOB.fullmatch(line) for line in errors):
+        return result.stdout
+    raise RuntimeError(f"find exited {result.returncode}: {result.stderr[-8000:]}")
+
+
 class ContainerWorkers(Workers):
     def __init__(self, api, root, server, image, *, devices=(), gpus=None, memory="2g", name=None):
         super().__init__(api, root, server, "/usr/lib/jellyfin-ffmpeg/ffmpeg",
@@ -74,11 +93,11 @@ class ContainerWorkers(Workers):
             self.remove(container)
             raise
         def files(job_id):
-            # find /work succeeds even when completion removed the requested job directory.
-            output = command(["docker", "exec", container, "find", "/work", "-ignore_readdir_race", "-maxdepth", "2", "-type", "f",
-                              "-path", f"/work/job-{job_id}/*", "-printf", "%f %s\n"])
+            result = subprocess.run(["docker", "exec", container, "find", "/work", "-ignore_readdir_race", "-maxdepth", "2",
+                                     "-type", "f", "-path", f"/work/job-{job_id}/*", "-printf", "%f %s\n"],
+                                    capture_output=True, text=True, timeout=600)
             return [{"name": row.rsplit(" ", 1)[0], "bytes": int(row.rsplit(" ", 1)[1])}
-                    for row in output.splitlines()]
+                    for row in work_listing(result).splitlines()]
         self.observers[name] = LinuxObserver(f"http://127.0.0.1:{port}", files,
             lambda: command(["docker", "exec", container, "stat", "-f", "-c", "%T", "/work"]).strip(), require_ram=True)
         return {"name": name, "encoder": encoder, "image": self.image, "online": True, "ramLimitBytes": 1073741824}
