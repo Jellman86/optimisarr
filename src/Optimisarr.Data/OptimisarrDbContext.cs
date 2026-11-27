@@ -277,6 +277,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
             entity.Property(file => file.AudioLanguages).HasMaxLength(256);
             entity.Property(file => file.SubtitleLanguages).HasMaxLength(512);
+            entity.Property(file => file.AudioTrackBytes).HasMaxLength(Optimisarr.Core.Queue.TrackSizes.MaxStoredLength);
+            entity.Property(file => file.SubtitleTrackBytes).HasMaxLength(Optimisarr.Core.Queue.TrackSizes.MaxStoredLength);
             entity.Property(file => file.TrimOnlyTagRefusal).HasMaxLength(512);
 
             // Removing a library removes its inventory; orphan media files make no sense.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { containerLabel, formatAbsoluteDateTime, formatDateTime, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, interlacedFieldOrder, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
+import { containerLabel, floorTo, formatAbsoluteDateTime, formatDateTime, formatSize, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, interlacedFieldOrder, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
 
 const now = new Date('2026-09-25T07:00:00Z')
 
@@ -192,4 +192,17 @@ test('only an interlaced field order is reported, by the field shown first', () 
   assert.equal(interlacedFieldOrder('bb'), 'bottom')
   assert.equal(interlacedFieldOrder('tb'), 'unstated')
   for (const order of ['progressive', 'unknown', '', null, undefined]) assert.equal(interlacedFieldOrder(order), null)
+})
+
+test('a size rounded down never reads as reaching the next step', () => {
+  assert.equal(formatSize(1024 ** 3 - 30 * 1024), '1024 MB')
+  assert.equal(formatSize(1024 ** 3 - 30 * 1024, true), '1023 MB')
+  assert.equal(formatSize(1.97 * 1024 ** 3, true), '1.9 GB')
+  assert.equal(formatSize(2 * 1024 ** 3, true), '2.0 GB')
+})
+
+test('rounding down cuts without falling a step for a binary fraction', () => {
+  assert.equal(floorTo(4.999, 1), 4.9)
+  assert.equal(floorTo(0.29, 2), 0.29)
+  assert.equal(floorTo(5, 1), 5)
 })

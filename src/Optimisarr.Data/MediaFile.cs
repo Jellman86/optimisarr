@@ -111,6 +111,17 @@ public sealed class MediaFile
     /// </summary>
     public string? SubtitleLanguages { get; set; }
 
+    /// <summary>
+    /// Each audio track's size in bytes, in the same order as <see cref="AudioLanguages"/>, with
+    /// "?" for a track whose size is neither recorded nor estimable (e.g. "4500000000, ?"). Null
+    /// when the file was probed before track sizes were recorded; a minimum track-removal saving
+    /// then skips the file until it is probed again.
+    /// </summary>
+    public string? AudioTrackBytes { get; set; }
+
+    /// <summary>Each subtitle track's size in bytes, as <see cref="AudioTrackBytes"/>, in <see cref="SubtitleLanguages"/> order.</summary>
+    public string? SubtitleTrackBytes { get; set; }
+
     /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>
     public bool IsHdr { get; set; }
 

@@ -218,6 +218,53 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_minimum_track_removal_saving_travels_with_its_backup_and_an_older_backup_means_none()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Films", Path = "/data/films", MediaType = MediaType.Film, RuleProfile = RuleProfile.TrackCleanup,
+                KeepAudioLanguages = "eng", MinimumTrackRemovalSavingPercent = 5, MinimumTrackRemovalSavingBytes = 1_073_741_824,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var exported = snapshot.Libraries.Single(library => library.Path == "/data/films");
+        Assert.Equal(5, exported.MinimumTrackRemovalSavingPercent);
+        Assert.Equal(1_073_741_824, exported.MinimumTrackRemovalSavingBytes);
+
+        var older = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with
+            {
+                MinimumTrackRemovalSavingPercent = null, MinimumTrackRemovalSavingBytes = null,
+            }).ToArray(),
+        };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+        {
+            var library = await restored.Libraries.SingleAsync(library => library.Path == "/data/films");
+            Assert.Null(library.MinimumTrackRemovalSavingPercent);
+            Assert.Null(library.MinimumTrackRemovalSavingBytes);
+        }
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+        {
+            var library = await restored.Libraries.SingleAsync(library => library.Path == "/data/films");
+            Assert.Equal(5, library.MinimumTrackRemovalSavingPercent);
+            Assert.Equal(1_073_741_824, library.MinimumTrackRemovalSavingBytes);
+        }
+
+        var invalid = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { MinimumTrackRemovalSavingPercent = 150 }).ToArray(),
+        };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
     public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
     {
         await using (var db = CreateDb())

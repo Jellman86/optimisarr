@@ -340,7 +340,7 @@ public static class CandidateEvaluator
 
                 if (audioRemovals.Count + subtitleRemovals.Count > 0)
                 {
-                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals));
+                    return RemovalDecision(media, rules, audioRemovals, subtitleRemovals);
                 }
 
                 var languagesUnknown =
@@ -374,7 +374,7 @@ public static class CandidateEvaluator
             // A container-clean file can still carry tracks the kept-languages rules remove;
             // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
             return audioRemovals.Count + subtitleRemovals.Count > 0
-                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals))
+                ? RemovalDecision(media, rules, audioRemovals, subtitleRemovals)
                 : CandidateDecision.Skipped($"Already in the target container ({targetContainer})");
         }
 
@@ -407,6 +407,52 @@ public static class CandidateEvaluator
         }
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
+    }
+
+    /// <summary>
+    /// True when optimising the file would only remove tracks, copying every kept stream as it is:
+    /// track cleanup, or a remux clean-up of a file already in its target container whose audio is
+    /// copied. These are the jobs a library's minimum track-removal saving governs, since rewriting
+    /// the whole file is all they cost and the removed tracks are all they save.
+    /// </summary>
+    public static bool OnlyRemovesTracks(MediaProperties media, RuleSettings rules)
+    {
+        if (rules.TargetVideoCodec is not null || rules.VideoAudioCodec is not null)
+        {
+            return false;
+        }
+
+        if (rules.TargetContainer is null)
+        {
+            return true;
+        }
+
+        var target = Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath);
+        return target is not null
+            && media.Container?.Contains(ContainerKeyword(target), StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>What removing these tracks would save, from the sizes the inventory recorded.</summary>
+    public static TrackRemovalSaving RemovalSavingOf(
+        MediaProperties media, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals) =>
+        TrackRemovalSaving.Measure(media.SizeBytes, media.AudioTrackBytes, audioRemovals, media.SubtitleTrackBytes, subtitleRemovals);
+
+    // A file with tracks to remove is offered unless the library sets a minimum saving that this
+    // rewrite does not meet — or that cannot be checked, because a guess is no reason to rewrite.
+    private static CandidateDecision RemovalDecision(
+        MediaProperties media, RuleSettings rules, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
+    {
+        var reason = RemovalReason(media, audioRemovals, subtitleRemovals);
+        var minimum = TrackSavingMinimum.Of(rules);
+        if (!minimum.IsSet || !OnlyRemovesTracks(media, rules))
+        {
+            return CandidateDecision.Eligible(reason);
+        }
+
+        var saving = RemovalSavingOf(media, audioRemovals, subtitleRemovals);
+        return minimum.Refusal(saving) is { } refusal
+            ? CandidateDecision.Skipped(refusal)
+            : CandidateDecision.Eligible($"{reason} — saves {saving.Describe()}");
     }
 
     // Names the languages being removed, not just counts, so the inventory and the

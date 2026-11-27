@@ -183,6 +183,13 @@ export type LibraryRules = {
   superResolutionScale: number | null
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
+  /**
+   * A job that only removes tracks rewrites the file only when they are at least this share of it.
+   * Null sets no minimum. Absent from servers before it existed.
+   */
+  minimumTrackRemovalSavingPercent?: number | null
+  /** As the percentage, in bytes; with both set a file must meet both. */
+  minimumTrackRemovalSavingBytes?: number | null
   reencodeLossyAudio: boolean
   targetImageFormat: string | null
   imageQuality: number | null
@@ -1231,6 +1238,20 @@ export type MediaPlan = {
   audioTracks: MediaPlanTrack[] | null
   subtitleTracks: MediaPlanTrack[] | null
   file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+  /**
+   * What removing tracks would save, for a job that only removes tracks; null otherwise. A null
+   * size means a removed track's size is not known. `meetsMinimum` is null when the library sets no
+   * minimum or the saving is not known. `needsReprobe` is true when the file was probed before track
+   * sizes were recorded, so a re-probe can still find them. Absent from servers before it existed.
+   */
+  trackSaving?: {
+    bytes: number | null
+    percent: number | null
+    minimumPercent: number | null
+    minimumBytes: number | null
+    meetsMinimum: boolean | null
+    needsReprobe?: boolean
+  } | null
 }
 export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
 

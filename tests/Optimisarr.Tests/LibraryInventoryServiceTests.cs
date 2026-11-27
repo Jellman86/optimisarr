@@ -291,6 +291,47 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Equal(0, second.Updated);
     }
 
+    private sealed class FilmProbe : IMediaProbeService
+    {
+        public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken) =>
+            Task.FromResult(MediaProbeService.Parse("""
+                {"streams":[
+                  {"codec_type":"video","codec_name":"hevc","width":3840,"height":2160},
+                  {"codec_type":"audio","codec_name":"truehd","tags":{"language":"eng","NUMBER_OF_BYTES":"4500000000"}},
+                  {"codec_type":"audio","codec_name":"ac3","tags":{"language":"fra"}},
+                  {"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"deu","NUMBER_OF_BYTES-deu":"52000"}}
+                ],"format":{"duration":"7200","format_name":"matroska,webm"}}
+                """, ".mkv"));
+    }
+
+    [Fact]
+    public async Task Probing_records_each_tracks_size_and_a_change_clears_them()
+    {
+        WriteMediaFile("Film.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var service = new LibraryInventoryService(db, new LibraryScanner(), new FilmProbe(), new ImageMarkerService());
+            var probed = await service.ProbeAsync((await db.MediaFiles.SingleAsync()).Id, CancellationToken.None);
+
+            Assert.Equal("4500000000, ?", probed!.AudioTrackBytes);
+            Assert.Equal("52000", probed.SubtitleTrackBytes);
+        }
+
+        var fullPath = Path.Combine(_root, "Film.mkv");
+        File.WriteAllText(fullPath, "different content");
+        File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddMinutes(-30));
+        await ScanAsync(library);
+
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var media = await db.MediaFiles.SingleAsync();
+            Assert.Null(media.AudioTrackBytes);
+            Assert.Null(media.SubtitleTrackBytes);
+        }
+    }
+
     private sealed class AudioProbe(string codec) : IMediaProbeService
     {
         public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken) =>

@@ -1,7 +1,9 @@
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -93,6 +95,34 @@ public sealed class QueueDispatcherSafetyTests
                 RuleProfile.TrackCleanup,
                 audioRemovals,
                 subtitleRemovals));
+    }
+
+    [Fact]
+    public void A_fresh_probe_below_the_librarys_minimum_cancels_a_track_cleanup_job()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = ["eng"], MinimumTrackRemovalSavingPercent = 5,
+        };
+        var media = new MediaProperties("matroska,webm", "hevc", 3840, 2160, 60L * 1024 * 1024 * 1024, false, "Films/Film.mkv",
+            AudioLanguages: ["eng", "fra"]) { AudioTrackBytes = [4_000_000_000, 6_000_000_000] };
+        // The inventory said the French track was 6 GB; the file on disk now says 120 MB.
+        var fresh = MediaProbeService.Parse("""
+            {"streams":[
+              {"codec_type":"video","codec_name":"hevc"},
+              {"codec_type":"audio","codec_name":"truehd","tags":{"language":"eng","NUMBER_OF_BYTES":"4000000000"}},
+              {"codec_type":"audio","codec_name":"ac3","tags":{"language":"fra","NUMBER_OF_BYTES":"125829120"}}
+            ],"format":{"format_name":"matroska,webm"}}
+            """, ".mkv");
+
+        Assert.Equal(
+            "Removing these tracks would save about 120 MB (0.19%), below this library's minimum of 5%",
+            QueueDispatcher.TrackRemovalMinimumRefusal(media, rules, [1], [], fresh));
+        Assert.Null(QueueDispatcher.TrackRemovalMinimumRefusal(media, rules, [1], [], freshProbe: null));
+        Assert.Null(QueueDispatcher.TrackRemovalMinimumRefusal(
+            media, rules with { MinimumTrackRemovalSavingPercent = null }, [1], [], fresh));
+        Assert.Null(QueueDispatcher.TrackRemovalMinimumRefusal(
+            media, RuleProfileDefaults.For(RuleProfile.ConservativeHevc) with { MinimumTrackRemovalSavingPercent = 5 }, [1], [], fresh));
     }
 
     // --- Restart recovery of a delivered remote candidate --------------------------------------

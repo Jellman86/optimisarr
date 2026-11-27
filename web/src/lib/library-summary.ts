@@ -74,6 +74,29 @@ function list(locale: string, items: string[]): string {
   return new Intl.ListFormat(locale === 'en' ? 'en-GB' : locale, { style: 'long', type: 'conjunction' }).format(items)
 }
 
+/**
+ * True when the library's jobs can only remove tracks, so its minimum track-removal saving governs
+ * them: track cleanup, and a remux clean-up that copies its video and audio. The server applies it
+ * to a remux only for files already in the target container.
+ */
+export function trackSavingApplies(library: SaveLibrary): boolean {
+  if (library.ruleProfile === 'TrackCleanup') return true
+  return library.ruleProfile === 'RemuxCleanup' && !encodesVideo(library)
+    && (!library.videoAudioCodec || library.videoAudioCodec === 'copy')
+}
+
+/** "5%", "1.0 GB" or "5% and 1.0 GB"; null when the library sets no minimum. */
+export function trackSavingMinimum(
+  library: Pick<SaveLibrary, 'minimumTrackRemovalSavingPercent' | 'minimumTrackRemovalSavingBytes'>,
+  locale: string,
+): string | null {
+  const parts = [
+    library.minimumTrackRemovalSavingPercent ? `${library.minimumTrackRemovalSavingPercent}%` : null,
+    library.minimumTrackRemovalSavingBytes ? formatSize(library.minimumTrackRemovalSavingBytes) : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length > 0 ? list(locale, parts) : null
+}
+
 function commaList(value: string | null): string[] {
   return (value ?? '').split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean)
 }
@@ -186,7 +209,7 @@ function filesLine(library: SaveLibrary, { m, locale, preset, counts }: SummaryC
   }
 }
 
-function videoLine(library: SaveLibrary, { m, preset, upscalingOn }: SummaryContext): SummaryLine {
+function videoLine(library: SaveLibrary, { m, locale, preset, upscalingOn }: SummaryContext): SummaryLine {
   const s = m.librarySummary
   const tags: SummaryTag[] = []
   const sentences: string[] = []
@@ -195,6 +218,8 @@ function videoLine(library: SaveLibrary, { m, preset, upscalingOn }: SummaryCont
   if (library.ruleProfile === 'TrackCleanup') {
     sentences.push(s.video_track_cleanup)
     if (!library.keepAudioLanguages?.trim() && !library.keepSubtitleLanguages?.trim()) sentences.push(s.video_track_cleanup_noop)
+    const minimum = trackSavingMinimum(library, locale)
+    if (minimum) sentences.push(fill(s.video_track_saving, { minimum }))
   } else if (library.ruleProfile === 'RemuxCleanup' && encodesVideo(library)) {
     sentences.push(fill(s.video_remux_reencodes, { codec: codecName(library.targetVideoCodec) }))
     tags.push({ tone: 'warn', text: s.tag_reencodes })
@@ -202,6 +227,8 @@ function videoLine(library: SaveLibrary, { m, preset, upscalingOn }: SummaryCont
   } else if (library.ruleProfile === 'RemuxCleanup') {
     sentences.push(s.video_remux)
     containerSentence(library, preset, s, sentences, tags)
+    const minimum = trackSavingApplies(library) ? trackSavingMinimum(library, locale) : null
+    if (minimum) sentences.push(fill(s.video_remux_track_saving, { minimum }))
   } else {
     sentences.push(fill(s.video_encode, { codec: codecName(library.targetVideoCodec ?? preset?.codec) }))
     const crf = library.qualityCrf ?? preset?.crf ?? ''
