@@ -1252,7 +1252,7 @@ validation_loudness: 'La tolerancia de deriva de sonoridad no puede ser negativa
 validation_true_peak: 'El techo de true-peak debe ser un valor dBTP finito.',
 validation_ssim: 'El umbral de SSIM de imagen debe estar entre 0 y 1.',
 validation_cleanup: 'Los días de retención de limpieza no pueden ser negativos.',
-validation_encoder: 'El modo de codificador debe ser Auto, CPU, NVIDIA NVENC, Intel QSV o VA-API.',
+validation_encoder: 'El modo de codificador debe ser Auto, CPU, NVIDIA NVENC, AMD AMF, Intel QSV o VA-API.',
 validation_import: 'El archivo de configuración no es válido.',
 saved: 'Ajustes guardados.',
 timed_out: 'Tiempo de espera agotado para aprobación. Intenta de nuevo.',

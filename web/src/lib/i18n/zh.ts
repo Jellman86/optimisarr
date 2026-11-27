@@ -1228,7 +1228,7 @@ export const zh: Messages = {
     validation_true_peak: "真实峰值上限必须是有限的 dBTP 值。",
     validation_ssim: "图像 SSIM 阈值必须介于 0 和 1 之间。",
     validation_cleanup: "清理保留天数不能为负数。",
-    validation_encoder: "编码器模式必须为自动、CPU、NVIDIA NVENC、Intel QSV 或 VA-API。",
+    validation_encoder: "编码器模式必须为自动、CPU、NVIDIA NVENC、AMD AMF、Intel QSV 或 VA-API。",
     validation_import: "配置文件无效。",
     saved: "设置已保存。",
     timed_out: "等待批准超时。再试一次。",

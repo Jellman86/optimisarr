@@ -173,6 +173,7 @@
   const encoderText = $derived.by(() => {
     if (!recommendation) return ''
     const reason = recommendation.encoderReason === 'nvidia' ? i18n.m.setup.reason_encoder_nvidia
+      : recommendation.encoderReason === 'amd' ? i18n.m.setup.reason_encoder_amd
       : recommendation.encoderReason === 'intel' ? i18n.m.setup.reason_encoder_intel
         : recommendation.encoderReason === 'vaapi' ? i18n.m.setup.reason_encoder_vaapi
           : i18n.m.setup.reason_encoder_cpu

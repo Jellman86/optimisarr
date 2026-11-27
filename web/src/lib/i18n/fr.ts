@@ -1250,7 +1250,7 @@ validation_loudness: 'La tolérance de dérive du niveau sonore ne peut pas êtr
 validation_true_peak: 'Le plafond de true-peak doit être une valeur dBTP finie.',
 validation_ssim: 'Le seuil SSIM d’image doit être compris entre 0 et 1.',
 validation_cleanup: 'La durée de conservation avant nettoyage ne peut pas être négative.',
-validation_encoder: 'Le mode encodeur doit être Auto, CPU, NVIDIA NVENC, Intel QSV ou VA-API.',
+validation_encoder: 'Le mode encodeur doit être Auto, CPU, NVIDIA NVENC, AMD AMF, Intel QSV ou VA-API.',
 validation_import: 'Le fichier de configuration est invalide.',
 saved: 'Paramètres enregistrés.',
 timed_out: 'Délai dépassé en attente d’approbation. Veuillez réessayer.',

@@ -321,6 +321,14 @@ test('the tested hardware encoder is pre-selected, CPU is the other choice, and 
   expect((calls.applied[0].settings as Record<string, unknown>).encoderMode).toBe('Cpu')
 })
 
+test('a tested AMD AMF encoder is named and recommended', async ({ page }) => {
+  await mockSetup(page, { currentStep: 1, recommended: { encoderMode: 'AmdAmf', encoderReason: 'amd', hardwareDecode: false } })
+  await page.goto('/')
+
+  await expect(check(page, 'encoder')).toContainText('An AMD AMF encoder passed the test on this machine. It is much faster than the CPU.')
+  await expect(page.getByRole('group', { name: 'Encoder' }).getByRole('button', { name: 'AMD AMF (recommended)' })).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('with no hardware encoder there is nothing to choose and the CPU is named', async ({ page }) => {
   await mockSetup(page, { currentStep: 1, recommended: { encoderMode: 'Cpu', encoderReason: 'cpu', hardwareDecode: false } })
   await page.goto('/')
