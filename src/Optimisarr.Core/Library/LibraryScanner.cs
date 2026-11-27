@@ -135,7 +135,8 @@ public sealed class LibraryScanner
     /// <summary>
     /// Looks at one file a manager reported, applying exactly the checks a full scan of
     /// <paramref name="root"/> applies to it, so a file is never taken in by this route that a scan
-    /// would have passed over.
+    /// would have passed over. The file is returned under its spelling on disk, which is the path a
+    /// scan would have recorded, whatever letter case the manager used.
     /// </summary>
     public SingleFileScan ScanFile(string root, string path, LibraryScanOptions options, DateTimeOffset nowUtc)
     {
@@ -146,14 +147,23 @@ public sealed class LibraryScanner
         }
 
         root = Path.GetFullPath(root);
-        if (!File.Exists(path))
+        path = Path.GetFullPath(path);
+        if (LibraryPathSpelling.OnDisk(root, path, LibraryPathSpelling.ListFolder) is not { } onDisk)
         {
-            return Directory.Exists(path)
+            return File.Exists(path) || Directory.Exists(path)
+                ? new SingleFileScan.Refused(LibraryPathSafety.Refusal)
+                : new SingleFileScan.Missing();
+        }
+
+        if (!File.Exists(onDisk))
+        {
+            return Directory.Exists(onDisk)
                 ? new SingleFileScan.Refused("The path is a folder, not a file.")
                 : new SingleFileScan.Missing();
         }
 
-        return Inspect(root, path, options, nowUtc);
+        // Recorded as the folder listing spells it, so a manager's other letter case is the same row.
+        return Inspect(root, onDisk, options, nowUtc);
     }
 
     private static SingleFileScan Inspect(string root, string path, LibraryScanOptions options, DateTimeOffset nowUtc)

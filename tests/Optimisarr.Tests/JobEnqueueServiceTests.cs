@@ -122,6 +122,82 @@ public sealed class JobEnqueueServiceTests : IDisposable
         Assert.Empty(readDb.Jobs);
     }
 
+    [Fact]
+    public async Task Queuing_reported_files_asks_the_managers_once_and_decides_each_file_as_the_automatic_tick_would()
+    {
+        var films = await SeedLibraryWithFilesAsync();
+        int shows;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.ArrConnections.Add(new ArrConnection { Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989", ApiKey = "k" });
+            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", ApiKey = "k" });
+            var library = new Library { Name = "Shows", Path = "/data/shows", RuleProfile = RuleProfile.ConservativeHevc, Priority = 3 };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            var episode = Probed(library.Id, "c.mkv", "h264");
+            episode.Path = "/data/shows/c.mkv";
+            db.MediaFiles.Add(episode);
+            await db.SaveChangesAsync();
+            shows = library.Id;
+        }
+
+        var handler = new CountingHandler("""{ "records": [] }""");
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var ids = await db.MediaFiles.ToDictionaryAsync(file => file.RelativePath, file => file.Id);
+            var expected = (await new CandidateService(db).EvaluateAsync(libraryId: null, CancellationToken.None))
+                .ToDictionary(candidate => candidate.MediaFileId);
+            var service = Service(db, handler);
+
+            var results = await service.EnqueueEligibleFilesAsync(
+            [
+                new ReportedFiles(await db.Libraries.SingleAsync(l => l.Id == films), [ids["a.mkv"], ids["b.mkv"]]),
+                new ReportedFiles(await db.Libraries.SingleAsync(l => l.Id == shows), [ids["c.mkv"]]),
+            ], CancellationToken.None);
+
+            // Two managers are asked once each for the whole delivery, not once per file.
+            Assert.Equal(2, handler.Calls);
+            Assert.Equal(FileEnqueueOutcome.Enqueued, results[ids["a.mkv"]].Outcome);
+            Assert.Equal(FileEnqueueOutcome.Ineligible, results[ids["b.mkv"]].Outcome);
+            Assert.Equal(expected[ids["b.mkv"]].Reason, results[ids["b.mkv"]].Reason);
+            Assert.Equal(FileEnqueueOutcome.Enqueued, results[ids["c.mkv"]].Outcome);
+
+            var again = await service.EnqueueEligibleFilesAsync(
+                [new ReportedFiles(await db.Libraries.SingleAsync(l => l.Id == films), [ids["a.mkv"]])], CancellationToken.None);
+            Assert.Equal(FileEnqueueOutcome.AlreadyActive, again[ids["a.mkv"]].Outcome);
+            Assert.Equal(results[ids["a.mkv"]].JobId, again[ids["a.mkv"]].JobId);
+        }
+
+        // The jobs are the ones the automatic tick makes: the library's priority and the candidate's reason.
+        await using var readDb = new OptimisarrDbContext(_options);
+        var jobs = await readDb.Jobs.Include(job => job.MediaFile).ToListAsync();
+        Assert.Equal(2, jobs.Count);
+        Assert.Equal(2, jobs.Single(job => job.MediaFile!.RelativePath == "a.mkv").Priority);
+        Assert.Equal(3, jobs.Single(job => job.MediaFile!.RelativePath == "c.mkv").Priority);
+        Assert.All(jobs, job => Assert.Contains("h264", job.EnqueueReason));
+    }
+
+    [Fact]
+    public async Task A_reported_file_a_manager_is_importing_into_is_held_back()
+    {
+        var libraryId = await SeedLibraryWithFilesAsync();
+        await using var db = new OptimisarrDbContext(_options);
+        db.ArrConnections.Add(new ArrConnection { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", ApiKey = "k" });
+        await db.SaveChangesAsync();
+        var file = await db.MediaFiles.SingleAsync(f => f.RelativePath == "a.mkv");
+
+        var results = await Service(db, new CountingHandler("""{ "records": [ { "movie": { "path": "/data/films" } } ] }"""))
+            .EnqueueEligibleFilesAsync([new ReportedFiles(await db.Libraries.SingleAsync(l => l.Id == libraryId), [file.Id])], CancellationToken.None);
+
+        Assert.Equal(FileEnqueueOutcome.Importing, results[file.Id].Outcome);
+        Assert.Empty(db.Jobs);
+    }
+
+    private static JobEnqueueService Service(OptimisarrDbContext db, HttpMessageHandler handler) => new(
+        db,
+        new CandidateService(db),
+        new ArrActivityService(db, new StubHttpClientFactory(handler), NullLogger<ArrActivityService>.Instance));
+
     private async Task<int> SeedLibraryWithFilesAsync()
     {
         await using var db = new OptimisarrDbContext(_options);
@@ -174,6 +250,17 @@ public sealed class JobEnqueueServiceTests : IDisposable
             {
                 Content = new StringContent(json)
             });
+    }
+
+    private sealed class CountingHandler(string json) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
+        }
     }
 
     private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory

@@ -238,6 +238,40 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.IsType<SingleFileScan.Refused>(_scanner.ScanFile(_root, link, new LibraryScanOptions(), _now));
     }
 
+    [Fact]
+    public void ScanFile_records_the_spelling_on_disk_when_the_manager_reports_another_letter_case()
+    {
+        // A manager on a case-insensitive mount can name a file in any case. Taking its spelling as the
+        // inventory path would give one file two rows, so the name the folder listing holds is recorded.
+        var episode = WriteFile("Show/Season 01/S01E01.mkv", modifiedMinutesAgo: 30);
+
+        var scanned = Assert.IsType<SingleFileScan.Settled>(
+            _scanner.ScanFile(_root, Path.Combine(_root, "show", "SEASON 01", "s01e01.MKV"), new LibraryScanOptions(), _now));
+
+        Assert.Equal(episode, scanned.File.AbsolutePath);
+        Assert.Equal(Path.Combine("Show", "Season 01", "S01E01.mkv"), scanned.File.RelativePath);
+    }
+
+    [Fact]
+    public void The_on_disk_spelling_prefers_an_exact_name_and_refuses_to_guess_between_case_twins()
+    {
+        // Simulates a case-sensitive folder holding two names that differ only in case.
+        IEnumerable<string> Listing(string folder) => folder == "/lib" ? ["Show"] : ["ep.mkv", "EP.mkv"];
+
+        Assert.Equal("/lib/Show/EP.mkv", LibraryPathSpelling.OnDisk("/lib", "/lib/show/EP.mkv", Listing));
+        Assert.Null(LibraryPathSpelling.OnDisk("/lib", "/lib/Show/Ep.mkv", Listing));
+        Assert.Null(LibraryPathSpelling.OnDisk("/lib", "/lib/Show/gone.mkv", Listing));
+        Assert.Null(LibraryPathSpelling.OnDisk("/lib", "/elsewhere/Show/EP.mkv", Listing));
+    }
+
+    [Fact]
+    public void The_on_disk_spelling_takes_the_listing_name_for_a_case_variant()
+    {
+        IEnumerable<string> Listing(string folder) => folder == "/lib" ? ["Show"] : ["Episode One.mkv"];
+
+        Assert.Equal("/lib/Show/Episode One.mkv", LibraryPathSpelling.OnDisk("/lib", "/lib/SHOW/episode one.MKV", Listing));
+    }
+
     private string WriteFile(string relativePath, int modifiedMinutesAgo)
     {
         var fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));

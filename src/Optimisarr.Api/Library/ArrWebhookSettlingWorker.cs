@@ -1,9 +1,9 @@
 namespace Optimisarr.Api.Library;
 
 /// <summary>
-/// Looks again at files a Sonarr/Radarr webhook reported while they were still being written, once their
-/// settling period has passed. Each one goes through the same intake as a fresh delivery, one at a time
-/// through the webhook gate.
+/// Looks again at files a Sonarr/Radarr webhook reported while they were still being written, or while a
+/// scan held their library, once they are due. Each one goes through the same intake as a fresh delivery,
+/// including its short bounded wait on the library, one at a time through the webhook gate.
 /// </summary>
 public sealed class ArrWebhookSettlingWorker(
     IServiceScopeFactory scopeFactory,

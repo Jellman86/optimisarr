@@ -24,6 +24,13 @@ public sealed class LibraryInventoryLocks
         return new Release(gate);
     }
 
+    /// <summary>Null when the library stayed busy for all of <paramref name="wait"/>.</summary>
+    public async Task<IDisposable?> TryAcquireAsync(int libraryId, TimeSpan wait, CancellationToken cancellationToken)
+    {
+        var gate = _locks.GetOrAdd(libraryId, _ => new SemaphoreSlim(1, 1));
+        return await gate.WaitAsync(wait, cancellationToken) ? new Release(gate) : null;
+    }
+
     private sealed class Release(SemaphoreSlim gate) : IDisposable
     {
         private int _released;
@@ -112,10 +119,18 @@ public sealed class LibraryInventoryService(
     /// Records one settled file exactly as a scan of <paramref name="library"/> would, so a file a manager
     /// reported lands in the inventory in the same state the next scan would have left it. Unchanged
     /// files write nothing. The caller has already chosen the library that holds the file's row, if any.
+    /// Waits at most <paramref name="lockWait"/> for a scan of the library to finish, and returns null
+    /// instead of waiting out a long scan.
     /// </summary>
-    public async Task<MediaFile> RecordScannedFileAsync(Data.Library library, ScannedFile scanned, CancellationToken cancellationToken)
+    public async Task<MediaFile?> TryRecordScannedFileAsync(
+        Data.Library library, ScannedFile scanned, TimeSpan lockWait, CancellationToken cancellationToken)
     {
-        using var held = await _locks.AcquireAsync(library.Id, cancellationToken);
+        using var held = await _locks.TryAcquireAsync(library.Id, lockWait, cancellationToken);
+        if (held is null)
+        {
+            return null;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Path == scanned.AbsolutePath, cancellationToken);
         if (file is null)

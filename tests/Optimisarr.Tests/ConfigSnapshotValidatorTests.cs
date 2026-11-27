@@ -14,6 +14,29 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.False(ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr with { LocalPathPrefix = "/data/tv" }] }, AllowedKeys).IsValid);
     }
 
+    [Theory]
+    [InlineData("tv", "/data/tv")]
+    [InlineData("/tv", "data/tv")]
+    [InlineData("/tv/../etc", "/data/tv")]
+    [InlineData("/tv", "/data/../etc")]
+    public void An_imported_path_mapping_is_held_to_the_same_rules_as_a_saved_one(string remote, string local)
+    {
+        var sonarr = new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true, RemotePathPrefix: remote, LocalPathPrefix: local);
+
+        var result = ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr] }, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("path mapping"));
+    }
+
+    [Fact]
+    public void An_imported_path_mapping_written_for_a_windows_manager_is_accepted()
+    {
+        var sonarr = new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true, RemotePathPrefix: @"D:\TV", LocalPathPrefix: "/data/tv");
+
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr] }, AllowedKeys).IsValid);
+    }
+
     [Fact]
     public void An_imported_silence_trim_is_held_to_the_same_rules_as_a_saved_one()
     {

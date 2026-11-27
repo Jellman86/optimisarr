@@ -1,3 +1,4 @@
+using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
 using Optimisarr.Api.Security;
 using Optimisarr.Data;
@@ -71,13 +72,11 @@ public sealed record ParsedArrConnection(
 
 public static class ArrConnectionRequestParser
 {
-    public const string PathMappingError =
-        "A path mapping needs both folders: where the manager sees the library, and where Optimisarr sees it, each a full path.";
+    public const string PathMappingError = ArrPathMappingRules.Error;
 
     /// <summary>
-    /// Reads the optional path mapping. Null <paramref name="update"/> means the request left it out, so the
-    /// saved one stays; two blank prefixes remove it. A half-filled mapping, or one that climbs with
-    /// <c>..</c>, is refused rather than guessed at.
+    /// Reads the optional path mapping by <see cref="ArrPathMappingRules"/>. Null <paramref name="update"/>
+    /// means the request left it out, so the saved one stays; two blank prefixes remove it.
     /// </summary>
     public static bool TryParsePathMapping(SaveArrConnectionRequest request, out ArrPathMappingUpdate? update, out string? error)
     {
@@ -88,31 +87,15 @@ public static class ArrConnectionRequestParser
             return true;
         }
 
-        var remote = string.IsNullOrWhiteSpace(request.RemotePathPrefix) ? null : request.RemotePathPrefix.Trim();
-        var local = string.IsNullOrWhiteSpace(request.LocalPathPrefix) ? null : request.LocalPathPrefix.Trim();
-        if (remote is null && local is null)
-        {
-            update = new ArrPathMappingUpdate(null, null);
-            return true;
-        }
-
-        if (remote is null || local is null || !IsAbsoluteManagerPath(remote) || !Path.IsPathFullyQualified(local)
-            || Climbs(remote) || Climbs(local) || remote.Length > 1024 || local.Length > 1024)
+        if (!ArrPathMappingRules.TryParse(request.RemotePathPrefix, request.LocalPathPrefix, out var mapping))
         {
             error = PathMappingError;
             return false;
         }
 
-        update = new ArrPathMappingUpdate(remote, local);
+        update = new ArrPathMappingUpdate(mapping?.RemotePrefix, mapping?.LocalPrefix);
         return true;
     }
-
-    // The manager may run on another operating system, so its path is judged by its own style.
-    private static bool IsAbsoluteManagerPath(string path) =>
-        path.StartsWith('/') || path.StartsWith(@"\\", StringComparison.Ordinal)
-        || (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/');
-
-    private static bool Climbs(string path) => path.Split('/', '\\').Contains("..");
 
     /// <summary>
     /// Validates a save request. A blank <c>ApiKey</c> is returned as null so the caller

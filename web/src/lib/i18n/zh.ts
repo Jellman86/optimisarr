@@ -1443,6 +1443,7 @@ export const zh: Messages = {
     arr_webhook_outcome_Queued: "已加入队列",
     arr_webhook_outcome_NotQueued: "未加入队列",
     arr_webhook_outcome_Settling: "正在等待文件写入完成",
+    arr_webhook_outcome_WaitingForScan: "正在等待媒体库扫描完成",
     arr_webhook_outcome_NotInLibrary: "不在任何已启用的媒体库中",
     arr_webhook_outcome_Ignored: "已忽略，不是导入",
     arr_webhook_outcome_Refused: "已拒绝",

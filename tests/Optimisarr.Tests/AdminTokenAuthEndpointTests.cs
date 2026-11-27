@@ -1517,6 +1517,9 @@ public sealed class AdminTokenAuthEndpointTests
                     services.Remove(preflight);
                 }
                 services.AddSingleton<ISourceTimelinePreflight, NamedShortPicturePreflight>();
+                // A webhook test that holds a library's inventory should not wait the production few seconds.
+                services.RemoveAll<ArrWebhookIntakeOptions>();
+                services.AddSingleton(new ArrWebhookIntakeOptions { LibraryLockWait = TimeSpan.FromMilliseconds(200) });
             });
         }
 

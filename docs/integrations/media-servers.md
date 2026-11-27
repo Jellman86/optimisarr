@@ -86,7 +86,9 @@ file, so Optimisarr picks up just that file:
    enabled library is left alone and the delivery still succeeds.
 2. It checks the file exactly as a library scan would. A file modified within
    the settling period (two minutes) is looked at again once it settles. Links
-   out of the library and paths containing `..` are refused.
+   out of the library and paths containing `..` are refused. The file is
+   recorded under its name as spelled on disk, whatever letter case the manager
+   used.
 3. It probes the file and queues it only if the library optimises
    automatically, is inside its schedule, and its rules select the file. That is
    the same decision automatic optimisation makes every minute, so the webhook
@@ -132,6 +134,10 @@ password. **Turn off webhook** removes the password and refuses every
 delivery. Each delivery body is limited to 1 MiB, and deliveries are processed
 one at a time.
 
+Use Optimisarr's HTTPS address for the webhook URL wherever Sonarr or Radarr
+can reach it: basic authentication over plain HTTP can be read by anyone on the
+network path.
+
 If your reverse proxy adds its own sign-in, exempt `/api/arr-webhooks/` from it
 or Sonarr and Radarr cannot reach the webhook. See [Running behind a reverse
 proxy](../setup/reverse-proxy.md#built-in-admin-token).
@@ -147,6 +153,7 @@ did:
 | Queued | The file was added to the queue. |
 | Not queued | The file is in the inventory but was not queued. The detail says why, for example the library does not optimise automatically, it is outside its schedule, or its rules skip the file. |
 | Waiting for the file to finish writing | The file was modified within the settling period. Optimisarr looks again once it settles. |
+| Waiting for a library scan to finish | A scan of the file's library was recording files. Optimisarr looks again about 30 seconds later rather than holding the delivery. |
 | Not in any enabled library | The file's path, after any path mapping, is not inside an enabled library. Check the path mapping. |
 | Refused | The delivery named a path Optimisarr will not accept, or a file it cannot find. The detail says which. |
 | Ignored | The event was not an import or upgrade, or the connection is turned off. |

@@ -12,7 +12,7 @@ public abstract record ArrWebhookEvent
     public sealed record Test : ArrWebhookEvent;
 
     /// <summary>On Import or On Upgrade: the files, as the manager sees them, that it just put in place.</summary>
-    public sealed record Import(IReadOnlyList<string> Paths, bool IsUpgrade) : ArrWebhookEvent;
+    public sealed record Import(IReadOnlyList<string> Paths) : ArrWebhookEvent;
 
     /// <summary>An event Optimisarr has no use for, such as Grab or Health.</summary>
     public sealed record Ignored(string EventType) : ArrWebhookEvent;
@@ -76,8 +76,7 @@ public static class ArrWebhookPayloadParser
                 return new ArrWebhookEvent.Invalid($"The import names more than {MaxFilesPerEvent} files.");
             }
 
-            var isUpgrade = root.TryGetProperty("isUpgrade", out var upgrade) && upgrade.ValueKind == JsonValueKind.True;
-            return new ArrWebhookEvent.Import(paths, isUpgrade);
+            return new ArrWebhookEvent.Import(paths);
         }
     }
 

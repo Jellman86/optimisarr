@@ -37,6 +37,12 @@ public sealed class AdminTokenAuthTests
     [InlineData("/api/workers/pairing-code")]
     [InlineData("/api/arr-connections/1/webhook-password")]
     [InlineData("/api/arr-webhooksx/1")]
+    // Only the delivery route itself is open, never the bare prefix or anything beneath an id.
+    [InlineData("/api/arr-webhooks")]
+    [InlineData("/api/arr-webhooks/")]
+    [InlineData("/api/arr-webhooks/1/extra")]
+    [InlineData("/api/arr-webhooks/1/")]
+    [InlineData("/api/arr-webhooks/abc")]
     public void Other_worker_routes_are_not_open(string path)
     {
         Assert.False(AdminTokenAuth.IsOpenPath(path));

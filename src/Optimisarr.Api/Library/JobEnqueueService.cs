@@ -11,6 +11,9 @@ public enum FileEnqueueOutcome { Enqueued, AlreadyActive, NotFound, NeedsProbe, 
 
 public sealed record FileEnqueueResult(FileEnqueueOutcome Outcome, int? JobId, string? Reason);
 
+/// <summary>Files one delivery named in one library, by their inventory ids.</summary>
+public sealed record ReportedFiles(Data.Library Library, IReadOnlyCollection<int> MediaFileIds);
+
 /// <summary>
 /// Creates queued <see cref="Job"/>s from a library's eligible candidates. Idempotent:
 /// a media file that already has an active (non-terminal) job is not enqueued again,
@@ -89,35 +92,90 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
     }
 
     /// <summary>
-    /// Queues one file exactly as <see cref="EnqueueEligibleAsync"/> would if it ran now: the same
-    /// candidate evaluation, active-job check and import hold, and the same job. Used when a manager reports
-    /// a file it just imported, so that file need not wait for the next automatic tick. The caller decides,
-    /// as the automatic tick does, whether the library optimises automatically right now.
+    /// Queues files a manager just reported exactly as <see cref="EnqueueEligibleAsync"/> would if it ran
+    /// now: the same candidate evaluation, active-job check and import hold, and the same job, so they need
+    /// not wait for the next automatic tick. The managers are asked about their imports once for the whole
+    /// delivery and each library's candidates are evaluated once, however many files it names. The caller
+    /// decides, as the automatic tick does, whether each library optimises automatically right now.
     /// </summary>
-    public async Task<FileEnqueueResult> EnqueueEligibleFileAsync(Data.Library library, int mediaFileId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<int, FileEnqueueResult>> EnqueueEligibleFilesAsync(
+        IReadOnlyList<ReportedFiles> reported, CancellationToken cancellationToken)
     {
+        var results = new Dictionary<int, FileEnqueueResult>();
+        if (reported.Count == 0)
+        {
+            return results;
+        }
+
+        // Network first, before SQLite's writer is reserved, as the automatic tick does.
         var activeImports = await arrActivity.GetActiveImportsAsync(cancellationToken);
+        foreach (var (library, mediaFileIds) in reported)
+        {
+            await EnqueueReportedAsync(library, [.. mediaFileIds.Distinct()], activeImports, results, cancellationToken);
+        }
+        return results;
+    }
+
+    private async Task EnqueueReportedAsync(
+        Data.Library library,
+        IReadOnlyList<int> mediaFileIds,
+        IReadOnlyList<ArrActiveImport> activeImports,
+        Dictionary<int, FileEnqueueResult> results,
+        CancellationToken cancellationToken)
+    {
         await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
-        var candidate = (await candidates.EvaluateAsync(library.Id, cancellationToken))
-            .FirstOrDefault(c => c.MediaFileId == mediaFileId);
-        if (candidate is null) return new(FileEnqueueOutcome.NeedsProbe, null, "The file has not been probed.");
-        if (!candidate.Eligible) return new(FileEnqueueOutcome.Ineligible, null, candidate.Reason);
+        var candidatesById = (await candidates.EvaluateAsync(library.Id, cancellationToken))
+            .Where(candidate => mediaFileIds.Contains(candidate.MediaFileId))
+            .ToDictionary(candidate => candidate.MediaFileId);
+        var activeJobs = await db.Jobs.AsNoTracking()
+            .Where(job => job.Type == JobType.Normal && mediaFileIds.Contains(job.MediaFileId) && ActiveStatuses.Contains(job.Status))
+            .Select(job => new { job.MediaFileId, job.Id })
+            .ToListAsync(cancellationToken);
+        var activeByFile = activeJobs.GroupBy(job => job.MediaFileId).ToDictionary(group => group.Key, group => group.Min(job => job.Id));
+        var paths = await db.MediaFiles.AsNoTracking()
+            .Where(file => mediaFileIds.Contains(file.Id))
+            .ToDictionaryAsync(file => file.Id, file => file.Path, cancellationToken);
 
-        var active = await db.Jobs.AsNoTracking()
-            .Where(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId && ActiveStatuses.Contains(job.Status))
-            .Select(job => (int?)job.Id).FirstOrDefaultAsync(cancellationToken);
-        if (active is not null) return new(FileEnqueueOutcome.AlreadyActive, active, null);
+        var added = new List<Job>();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var id in mediaFileIds)
+        {
+            if (!candidatesById.TryGetValue(id, out var candidate))
+            {
+                results[id] = new(FileEnqueueOutcome.NeedsProbe, null, "The file has not been probed.");
+            }
+            else if (!candidate.Eligible)
+            {
+                results[id] = new(FileEnqueueOutcome.Ineligible, null, candidate.Reason);
+            }
+            else if (activeByFile.TryGetValue(id, out var activeJobId))
+            {
+                results[id] = new(FileEnqueueOutcome.AlreadyActive, activeJobId, null);
+            }
+            else if (paths.TryGetValue(id, out var path)
+                && ArrImportExclusionEvaluator.ExclusionReason(path, activeImports) is { } importing)
+            {
+                results[id] = new(FileEnqueueOutcome.Importing, null, importing);
+            }
+            else
+            {
+                var job = AutomaticJob(candidate, library, now);
+                db.Jobs.Add(job);
+                added.Add(job);
+            }
+        }
 
-        var path = await db.MediaFiles.AsNoTracking().Where(file => file.Id == mediaFileId)
-            .Select(file => file.Path).SingleAsync(cancellationToken);
-        if (ArrImportExclusionEvaluator.ExclusionReason(path, activeImports) is { } importing)
-            return new(FileEnqueueOutcome.Importing, null, importing);
+        if (added.Count == 0)
+        {
+            return;
+        }
 
-        var job = AutomaticJob(candidate, library, DateTimeOffset.UtcNow);
-        db.Jobs.Add(job);
         await db.SaveChangesAsync(cancellationToken);
         await write.CommitAsync(cancellationToken);
-        return new(FileEnqueueOutcome.Enqueued, job.Id, null);
+        foreach (var job in added)
+        {
+            results[job.MediaFileId] = new(FileEnqueueOutcome.Enqueued, job.Id, null);
+        }
     }
 
     private static Job AutomaticJob(Candidate candidate, Data.Library library, DateTimeOffset now) => new()

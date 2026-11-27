@@ -239,9 +239,9 @@ public static class ConfigSnapshotValidator
             RequireText(connection.Name, $"{where} name", errors);
             RequireText(connection.BaseUrl, $"{where} base URL", errors);
             RequireEnum<ArrConnectionType>(connection.Type, $"{where} type", errors);
-            if (string.IsNullOrWhiteSpace(connection.RemotePathPrefix) != string.IsNullOrWhiteSpace(connection.LocalPathPrefix))
+            if (!Activity.ArrPathMappingRules.TryParse(connection.RemotePathPrefix, connection.LocalPathPrefix, out _))
             {
-                errors.Add($"{where} path mapping needs both folders, or neither.");
+                errors.Add($"{where} path mapping: {Activity.ArrPathMappingRules.Error}");
             }
         }
 

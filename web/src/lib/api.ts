@@ -1124,6 +1124,7 @@ export type ArrWebhookOutcome =
   | 'Queued'
   | 'NotQueued'
   | 'Settling'
+  | 'WaitingForScan'
   | 'NotInLibrary'
   | 'Ignored'
   | 'Refused'

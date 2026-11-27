@@ -22,8 +22,15 @@ public static class ArrWebhookAuth
 
     public static string PathFor(int connectionId) => $"{PathPrefix}/{connectionId}";
 
+    /// <summary>
+    /// True only for a delivery route itself, <c>/api/arr-webhooks/&lt;id&gt;</c>: not the bare prefix and
+    /// nothing beneath an id, so the admin-token exemption cannot widen to a route added there later.
+    /// </summary>
     public static bool IsWebhookPath(PathString path) =>
-        path.StartsWithSegments(PathPrefix, StringComparison.OrdinalIgnoreCase);
+        path.StartsWithSegments(PathPrefix, StringComparison.OrdinalIgnoreCase, out var rest)
+        && rest.Value is { Length: > 1 } id
+        && id[0] == '/'
+        && !id.AsSpan(1).ContainsAnyExceptInRange('0', '9');
 
     public static string IssuePassword() => WorkerCredential.Issue();
 

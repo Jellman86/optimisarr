@@ -15,6 +15,9 @@ public enum ArrWebhookOutcome
     /// <summary>The file was modified too recently; it is looked at again once it settles.</summary>
     Settling,
 
+    /// <summary>A library scan was writing the file's library; the file is looked at again once it can be recorded.</summary>
+    WaitingForScan,
+
     /// <summary>The file is not inside any enabled library.</summary>
     NotInLibrary,
 

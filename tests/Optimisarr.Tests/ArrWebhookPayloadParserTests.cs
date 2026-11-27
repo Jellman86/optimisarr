@@ -32,12 +32,11 @@ public sealed class ArrWebhookPayloadParserTests
         var parsed = ArrWebhookPayloadParser.Parse(json, ArrConnectionType.Sonarr);
 
         var import = Assert.IsType<ArrWebhookEvent.Import>(parsed);
-        Assert.False(import.IsUpgrade);
         Assert.Equal(["/tv/Fabricated Show/Season 01/Fabricated Show - S01E01.mkv"], import.Paths);
     }
 
     [Fact]
-    public void A_sonarr_upgrade_is_an_import_marked_as_an_upgrade()
+    public void A_sonarr_upgrade_is_an_import_of_the_new_file()
     {
         const string json = """
             {
@@ -51,7 +50,6 @@ public sealed class ArrWebhookPayloadParserTests
 
         var import = Assert.IsType<ArrWebhookEvent.Import>(ArrWebhookPayloadParser.Parse(json, ArrConnectionType.Sonarr));
 
-        Assert.True(import.IsUpgrade);
         Assert.Equal(["/tv/Show/S01E01.mkv"], import.Paths);
     }
 
@@ -95,7 +93,6 @@ public sealed class ArrWebhookPayloadParserTests
 
         var import = Assert.IsType<ArrWebhookEvent.Import>(ArrWebhookPayloadParser.Parse(json, ArrConnectionType.Radarr));
 
-        Assert.True(import.IsUpgrade);
         Assert.Equal(["/movies/Fabricated Film (2021)/Fabricated Film (2021).mkv"], import.Paths);
     }
 

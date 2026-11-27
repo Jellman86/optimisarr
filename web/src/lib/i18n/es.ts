@@ -1484,6 +1484,7 @@ true_peak_tip:
     arr_webhook_outcome_Queued: "En cola",
     arr_webhook_outcome_NotQueued: "No se puso en cola",
     arr_webhook_outcome_Settling: "Esperando a que el archivo termine de escribirse",
+    arr_webhook_outcome_WaitingForScan: "Esperando a que termine un escaneo de la biblioteca",
     arr_webhook_outcome_NotInLibrary: "No está en ninguna biblioteca activada",
     arr_webhook_outcome_Ignored: "Ignorado, no es una importación",
     arr_webhook_outcome_Refused: "Rechazado",

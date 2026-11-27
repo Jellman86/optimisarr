@@ -156,6 +156,7 @@ builder.Services.AddScoped<ArrTrackedFilesService>(services => new ArrTrackedFil
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddSingleton<ArrWebhookSettlingQueue>();
 builder.Services.AddSingleton<ArrWebhookGate>();
+builder.Services.AddSingleton<ArrWebhookIntakeOptions>();
 builder.Services.AddScoped<ArrWebhookService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();

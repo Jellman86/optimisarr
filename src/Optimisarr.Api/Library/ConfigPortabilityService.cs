@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -583,10 +584,12 @@ public sealed class ConfigPortabilityService(
             connection.Enabled = snapshot.Enabled;
             connection.RescanAfterChanges = snapshot.RescanAfterChanges ?? connection.RescanAfterChanges;
             // A backup from before path mappings existed leaves any mapping saved here alone.
-            if (snapshot.RemotePathPrefix is not null || snapshot.LocalPathPrefix is not null)
+            // The snapshot was validated by the same rules as a saved mapping, so this only trims it.
+            if ((snapshot.RemotePathPrefix is not null || snapshot.LocalPathPrefix is not null)
+                && ArrPathMappingRules.TryParse(snapshot.RemotePathPrefix, snapshot.LocalPathPrefix, out var mapping))
             {
-                connection.RemotePathPrefix = snapshot.RemotePathPrefix;
-                connection.LocalPathPrefix = snapshot.LocalPathPrefix;
+                connection.RemotePathPrefix = mapping?.RemotePrefix;
+                connection.LocalPathPrefix = mapping?.LocalPrefix;
             }
         }
 

@@ -513,6 +513,162 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Equal(JsonValueKind.Null, (await cleared.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("remotePathPrefix").ValueKind);
     }
 
+    [Fact]
+    public async Task A_file_whose_library_is_being_scanned_waits_for_the_scan_instead_of_holding_the_delivery() => await HoldQueueAsync(async () =>
+    {
+        var (library, root) = await SeedLibraryAsync(autoEnqueue: true);
+        var first = WriteEpisode(root, "Show/S01E01.mkv", TimeSpan.FromHours(1));
+        var second = WriteEpisode(root, "Show/S01E02.mkv", TimeSpan.FromHours(1));
+        await using var hook = await CreateWebhookAsync();
+        var locks = api.Services.GetRequiredService<LibraryInventoryLocks>();
+        var settling = api.Services.GetRequiredService<ArrWebhookSettlingQueue>();
+
+        SettlingWebhookFile[] waiting;
+        using (await locks.AcquireAsync(library.Id, CancellationToken.None))
+        {
+            using var response = await DeliverAsync(hook, JsonSerializer.Serialize(new
+            {
+                eventType = "Download",
+                series = new { path = Path.Combine(root, "Show") },
+                episodeFiles = new[] { new { path = first }, new { path = second } },
+            }));
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var receipt = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("WaitingForScan", receipt.GetProperty("outcome").GetString());
+            Assert.All(receipt.GetProperty("files").EnumerateArray(),
+                file => Assert.Equal("WaitingForScan", file.GetProperty("outcome").GetString()));
+            Assert.False(await InDbAsync(db => db.MediaFiles.AnyAsync(f => f.LibraryId == library.Id)));
+
+            waiting = [.. settling.TakeDue(DateTimeOffset.UtcNow.AddMinutes(5)).Where(file => file.ConnectionId == hook.ConnectionId)];
+            Assert.Equal([first, second], waiting.Select(file => file.LocalPath).Order());
+
+            // A look again while the scan still holds the library waits the same short while and goes back on the list.
+            using (var scope = api.Services.CreateScope())
+            {
+                await scope.ServiceProvider.GetRequiredService<ArrWebhookService>().RevisitAsync(waiting[0], CancellationToken.None);
+            }
+            var requeued = Assert.Single(settling.TakeDue(DateTimeOffset.UtcNow.AddMinutes(5)), file => file.ConnectionId == hook.ConnectionId);
+            Assert.Equal(waiting[0].Attempts + 1, requeued.Attempts);
+            Assert.Equal(ArrWebhookOutcome.WaitingForScan,
+                await InDbAsync(db => db.ArrConnections.Where(c => c.Id == hook.ConnectionId).Select(c => c.WebhookLastOutcome).SingleAsync()));
+        }
+
+        foreach (var file in waiting)
+        {
+            using var scope = api.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<ArrWebhookService>().RevisitAsync(file, CancellationToken.None);
+        }
+
+        var taken = await InDbAsync(db => db.MediaFiles.AsNoTracking().Where(f => f.LibraryId == library.Id).Select(f => f.Id).ToListAsync());
+        Assert.Equal(2, taken.Count);
+        Assert.Equal(2, await InDbAsync(db => db.Jobs.CountAsync(j => taken.Contains(j.MediaFileId))));
+    });
+
+    [Fact]
+    public async Task A_file_named_in_another_letter_case_is_recorded_under_its_name_on_disk()
+    {
+        var (_, root) = await SeedLibraryAsync(autoEnqueue: false);
+        var episode = WriteEpisode(root, "Show/S01E01.mkv", TimeSpan.FromHours(1));
+        await using var hook = await CreateWebhookAsync();
+
+        using var response = await DeliverAsync(hook, SonarrImport(Path.Combine(root, "SHOW", "s01e01.MKV")));
+
+        Assert.Equal("NotQueued", await OutcomeOf(response));
+        var paths = await InDbAsync(db => db.MediaFiles.AsNoTracking().Where(f => f.Path.StartsWith(root)).Select(f => f.Path).ToListAsync());
+        Assert.Equal([episode], paths);
+    }
+
+    [Fact]
+    public async Task Caller_text_is_cut_and_cleaned_once_for_the_receipt_and_the_saved_outcome()
+    {
+        await using var hook = await CreateWebhookAsync();
+        // Escaped in the JSON, so the parsed event type holds a real line break.
+        var eventType = "Grab\\nForged: admin logged in" + new string('x', 5000);
+
+        using var ignored = await DeliverAsync(hook, $$"""{ "eventType": "{{eventType}}" }""");
+
+        var detail = (await ignored.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString()!;
+        Assert.DoesNotContain('\n', detail);
+        Assert.True(detail.Length < 200, detail);
+        Assert.Equal(detail, await InDbAsync(db => db.ArrConnections.Where(c => c.Id == hook.ConnectionId).Select(c => c.WebhookLastDetail).SingleAsync()));
+
+        var longPath = "/nowhere/" + new string('y', 5000) + "\\r\\n.mkv";
+        using var refused = await DeliverAsync(hook, $$"""{ "eventType": "Download", "episodeFile": { "path": "{{longPath}}" } }""");
+
+        var receipt = await refused.Content.ReadFromJsonAsync<JsonElement>();
+        var file = Assert.Single(receipt.GetProperty("files").EnumerateArray());
+        Assert.True(file.GetProperty("path").GetString()!.Length <= 512);
+        Assert.True(file.GetProperty("detail").GetString()!.Length <= 1024);
+        Assert.DoesNotContain(file.GetProperty("path").GetString()!, character => char.IsControl(character));
+        Assert.DoesNotContain(file.GetProperty("detail").GetString()!, character => char.IsControl(character));
+    }
+
+    [Fact]
+    public async Task A_connection_removed_while_its_delivery_is_handled_is_ignored_rather_than_failing()
+    {
+        await using var hook = await CreateWebhookAsync();
+        using var scope = api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var connection = await db.ArrConnections.SingleAsync(c => c.Id == hook.ConnectionId);
+        await InDbAsync(other => other.ArrConnections.Where(c => c.Id == hook.ConnectionId).ExecuteDeleteAsync());
+
+        var result = await scope.ServiceProvider.GetRequiredService<ArrWebhookService>()
+            .HandleAsync(connection, new Optimisarr.Core.Activity.ArrWebhookEvent.Test(), CancellationToken.None);
+
+        Assert.Equal(ArrWebhookOutcome.Ignored, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_chunked_body_over_the_limit_is_refused_without_a_content_length()
+    {
+        await using var hook = await CreateWebhookAsync();
+        using var client = api.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, hook.Path)
+        {
+            Content = new StreamContent(new UnseekableStream(new MemoryStream(new byte[2 * 1024 * 1024]))),
+        };
+        request.Headers.TransferEncodingChunked = true;
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"optimisarr:{hook.Password}")));
+
+        Assert.Null(request.Content.Headers.ContentLength);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_unknown_connection_and_a_wrong_password_get_the_same_answer()
+    {
+        await using var hook = await CreateWebhookAsync();
+
+        using var wrong = await DeliverAsync(hook, """{ "eventType": "Test" }""", "wrong-password");
+        using var unknown = await DeliverAsync(hook with { Path = "/api/arr-webhooks/987654", Api = api }, """{ "eventType": "Test" }""");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        Assert.Equal(wrong.StatusCode, unknown.StatusCode);
+        Assert.Equal(await wrong.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
+        Assert.Equal(wrong.Headers.WwwAuthenticate.ToString(), unknown.Headers.WwwAuthenticate.ToString());
+        Assert.Equal(wrong.Content.Headers.ContentType, unknown.Content.Headers.ContentType);
+    }
+
+    private sealed class UnseekableStream(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
+    }
+
     private sealed class TemporaryFolder : IDisposable
     {
         public string Path { get; } = Directory.CreateTempSubdirectory("optimisarr-webhook-outside-").FullName;
