@@ -79,7 +79,17 @@ public sealed class JobRunner(
                 source = Path.Combine(scratch, "source");
                 candidatePrefix = Path.Combine(scratch, "candidate");
             }
-            else { Directory.CreateDirectory(scratch); ownsScratch = true; }
+            else
+            {
+                // Created fresh or not at all: a job id is easy to guess, so whatever is already
+                // at its folder could have been put there to be written through.
+                if (JobScratch.Create(scratch) is { } refusal)
+                {
+                    await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                    return new JobOutcome(assignment.JobId, false, refusal, CapacityBlocked: true);
+                }
+                ownsScratch = true;
+            }
             var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
             report?.Invoke($"Job {assignment.JobId}: fetching {assignment.Title}");
             var declaredHash = await WhileRenewing(
@@ -851,12 +861,9 @@ public sealed class JobRunner(
     {
         try
         {
-            if (Directory.Exists(directory))
-            {
-                Directory.Delete(directory, recursive: true);
-            }
+            JobScratch.Delete(directory);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             // A file still held open by a process that has not quite exited. The next run's sweep
             // will get it; failing the job over tidying would be absurd.
