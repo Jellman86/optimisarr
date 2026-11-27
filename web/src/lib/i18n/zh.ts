@@ -2327,6 +2327,7 @@ export const zh: Messages = {
     not_too_small: "没有小得可疑",
     colour: "保留色彩信息",
     hdr: "保留 HDR",
+    dolby_vision: "保留 Dolby Vision",
     picture_count: "没有丢帧或多帧",
     sync: "声画同步",
     picture_size: "画面尺寸符合预期",

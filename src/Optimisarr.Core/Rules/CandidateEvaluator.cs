@@ -321,6 +321,19 @@ public static class CandidateEvaluator
         // conservative: no data, no removal.
         if (rules.TargetVideoCodec is null)
         {
+            // A copy keeps the Dolby Vision RPU in the video, but the shipped FFmpeg writes the
+            // configuration that tells a player to use it into MP4 only under -strict unofficial,
+            // and into MOV never. Copied there, the file would lose Dolby Vision and the
+            // "Dolby Vision kept" check would refuse it only after a full rewrite.
+            var copyContainer = rules.TargetContainer is null
+                ? Path.GetExtension(media.RelativePath)
+                : Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath);
+            if (media.IsDolbyVision && TranscodeSpecResolver.IsMp4Container(copyContainer))
+            {
+                return CandidateDecision.Skipped(
+                    "Dolby Vision — copying it into an MP4 file would drop its Dolby Vision information; left untouched");
+            }
+
             var audioRemovals = media.AudioLanguages is null
                 ? (IReadOnlyList<int>)Array.Empty<int>()
                 : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);

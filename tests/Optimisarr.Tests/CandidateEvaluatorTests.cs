@@ -882,6 +882,68 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4")]
+    [InlineData("Movies/Example (2020)/Example.M4V")]
+    [InlineData("Movies/Example (2020)/Example.mov")]
+    public void Track_cleanup_leaves_dolby_vision_in_an_mp4_family_file_untouched(string relativePath)
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+        Assert.Contains("MP4", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_into_mp4_leaves_dolby_vision_untouched()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with { TargetContainer = "mp4" };
+
+        var decision = CandidateEvaluator.Evaluate(File(isHdr: true, isDolbyVision: true), remux);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_of_dolby_vision_into_matroska_stays_eligible()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+                relativePath: "Movies/Example (2020)/Example.mp4"),
+            remux);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void An_mp4_without_dolby_vision_still_gets_track_cleanup()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        Assert.True(CandidateEvaluator.Evaluate(media, rules).IsEligible);
+    }
+
+    [Theory]
     [InlineData("tt")]
     [InlineData("bb")]
     [InlineData("tb")]
