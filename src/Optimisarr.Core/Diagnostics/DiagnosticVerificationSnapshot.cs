@@ -50,7 +50,7 @@ public sealed record DiagnosticVerificationSnapshot(bool Passed, IReadOnlyList<D
     private static double? Finite(double? value) => value is { } number && double.IsFinite(number) ? number : null;
     private static string SafeName(string? name) => name is "A/V sync" or "Audio clipping (true peak)" or "Audio codecs unchanged" or "Audio fidelity"
         or "Audio languages" or "Audio loudness (EBU R128)" or "Audio metadata and artwork" or "Audio tracks" or "Colour metadata" or "Container unchanged"
-        or "Decode health" or "Dimensions" or "Duration" or "File identity" or "HDR signal" or "Image metadata (EXIF/ICC)" or "Image quality (SSIM)"
+        or "Decode health" or "Dimensions" or "Dolby Vision kept" or "Duration" or "File identity" or "HDR signal" or "Image metadata (EXIF/ICC)" or "Image quality (SSIM)"
         or "Output readable" or "Perceptual quality (VMAF)" or "Perceptual image quality (SSIMULACRA2)" or "Picture" or "Picture retention" or "Picture shape" or "Size saving" or "Compression ceiling" or "Source video timeline"
         or "Subtitle languages" or "Subtitle tracks" or "Tail integrity" or "Timestamp integrity" or "Video stream" or "Video structure" ? name : "Other verification check";
 }

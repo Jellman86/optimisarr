@@ -360,5 +360,48 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
         Assert.False(outcome.Report.Passed);
     }
 
+    private const string DolbyVisionRecord = ""","side_data_list":[{"side_data_type":"DOVI configuration record","dv_version_major":1,"dv_version_minor":0,"dv_profile":8,"dv_level":6,"rpu_present_flag":1,"el_present_flag":0,"bl_present_flag":1,"dv_bl_signal_compatibility_id":1,"dv_md_compression":"none"}]""";
+    private static readonly string DolbyVisionProbe = Probe.Replace("\"duration\":\"8\"}", "\"duration\":\"8\"" + DolbyVisionRecord + "}");
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task A_track_cleanup_of_dolby_vision_is_refused_when_the_copy_loses_the_configuration(bool outputKeepsIt, bool passes)
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "unread-source.mkv"), 1000, 8, 0, 0, true, false,
+            VideoReencoded: false, IsDolbyVision: true);
+        var evidence = Evidence() with
+        {
+            SourceProbe = DolbyVisionProbe,
+            CandidateProbe = outputKeepsIt ? DolbyVisionProbe : Probe
+        };
+
+        var outcome = await Service().VerifyAsync(original, output, VerificationPolicy.Default with { RequireSizeReduction = false },
+            default, remoteEvidence: evidence);
+
+        var check = outcome.Report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+        Assert.Equal(passes ? CheckOutcome.Passed : CheckOutcome.Failed, check.Outcome);
+        Assert.Equal(passes, outcome.Report.Passed);
+    }
+
+    [Fact]
+    public async Task A_source_the_library_recorded_as_dolby_vision_is_checked_even_when_its_probe_shows_none()
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "unread-source.mkv"), 1000, 8, 0, 0, true, false,
+            VideoReencoded: false, IsDolbyVision: true);
+
+        var outcome = await Service().VerifyAsync(original, output, VerificationPolicy.Default with { RequireSizeReduction = false },
+            default, remoteEvidence: Evidence());
+
+        Assert.Equal(CheckOutcome.Failed,
+            outcome.Report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName).Outcome);
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

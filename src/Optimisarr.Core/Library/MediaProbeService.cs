@@ -73,6 +73,11 @@ public sealed record MediaProbeResult(
     /// language, which an MP4 or Matroska file records for every track, usually as "und".
     /// </summary>
     public string? TagLanguage { get; init; }
+    /// <summary>
+    /// The primary video's Dolby Vision configuration record, when its side data carries a complete
+    /// one. <see cref="IsDolbyVision"/> can be true without it, for a stream marked only by its codec tag.
+    /// </summary>
+    public DolbyVisionConfiguration? DolbyVision { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RawJson { get; init; }
 
@@ -266,6 +271,7 @@ public sealed class MediaProbeService : IMediaProbeService
         int? frameCount = null;
         var isHdr = false;
         var isDolbyVision = false;
+        DolbyVisionConfiguration? dolbyVision = null;
         var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
         var audioTracks = new List<AudioTrackInfo>();
@@ -347,6 +353,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         frameCount ??= ReadMatroskaFrameCount(stream);
                         isHdr = IsHdrVideoStream(stream);
                         isDolbyVision = IsDolbyVisionStream(stream);
+                        dolbyVision = ReadDolbyVisionConfiguration(stream);
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
@@ -463,7 +470,7 @@ public sealed class MediaProbeService : IMediaProbeService
         {
             SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes,
             AudioTrackBytes = audioTrackBytes, SubtitleTrackBytes = subtitleTrackBytes, PixelAspect = pixelAspect,
-            TagLanguage = tagLanguage?.Trim(), RawJson = json,
+            TagLanguage = tagLanguage?.Trim(), DolbyVision = dolbyVision, RawJson = json,
         };
     }
 
@@ -551,6 +558,24 @@ public sealed class MediaProbeService : IMediaProbeService
             (tag.StartsWith("dvh", StringComparison.OrdinalIgnoreCase) ||
              tag.StartsWith("dav", StringComparison.OrdinalIgnoreCase) ||
              tag.StartsWith("dvav", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static DolbyVisionConfiguration? ReadDolbyVisionConfiguration(JsonElement videoStream)
+    {
+        if (!videoStream.TryGetProperty("side_data_list", out var sideData) || sideData.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var entry in sideData.EnumerateArray())
+        {
+            if (DolbyVisionConfiguration.FromSideData(entry) is { } configuration)
+            {
+                return configuration;
+            }
+        }
+
+        return null;
     }
 
     private static string? ReadString(JsonElement stream, string property)

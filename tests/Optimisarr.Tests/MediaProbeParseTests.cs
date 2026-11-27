@@ -827,6 +827,69 @@ public sealed class MediaProbeParseTests
         Assert.True(result.IsDolbyVision);
     }
 
+    // Captured from jellyfin-ffmpeg 7.1.4's ffprobe for a Profile 5 MP4 (dvh1 sample entry).
+    private const string ProfileFiveProbe = """
+        {
+          "streams": [
+            {
+              "index": 0, "codec_name": "hevc", "profile": "Main 10", "codec_type": "video",
+              "codec_tag_string": "dvh1", "width": 640, "height": 360, "pix_fmt": "yuv420p10le",
+              "color_range": "tv", "color_space": "bt2020nc", "color_transfer": "smpte2084", "color_primaries": "bt2020",
+              "side_data_list": [
+                {
+                  "side_data_type": "DOVI configuration record",
+                  "dv_version_major": 1, "dv_version_minor": 0, "dv_profile": 5, "dv_level": 6,
+                  "rpu_present_flag": 1, "el_present_flag": 0, "bl_present_flag": 1,
+                  "dv_bl_signal_compatibility_id": 0, "dv_md_compression": "none"
+                }
+              ]
+            }
+          ],
+          "format": { "format_name": "mov,mp4,m4a,3gp,3g2,mj2" }
+        }
+        """;
+
+    [Fact]
+    public void Parse_reads_every_field_of_the_dolby_vision_configuration_record()
+    {
+        var result = MediaProbeService.Parse(ProfileFiveProbe);
+
+        Assert.True(result.IsDolbyVision);
+        Assert.Equal(new DolbyVisionConfiguration(1, 0, 5, 6, RpuPresent: true, EnhancementLayerPresent: false,
+            BaseLayerPresent: true, BaseLayerCompatibilityId: 0), result.DolbyVision);
+        Assert.Equal("Profile 5, level 6, version 1.0, base layer + RPU", result.DolbyVision!.Describe());
+    }
+
+    [Fact]
+    public void Parse_names_a_profile_with_its_base_layer_compatibility()
+    {
+        var result = MediaProbeService.Parse(ProfileFiveProbe
+            .Replace("\"dv_profile\": 5", "\"dv_profile\": 8")
+            .Replace("\"dv_bl_signal_compatibility_id\": 0", "\"dv_bl_signal_compatibility_id\": 1"));
+
+        Assert.Equal("8.1", result.DolbyVision!.ProfileName);
+    }
+
+    [Fact]
+    public void Parse_leaves_an_incomplete_dolby_vision_record_unread_but_still_flags_dolby_vision()
+    {
+        var result = MediaProbeService.Parse(ProfileFiveProbe.Replace("\"dv_level\": 6,", ""));
+
+        Assert.True(result.IsDolbyVision);
+        Assert.Null(result.DolbyVision);
+    }
+
+    [Fact]
+    public void Parse_reports_no_dolby_vision_record_for_a_plain_hdr10_stream()
+    {
+        var result = MediaProbeService.Parse("""
+            { "streams": [ { "codec_type": "video", "codec_name": "hevc", "color_transfer": "smpte2084" } ],
+              "format": { "format_name": "matroska,webm" } }
+            """);
+
+        Assert.Null(result.DolbyVision);
+    }
+
     [Fact]
     public void Parse_does_not_flag_a_plain_hdr10_file_as_dolby_vision()
     {

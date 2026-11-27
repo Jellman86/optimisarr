@@ -2316,6 +2316,7 @@ public sealed partial class QueueDispatcher(
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
+            IsDolbyVision: media.IsDolbyVision,
             // ffprobe describes a still's encoded picture as a video stream too. Freeze its
             // codec so a readable file under the requested suffix cannot bypass format checks.
             ExpectedVideoCodec: spec.Kind == MediaKind.Image ? spec.ImageEncoder switch
