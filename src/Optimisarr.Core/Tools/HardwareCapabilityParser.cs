@@ -16,7 +16,10 @@ public static class HardwareCapabilityParser
         new("av1_qsv", "av1", "Intel QSV"),
         new("h264_vaapi", "h264", "VAAPI"),
         new("hevc_vaapi", "hevc", "VAAPI"),
-        new("av1_vaapi", "av1", "VAAPI")
+        new("av1_vaapi", "av1", "VAAPI"),
+        // av1_amf is left out: it reads its quantisers on a 0-255 scale, not the quality number's 0-51.
+        new("h264_amf", "h264", "AMD AMF"),
+        new("hevc_amf", "hevc", "AMD AMF")
     ];
 
     public static IReadOnlyList<string> ParseHardwareAccelerators(string output)
@@ -44,8 +47,9 @@ public static class HardwareCapabilityParser
     /// <summary>
     /// Maps FFmpeg's <c>-encoders</c> listing to known encoders. A hardware encoder is
     /// only reported available when the underlying hardware is actually usable here, not
-    /// merely compiled into FFmpeg: NVENC requires a working NVIDIA runtime, and QSV/VAAPI
-    /// require a DRI render device. Listing the encoder is necessary but not sufficient —
+    /// merely compiled into FFmpeg: NVENC requires a working NVIDIA runtime, and QSV/VAAPI/AMF
+    /// require a DRI render device. AMF on Linux also needs AMD's own AMF runtime, which the test
+    /// encode after this pre-filter proves. Listing the encoder is necessary but not sufficient —
     /// FFmpeg ships with these encoders built in and will list them even on a GPU-less host.
     /// </summary>
     public static IReadOnlyList<EncoderCapability> ParseEncoders(
@@ -72,7 +76,7 @@ public static class HardwareCapabilityParser
     private static bool HardwarePresent(string mode, bool nvidiaRuntimeAvailable, bool driDeviceAvailable) => mode switch
     {
         "NVIDIA NVENC" => nvidiaRuntimeAvailable,
-        "Intel QSV" or "VAAPI" => driDeviceAvailable,
+        "Intel QSV" or "VAAPI" or "AMD AMF" => driDeviceAvailable,
         _ => true
     };
 
