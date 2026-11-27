@@ -92,6 +92,9 @@ public static class ConfigSnapshotValidator
             if (library.AudioSilenceThresholdDb is { } silenceDb && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidThreshold(silenceDb)
                 || library.AudioSilenceMinimumSeconds is { } silenceSeconds && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidMinimum(silenceSeconds))
                 errors.Add($"{where} silence trimming: {Optimisarr.Core.Queue.SilenceTrimSettings.RangeError}");
+            if (library.MinimumTrackRemovalSavingPercent is { } trackSavingPercent && !TrackSavingMinimum.ValidPercent(trackSavingPercent)
+                || library.MinimumTrackRemovalSavingBytes is { } trackSavingBytes && !TrackSavingMinimum.ValidBytes(trackSavingBytes))
+                errors.Add($"{where}: {TrackSavingMinimum.RangeError}");
             if (library.TrimAudioSilence == true
                 && (library.AudioQualityReportingEnabled == true || library.AudioQualityGateEnabled == true || library.AdaptiveAudioQuality == true))
                 errors.Add($"{where} trims silence, which cannot be combined with audio quality measurement yet.");

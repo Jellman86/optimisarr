@@ -1244,6 +1244,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<double?>("MinimumSizeSavingPercent")
                         .HasColumnType("REAL");
 
+                    b.Property<long?>("MinimumTrackRemovalSavingBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("MinimumTrackRemovalSavingPercent")
+                        .HasColumnType("REAL");
+
                     b.Property<bool>("MoveOnComplete")
                         .HasColumnType("INTEGER");
 
@@ -1410,6 +1416,10 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AudioTrackBytes")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("AudioTrackCount")
                         .HasColumnType("INTEGER");
 
@@ -1498,6 +1508,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("SubtitleLanguages")
                         .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SubtitleTrackBytes")
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("SubtitleTrackCount")

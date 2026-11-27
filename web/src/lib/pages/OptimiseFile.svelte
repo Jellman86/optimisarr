@@ -5,9 +5,9 @@
   import { onDestroy } from 'svelte'
   import { api, type Library, type LibraryOptions, type MediaPlan, type MediaPlanTrack, type Settings } from '../api'
   import { filesChoice } from '../files-choice'
-  import { containerLabel, formatDuration, formatSize } from '../format'
+  import { containerLabel, floorTo, formatDuration, formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
-  import { codecName, summariseLibrary, vmafLevelName } from '../library-summary'
+  import { codecName, summariseLibrary, trackSavingMinimum, vmafLevelName } from '../library-summary'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
   import PageHeader from '../components/PageHeader.svelte'
@@ -84,6 +84,20 @@
   }
 
   const fileName = $derived((plan?.source.relativePath ?? '').split(/[\\/]/).pop() ?? '')
+  // Set only for a job that just removes tracks: what they save, and the library's minimum for it.
+  const trackSaving = $derived(plan?.trackSaving ?? null)
+  const trackSavingMinimumText = $derived(trackSaving
+    ? trackSavingMinimum({ minimumTrackRemovalSavingPercent: trackSaving.minimumPercent, minimumTrackRemovalSavingBytes: trackSaving.minimumBytes }, i18n.locale)
+    : null)
+  const trackSavingSkips = $derived(Boolean(trackSavingMinimumText) && trackSaving != null && trackSaving.meetsMinimum !== true)
+  // A saving below the minimum rounds down, so it never reads as reaching the minimum it fails.
+  const trackSavingRoundsDown = $derived(trackSaving?.meetsMinimum === false)
+  function formatSavingPercent(percent: number | null, roundDown: boolean): string {
+    if (percent == null) return '—'
+    const decimals = percent >= 1 ? 1 : 2
+    const shown = roundDown ? floorTo(percent, decimals) : percent
+    return `${shown.toLocaleString(i18n.locale, { maximumFractionDigits: decimals })}%`
+  }
   const title = $derived(fileName.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '))
   const libraryName = $derived(library?.name ?? i18n.m.inventory.library_label)
   const choice = $derived(library ? filesChoice(library) : 'ask')
@@ -299,9 +313,25 @@
           <span role="rowheader">{i18n.m.inventory.detail_size}</span>
           <span role="cell" data-label={i18n.m.onePlan.col_now}>{formatSize(source.sizeBytes)}</span>
           <span role="cell" data-label={i18n.m.onePlan.col_after}>
-            {i18n.m.onePlan.size_unknown}
-            {#if library?.requireSizeReduction}{' '}{i18n.m.onePlan.size_must_shrink}{/if}
-            {' '}{i18n.m.onePlan.size_preview}
+            {#if trackSaving?.bytes != null}
+              <span data-plan-track-saving>{t(i18n.m.onePlan.size_tracks_save, { size: formatSize(trackSaving.bytes, trackSavingRoundsDown), percent: formatSavingPercent(trackSaving.percent, trackSavingRoundsDown) })}</span>
+              {#if trackSavingMinimumText && trackSaving.meetsMinimum === true}
+                {' '}{t(i18n.m.onePlan.size_meets_minimum, { minimum: trackSavingMinimumText })}
+              {:else if trackSavingMinimumText && trackSaving.meetsMinimum === false}
+                {' '}{t(i18n.m.onePlan.size_below_minimum, { minimum: trackSavingMinimumText })}
+                <span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.onePlan.tag_track_saving_skip}</span>
+              {/if}
+            {:else if trackSaving && trackSavingMinimumText}
+              {t(trackSaving.needsReprobe ? i18n.m.onePlan.size_saving_reprobe : i18n.m.onePlan.size_saving_unknown, { minimum: trackSavingMinimumText })}
+              <span class="badge tone-warn mt-2" data-plan-tag>{i18n.m.onePlan.tag_track_saving_skip}</span>
+            {:else}
+              {i18n.m.onePlan.size_unknown}
+            {/if}
+            <!-- A file the minimum skips never runs, so what a run must achieve doesn't apply to it. -->
+            {#if !trackSavingSkips}
+              {#if library?.requireSizeReduction}{' '}{i18n.m.onePlan.size_must_shrink}{/if}
+              {' '}{i18n.m.onePlan.size_preview}
+            {/if}
           </span>
         </div>
 

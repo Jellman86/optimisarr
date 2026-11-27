@@ -93,6 +93,8 @@ internal static class LibraryRuleResolution
             KeepSubtitleLanguages = string.IsNullOrWhiteSpace(library.KeepSubtitleLanguages)
                 ? null
                 : TrackLanguages.ParseLanguageList(library.KeepSubtitleLanguages),
+            MinimumTrackRemovalSavingPercent = library.MinimumTrackRemovalSavingPercent,
+            MinimumTrackRemovalSavingBytes = library.MinimumTrackRemovalSavingBytes,
             ReencodeLossyAudio = library.ReencodeLossyAudio,
             TargetImageFormat = library.TargetImageFormat,
             ImageQuality = library.ImageQuality,

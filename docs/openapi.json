@@ -3137,6 +3137,24 @@
               "string"
             ]
           },
+          "minimumTrackRemovalSavingBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minimumTrackRemovalSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "moveOnComplete": {
             "type": "boolean"
           },
@@ -3521,6 +3539,16 @@
               "null",
               "array"
             ]
+          },
+          "trackSaving": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannedTrackSaving"
+              }
+            ]
           }
         },
         "required": [
@@ -3537,7 +3565,8 @@
           "subtitleTracks",
           "file",
           "image",
-          "retryJobId"
+          "retryJobId",
+          "trackSaving"
         ],
         "type": "object"
       },
@@ -4196,6 +4225,64 @@
           "index",
           "language",
           "kept"
+        ],
+        "type": "object"
+      },
+      "PlannedTrackSaving": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "meetsMinimum": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "minimumBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minimumPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "needsReprobe": {
+            "type": "boolean"
+          },
+          "percent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "bytes",
+          "percent",
+          "minimumPercent",
+          "minimumBytes",
+          "meetsMinimum",
+          "needsReprobe"
         ],
         "type": "object"
       },
@@ -5859,6 +5946,24 @@
             ]
           },
           "minimumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumTrackRemovalSavingBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minimumTrackRemovalSavingPercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [

@@ -220,6 +220,20 @@ public sealed record RuleSettings
     public IReadOnlyList<string> KeepSubtitleLanguages { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// When set, a file whose only change would be removing tracks — track cleanup, or a remux
+    /// clean-up of a file already in its target container — is rewritten only if the removed tracks
+    /// are at least this percentage of the file. Rewriting a 60 GB film to drop a 100 MB commentary
+    /// costs a full write of the file for almost nothing. Null (the default) sets no minimum.
+    /// </summary>
+    public double? MinimumTrackRemovalSavingPercent { get; init; }
+
+    /// <summary>
+    /// As <see cref="MinimumTrackRemovalSavingPercent"/>, as a size in bytes. When both are set a
+    /// file must meet both. Null (the default) sets no minimum.
+    /// </summary>
+    public long? MinimumTrackRemovalSavingBytes { get; init; }
+
+    /// <summary>
     /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for
     /// re-encoding to the target codec, but only when its source bitrate is known to exceed
     /// the target enough to genuinely save space. Defaults to <c>false</c>: the conservative

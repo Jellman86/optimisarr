@@ -16,6 +16,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
@@ -2200,6 +2201,18 @@ public sealed partial class QueueDispatcher(
                 "No removable tracks remain after the fresh source probe");
         }
 
+        // The inventory's track sizes made the file eligible, but the tracks the fresh probe says
+        // will be removed are the ones that count, so a library's minimum saving is held to them.
+        if (!isDisposable && TrackRemovalMinimumRefusal(
+                CandidateService.PropertiesOf(media),
+                rules,
+                spec.RemoveAudioStreamIndexes ?? [],
+                spec.RemoveSubtitleStreamIndexes ?? [],
+                freshSourceProbe) is { } belowMinimum)
+        {
+            throw new JobNoLongerEligibleException(belowMinimum);
+        }
+
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an
         // intro/black frames. Audio/image previews are already fast, so they run in full.
@@ -3151,6 +3164,32 @@ public sealed partial class QueueDispatcher(
         int audioRemovalCount,
         int subtitleRemovalCount) =>
         profile == RuleProfile.TrackCleanup && audioRemovalCount + subtitleRemovalCount == 0;
+
+    /// <summary>
+    /// Why a job that only removes tracks would save too little for its library's minimum, or null
+    /// when it saves enough, sets no minimum, or does more than remove tracks. Sizes come from the
+    /// fresh probe when there is one, because they line up with the tracks it just listed.
+    /// </summary>
+    internal static string? TrackRemovalMinimumRefusal(
+        MediaProperties media,
+        RuleSettings rules,
+        IReadOnlyList<int> audioRemovals,
+        IReadOnlyList<int> subtitleRemovals,
+        MediaProbeResult? freshProbe)
+    {
+        var minimum = TrackSavingMinimum.Of(rules);
+        if (!minimum.IsSet || audioRemovals.Count + subtitleRemovals.Count == 0 || !CandidateEvaluator.OnlyRemovesTracks(media, rules))
+        {
+            return null;
+        }
+
+        return minimum.Refusal(TrackRemovalSaving.Measure(
+            media.SizeBytes,
+            freshProbe?.AudioTrackBytes ?? media.AudioTrackBytes,
+            audioRemovals,
+            freshProbe?.SubtitleTrackBytes ?? media.SubtitleTrackBytes,
+            subtitleRemovals));
+    }
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 

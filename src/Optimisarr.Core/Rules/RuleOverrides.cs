@@ -37,6 +37,8 @@ public sealed record RuleOverrides
     public bool? TrimSilenceWithoutConverting { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
+    public double? MinimumTrackRemovalSavingPercent { get; init; }
+    public long? MinimumTrackRemovalSavingBytes { get; init; }
     public bool? ReencodeLossyAudio { get; init; }
     public string? TargetImageFormat { get; init; }
     public int? ImageQuality { get; init; }

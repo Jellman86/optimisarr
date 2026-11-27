@@ -103,7 +103,9 @@ internal readonly record struct ParsedLibrary(
     bool TrimAudioSilence = false,
     double AudioSilenceThresholdDb = SilenceTrimSettings.DefaultThresholdDb,
     double AudioSilenceMinimumSeconds = SilenceTrimSettings.DefaultMinimumSeconds,
-    bool TrimSilenceWithoutConverting = false);
+    bool TrimSilenceWithoutConverting = false,
+    double? MinimumTrackRemovalSavingPercent = null,
+    long? MinimumTrackRemovalSavingBytes = null);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -329,6 +331,13 @@ internal static class LibraryRequestParser
         if (request.MaxFrameRate is { } frameRateCap && (frameRateCap < 24 || frameRateCap > 120))
         {
             error = "Frame-rate cap must be between 24 and 120 fps, or blank for none.";
+            return false;
+        }
+
+        if (request.MinimumTrackRemovalSavingPercent is { } minimumPercent && !TrackSavingMinimum.ValidPercent(minimumPercent)
+            || request.MinimumTrackRemovalSavingBytes is { } minimumBytes && !TrackSavingMinimum.ValidBytes(minimumBytes))
+        {
+            error = TrackSavingMinimum.RangeError;
             return false;
         }
 
@@ -712,7 +721,9 @@ internal static class LibraryRequestParser
             request.TrimAudioSilence ?? false,
             request.AudioSilenceThresholdDb ?? SilenceTrimSettings.DefaultThresholdDb,
             request.AudioSilenceMinimumSeconds ?? SilenceTrimSettings.DefaultMinimumSeconds,
-            request.TrimSilenceWithoutConverting ?? false);
+            request.TrimSilenceWithoutConverting ?? false,
+            request.MinimumTrackRemovalSavingPercent,
+            request.MinimumTrackRemovalSavingBytes);
         error = null;
         return true;
     }
