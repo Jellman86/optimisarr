@@ -4,7 +4,7 @@ namespace Optimisarr.Tests;
 
 public sealed class ConfigSnapshotValidatorTests
 {
-    [Fact]
+    [PosixFact]
     public void A_half_filled_manager_path_mapping_is_refused()
     {
         var sonarr = new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true);

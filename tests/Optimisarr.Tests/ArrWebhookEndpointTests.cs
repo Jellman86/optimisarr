@@ -263,7 +263,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task An_imported_file_is_probed_and_queued_when_the_library_optimises_automatically() => await HoldQueueAsync(async () =>
     {
         var (library, root) = await SeedLibraryAsync(autoEnqueue: true);
@@ -287,7 +287,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Single(await InDbAsync(db => db.Jobs.AsNoTracking().Where(j => j.MediaFileId == file.Id).ToListAsync()));
     });
 
-    [Fact]
+    [PosixFact]
     public async Task A_library_that_does_not_optimise_automatically_takes_the_file_in_without_queueing_it()
     {
         var (_, root) = await SeedLibraryAsync(autoEnqueue: false);
@@ -302,7 +302,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Empty(await InDbAsync(db => db.Jobs.AsNoTracking().Where(j => j.MediaFileId == file.Id).ToListAsync()));
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_library_outside_its_schedule_is_not_queued_until_the_schedule_opens()
     {
         var now = TimeOnly.FromDateTime(DateTime.Now);
@@ -317,7 +317,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Empty(await InDbAsync(db => db.Jobs.AsNoTracking().Where(j => j.MediaFileId == file.Id).ToListAsync()));
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_file_the_rules_skip_is_taken_in_but_not_queued() => await HoldQueueAsync(async () =>
     {
         var (_, root) = await SeedLibraryAsync(autoEnqueue: true);
@@ -332,7 +332,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Empty(await InDbAsync(db => db.Jobs.AsNoTracking().Where(j => j.MediaFileId == file.Id).ToListAsync()));
     });
 
-    [Fact]
+    [PosixFact]
     public async Task A_file_still_being_written_is_looked_at_again_once_it_settles() => await HoldQueueAsync(async () =>
     {
         var (_, root) = await SeedLibraryAsync(autoEnqueue: true);
@@ -410,7 +410,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.False(await InDbAsync(db => db.MediaFiles.AnyAsync(f => f.Path == link)));
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_path_mapping_finds_a_file_the_manager_sees_under_another_folder()
     {
         var (_, root) = await SeedLibraryAsync(autoEnqueue: false);
@@ -428,7 +428,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.True(await InDbAsync(db => db.MediaFiles.AnyAsync(f => f.Path == episode)));
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_radarr_import_is_taken_in_from_its_movie_file()
     {
         var root = Path.Combine(api.LibraryDirectory, "webhook-films-" + Guid.NewGuid().ToString("N"));
@@ -513,7 +513,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Equal(JsonValueKind.Null, (await cleared.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("remotePathPrefix").ValueKind);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_file_whose_library_is_being_scanned_waits_for_the_scan_instead_of_holding_the_delivery() => await HoldQueueAsync(async () =>
     {
         var (library, root) = await SeedLibraryAsync(autoEnqueue: true);
@@ -565,7 +565,7 @@ public sealed class ArrWebhookEndpointTests(AdminTokenAuthEndpointTests.TokenedA
         Assert.Equal(2, await InDbAsync(db => db.Jobs.CountAsync(j => taken.Contains(j.MediaFileId))));
     });
 
-    [Fact]
+    [PosixFact]
     public async Task A_file_named_in_another_letter_case_is_recorded_under_its_name_on_disk()
     {
         var (_, root) = await SeedLibraryAsync(autoEnqueue: false);

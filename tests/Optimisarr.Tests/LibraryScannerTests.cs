@@ -169,7 +169,7 @@ public sealed class LibraryScannerTests : IDisposable
         finally { Directory.Delete(alias); }
     }
 
-    [Fact]
+    [PosixFact]
     public void ScanFile_returns_one_settled_file_exactly_as_a_library_scan_would()
     {
         var episode = WriteFile("Show/Season 01/S01E01.mkv", modifiedMinutesAgo: 30);
@@ -179,7 +179,7 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Equal(Assert.Single(_scanner.Scan(_root, new LibraryScanOptions(), _now).Files), scanned.File);
     }
 
-    [Fact]
+    [PosixFact]
     public void ScanFile_says_when_a_file_still_being_written_will_have_settled()
     {
         var episode = WriteFile("Show/S01E01.mkv", modifiedMinutesAgo: 0);
@@ -197,7 +197,7 @@ public sealed class LibraryScannerTests : IDisposable
             _scanner.ScanFile(_root, Path.Combine(_root, "Show", "gone.mkv"), new LibraryScanOptions(), _now));
     }
 
-    [Fact]
+    [PosixFact]
     public void ScanFile_skips_a_file_the_library_does_not_hold()
     {
         var subtitle = WriteFile("Show/S01E01.srt", modifiedMinutesAgo: 30);
@@ -238,7 +238,7 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.IsType<SingleFileScan.Refused>(_scanner.ScanFile(_root, link, new LibraryScanOptions(), _now));
     }
 
-    [Fact]
+    [PosixFact]
     public void ScanFile_records_the_spelling_on_disk_when_the_manager_reports_another_letter_case()
     {
         // A manager on a case-insensitive mount can name a file in any case. Taking its spelling as the
@@ -252,7 +252,7 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Equal(Path.Combine("Show", "Season 01", "S01E01.mkv"), scanned.File.RelativePath);
     }
 
-    [Fact]
+    [PosixFact]
     public void The_on_disk_spelling_prefers_an_exact_name_and_refuses_to_guess_between_case_twins()
     {
         // Simulates a case-sensitive folder holding two names that differ only in case.
@@ -264,7 +264,7 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Null(LibraryPathSpelling.OnDisk("/lib", "/elsewhere/Show/EP.mkv", Listing));
     }
 
-    [Fact]
+    [PosixFact]
     public void The_on_disk_spelling_takes_the_listing_name_for_a_case_variant()
     {
         IEnumerable<string> Listing(string folder) => folder == "/lib" ? ["Show"] : ["Episode One.mkv"];
