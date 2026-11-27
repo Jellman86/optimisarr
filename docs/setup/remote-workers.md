@@ -56,7 +56,8 @@ Update sidecars alongside the server. H.264 NVIDIA jobs that preserve a declared
 colour range require worker protocol 5; an older sidecar stays available for
 ordinary work and reports that an update is needed for those jobs. Timed-text
 subtitle conversion to Matroska requires protocol 4. MP4 timing corrections and strict decoded-picture evidence require protocol 9. Jobs from a library with a
-[keyframe interval](configuration.md#keyframe-interval) require protocol 15. Unsupported commands are
+[keyframe interval](configuration.md#keyframe-interval) require protocol 15. AMD AMF encodes require
+protocol 16; an older worker that proved AMF keeps receiving work for its other encoders. Unsupported commands are
 held before a lease is issued, rather than sent to the worker to fail.
 
 When upgrading from 0.2.24, update the sidecars alongside the server. With **Verify entirely on the

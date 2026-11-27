@@ -137,7 +137,7 @@ no support SLA or promise of a release schedule.
   NVENC, Intel QSV, AMD AMF, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, AMD AMF, and VAAPI.
 - Per-library **Encoder effort** choices that resolve after the actual encoder is selected, mapping
-  one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, or QSV presets
+  one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, QSV, or AMF presets
   while VAAPI safely retains its driver default.
 - Per-library, media-aware verification gates for duration tolerance, stream
   retention, required size reduction, VMAF, audio fidelity, image SSIM, and metadata.
@@ -165,7 +165,8 @@ no support SLA or promise of a release schedule.
 Still planned (see the [roadmap](docs/roadmap.md) and maintained
 [hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
 for AMD VA-API and NVIDIA NVDEC. Intel QSV has been tested on real hardware for both encoding and
-decoding, and AMD AMF encoding has been validated on real AMD hardware through the Windows sidecar.
+decoding. AMD AMF encoding through the Windows sidecar was validated by its contributor on an AMD
+Radeon RX 6600; the project has not tested it on AMD hardware.
 
 ## Before you start
 
