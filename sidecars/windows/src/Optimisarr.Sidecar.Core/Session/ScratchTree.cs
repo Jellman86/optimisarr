@@ -5,16 +5,17 @@ public enum ScratchEntryKind { File, Directory, Link }
 /// <summary>
 /// One opened entry in a job's folder. It is opened without following it, so a junction or
 /// symbolic link is seen as itself, and it stays held while it is inspected and removed, so it
-/// cannot be swapped for a link in between.
+/// cannot be swapped for a link in between. A folder's names come from the folder it holds, and
+/// each is opened inside that folder, never by a path looked up again.
 /// </summary>
 public interface IScratchEntry : IDisposable
 {
     ScratchEntryKind Kind { get; }
 
-    /// <summary>The names inside a directory.</summary>
+    /// <summary>The names inside the directory this entry holds.</summary>
     IEnumerable<string> Names();
 
-    /// <summary>The named entry inside this directory, opened without following it.</summary>
+    /// <summary>The named entry inside the directory this entry holds, opened without following it.</summary>
     IScratchEntry Open(string name);
 
     /// <summary>Removes the entry itself. A link goes as a link; what it points at is untouched.</summary>
@@ -26,8 +27,8 @@ public interface IScratchEntry : IDisposable
 ///
 /// <para>A recursive delete that resolves paths as it goes can be walked out of the folder: swap a
 /// subfolder for a junction between listing it and entering it, and SYSTEM deletes wherever the
-/// junction points. Here every entry is judged on its own open handle, and a link is removed as a
-/// link without being listed.</para>
+/// junction points. Here every entry is judged on its own open handle, found inside the folder its
+/// parent's handle holds, and a link is removed as a link without being listed.</para>
 /// </summary>
 public static class ScratchTree
 {

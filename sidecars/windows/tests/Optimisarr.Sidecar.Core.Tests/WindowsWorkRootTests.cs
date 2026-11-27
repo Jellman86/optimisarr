@@ -33,12 +33,7 @@ public sealed class WindowsWorkRootTests : IDisposable
         using var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true);
 
         Assert.Null(root.Problem);
-        var security = new DirectoryInfo(path).GetAccessControl();
-        Assert.True(security.AreAccessRulesProtected);
-        var principals = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
-            .Select(rule => rule.IdentityReference.Value).Distinct().Order().ToArray();
-        Assert.Equal(new[] { WorkAccess.LocalSystem, WorkAccess.Administrators }.Order().ToArray(), principals);
-        Assert.True(WorkAccess.IsTrusted(security.GetOwner(typeof(SecurityIdentifier))?.Value));
+        AssertLockedToSystemAndAdministrators(path);
     }
 
     [WindowsFact]
@@ -69,16 +64,138 @@ public sealed class WindowsWorkRootTests : IDisposable
     }
 
     [WindowsElevatedFact]
-    public void A_hand_made_work_folder_other_accounts_can_change_is_refused_and_left_as_it_is()
+    public void A_work_folder_holding_files_the_service_did_not_make_is_refused_and_left_as_it_is()
     {
-        // Made by hand, so owned by Administrators or by the user who ran this, and carrying the
-        // temporary folder's inherited access for that user: not the service's folder to rewrite.
+        // Somebody keeps their own files there: not the service's folder to delete or rewrite.
         var path = Directory.CreateDirectory(Path.Combine(_temp, "work")).FullName;
+        GiveToAdministratorsAndOpenToUsers(path);
+        File.WriteAllText(Path.Combine(path, "holiday.mkv"), "theirs");
+        Directory.CreateDirectory(Path.Combine(path, "job-1"));
 
         using var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true);
 
-        Assert.Contains("icacls", root.Problem);
+        Assert.Contains("holiday.mkv", root.Problem);
+        Assert.True(File.Exists(Path.Combine(path, "holiday.mkv")));
+        Assert.True(Directory.Exists(Path.Combine(path, "job-1")));
         Assert.False(new DirectoryInfo(path).GetAccessControl().AreAccessRulesProtected);
+    }
+
+    [WindowsElevatedFact]
+    public void A_work_folder_left_open_to_other_accounts_is_rebuilt_fresh_and_its_old_contents_and_handles_retired()
+    {
+        // What a folder an earlier version of the service made looks like: owned by Administrators
+        // (or SYSTEM), with the drive's inherited access on it and on everything inside.
+        var path = Directory.CreateDirectory(Path.Combine(_temp, "work")).FullName;
+        GiveToAdministratorsAndOpenToUsers(path);
+        Directory.CreateDirectory(Path.Combine(path, ".optimisarr-native"));
+        File.WriteAllText(Path.Combine(path, ".optimisarr-native", "root.lock"), "");
+        Directory.CreateDirectory(Path.Combine(path, "job-1"));
+        File.WriteAllText(Path.Combine(path, "job-1", "candidate.mkv"), "stale");
+        // A handle another account opened before; after an in-place reset it would still work.
+        using var earlier = WindowsFileApi.TryOpen(path, WindowsFileApi.ReadAttributes, WindowsFileApi.ShareAll, out _)!;
+        var before = WindowsFileApi.Identify(earlier);
+        var notices = new List<string>();
+
+        using var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true, notices.Add);
+
+        Assert.Null(root.Problem);
+        Assert.Contains(notices, notice => notice.Contains("created again"));
+        Assert.Equal([WorkRootPolicy.SentinelName], Directory.EnumerateFileSystemEntries(path).Select(Path.GetFileName));
+        using (var now = WindowsFileApi.TryOpen(path, WindowsFileApi.ReadAttributes, WindowsFileApi.ShareAll, out _)!)
+        {
+            Assert.False(WindowsFileApi.Identify(now).SameObject(before));
+        }
+        AssertLockedToSystemAndAdministrators(path);
+    }
+
+    [WindowsElevatedFact]
+    public void The_service_holds_a_file_in_the_work_folder_so_it_is_never_empty()
+    {
+        // Only an empty folder can be turned into a junction in place.
+        var path = Path.Combine(_temp, "work");
+        var sentinel = Path.Combine(path, WorkRootPolicy.SentinelName);
+        var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true);
+        Assert.Null(root.Problem);
+
+        Assert.True(File.Exists(sentinel));
+        Assert.ThrowsAny<IOException>(() => File.Delete(sentinel));
+
+        root.Dispose();
+        File.Delete(sentinel);
+    }
+
+    [WindowsFact]
+    public void A_pairing_prompt_neither_creates_the_work_folder_nor_calls_its_absence_a_fault()
+    {
+        var path = Path.Combine(_temp, "work");
+
+        using var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: false);
+
+        Assert.Contains("will be created when the service starts", root.Problem);
+        Assert.False(Directory.Exists(path));
+    }
+
+    [WindowsElevatedFact]
+    public void A_folder_on_the_path_turned_into_a_junction_while_it_is_checked_is_refused_and_nothing_is_made_at_its_target()
+    {
+        var outside = Outside();
+        var parent = Directory.CreateDirectory(Path.Combine(_temp, "parent")).FullName;
+        var path = Path.Combine(parent, "work");
+
+        // Still empty once it is open, so another account may convert it before the work folder is looked up.
+        using (var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true, notice: null, afterOpening: opened =>
+               {
+                   if (string.Equals(opened, parent, StringComparison.OrdinalIgnoreCase)) WindowsLinks.ConvertToJunction(parent, outside);
+               }))
+        {
+            Assert.NotNull(root.Problem);
+        }
+
+        Assert.False(Directory.Exists(Path.Combine(outside, "work")));
+        Assert.True(File.Exists(Path.Combine(outside, "precious")));
+        EmptyWithoutFollowing(parent);
+    }
+
+    [WindowsFact]
+    public void A_folder_emptied_and_turned_into_a_junction_while_it_is_being_removed_is_never_followed()
+    {
+        var outside = Outside();
+        var job = Path.Combine(_temp, "job-5");
+        var logs = Directory.CreateDirectory(Path.Combine(job, "logs")).FullName;
+        File.WriteAllText(Path.Combine(logs, "vmaf.json"), "{}");
+        using var folder = WindowsScratchEntry.TryOpen(job)!;
+        using var held = folder.Open("logs");
+
+        // Holding it does not stop another account emptying it and converting it in place.
+        File.Delete(Path.Combine(logs, "vmaf.json"));
+        WindowsLinks.ConvertToJunction(logs, outside);
+
+        Assert.Empty(held.Names());
+        ScratchTree.Delete(held);
+        Assert.True(File.Exists(Path.Combine(outside, "precious")));
+        Assert.False(Directory.Exists(logs));
+    }
+
+    [WindowsFact]
+    public void A_leftover_job_folder_other_accounts_can_change_is_refused_and_not_cleared()
+    {
+        var job = Directory.CreateDirectory(Path.Combine(_temp, "job-5")).FullName;
+        File.WriteAllText(Path.Combine(job, "candidate.mkv"), "stale");
+        OpenToUsers(job);
+
+        Assert.Contains("can be changed", JobScratch.Create(job));
+        Assert.True(File.Exists(Path.Combine(job, "candidate.mkv")));
+    }
+
+    [WindowsFact]
+    public void A_native_control_folder_other_accounts_can_change_is_refused_before_it_is_used()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_temp, "native-root")).FullName;
+        var control = Directory.CreateDirectory(Path.Combine(root, NativeScratchWorkspace.ControlDirectoryName)).FullName;
+        OpenToUsers(control);
+
+        Assert.ThrowsAny<IOException>(() => NativeScratchWorkspace.CreateCapability(root));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(control));
     }
 
     [WindowsElevatedFact]
@@ -102,13 +219,11 @@ public sealed class WindowsWorkRootTests : IDisposable
         using var root = WindowsWorkRoot.Open(path, allowUnprotected: false, mayChange: true);
         Assert.Null(root.Problem);
 
-        var security = new DirectoryInfo(path).GetAccessControl();
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
-            FileSystemRights.Modify, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-        new DirectoryInfo(path).SetAccessControl(security);
+        OpenToUsers(path);
 
-        // Owned by Administrators here, so refused; a folder the service owns is locked again instead.
-        Assert.Contains("can be changed", root.Recheck());
+        // Never rebuilt under jobs that may be running: refused until the service restarts.
+        Assert.Contains("Restart the service", root.Recheck());
+        Assert.True(File.Exists(Path.Combine(path, WorkRootPolicy.SentinelName)));
     }
 
     [WindowsFact]
@@ -198,6 +313,44 @@ public sealed class WindowsWorkRootTests : IDisposable
 
         Assert.Empty(Directory.EnumerateFileSystemEntries(job));
         Assert.True(File.Exists(Path.Combine(outside, "precious")));
+    }
+
+    private static void OpenToUsers(string path)
+    {
+        var security = new DirectoryInfo(path).GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.Modify, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        new DirectoryInfo(path).SetAccessControl(security);
+    }
+
+    private static void GiveToAdministratorsAndOpenToUsers(string path)
+    {
+        OpenToUsers(path);
+        var security = new DirectoryInfo(path).GetAccessControl();
+        security.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        new DirectoryInfo(path).SetAccessControl(security);
+    }
+
+    private static void AssertLockedToSystemAndAdministrators(string path)
+    {
+        var security = new DirectoryInfo(path).GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        var principals = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+            .Select(rule => rule.IdentityReference.Value).Distinct().Order().ToArray();
+        Assert.Equal(new[] { WorkAccess.LocalSystem, WorkAccess.Administrators }.Order().ToArray(), principals);
+        Assert.True(WorkAccess.IsTrusted(security.GetOwner(typeof(SecurityIdentifier))?.Value));
+    }
+
+    /// <summary>Removes what was made inside a folder that is now a junction, without following it.</summary>
+    private static void EmptyWithoutFollowing(string folder)
+    {
+        using var held = WindowsScratchEntry.TryOpen(folder)!;
+        using var listing = WindowsFileApi.TryOpen(folder, WindowsFileApi.ListDirectory, WindowsFileApi.ShareAll, out _)!;
+        foreach (var name in WindowsFileApi.ListNames(listing))
+        {
+            using var child = held.Open(name);
+            ScratchTree.Delete(child);
+        }
     }
 
     private static void RemoveWithoutFollowing(DirectoryInfo directory)

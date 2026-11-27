@@ -37,6 +37,23 @@ public sealed class WorkLocationFileTests : IDisposable
     }
 
     [WindowsFact]
+    public void A_file_another_program_holds_open_is_retried_then_refused_rather_than_skipped()
+    {
+        File.WriteAllText(FilePath, @"D:\OptimisarrWork");
+        var waits = 0;
+
+        (string? Configured, string? Problem) read;
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            read = WindowsWorkLocationFile.Read(FilePath, _ => waits++);
+        }
+
+        Assert.Null(read.Configured);
+        Assert.Contains("held open by another program", read.Problem);
+        Assert.Equal(4, waits);
+    }
+
+    [WindowsFact]
     public void A_file_the_current_user_made_is_not_trusted_unless_administrators_own_it()
     {
         File.WriteAllText(FilePath, @"D:\OptimisarrWork");

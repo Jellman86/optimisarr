@@ -29,33 +29,65 @@ public static class WorkAccess
         LocalSystem, Administrators, TrustedInstaller,
     };
 
-    public static bool IsTrusted(string? principal) => principal is not null && Trusted.Contains(principal);
+    /// <param name="self">The account this process runs as, when it should be trusted too: it can
+    /// already do anything this process can. For the service it is SYSTEM, trusted anyway.</param>
+    public static bool IsTrusted(string? principal, string? self = null) =>
+        principal is not null && (Trusted.Contains(principal) || string.Equals(principal, self, StringComparison.OrdinalIgnoreCase));
 
     public static bool GrantsChange(uint rights) => (rights & ~ReadAndExecute) != 0;
 
     /// <summary>
-    /// Every principal outside SYSTEM, Administrators and TrustedInstaller that an allow entry
-    /// lets change the object. Entries that only apply to new children count too: on a folder they
-    /// are how a later child becomes writable.
+    /// Every principal outside SYSTEM, Administrators and TrustedInstaller (and
+    /// <paramref name="self"/>, when given) that an allow entry lets change the object. Entries that
+    /// only apply to new children count too: on a folder they are how a later child becomes writable.
     /// </summary>
-    public static IReadOnlyList<string> UntrustedWriters(IEnumerable<AccessEntry> access) =>
-        access.Where(entry => entry.Allows && GrantsChange(entry.Rights) && !IsTrusted(entry.Principal))
+    public static IReadOnlyList<string> UntrustedWriters(IEnumerable<AccessEntry> access, string? self = null) =>
+        access.Where(entry => entry.Allows && GrantsChange(entry.Rights) && !IsTrusted(entry.Principal, self))
             .Select(entry => entry.Principal)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    /// <summary>A missing access list is Windows' "no list": full access for everyone.</summary>
+    public static IReadOnlyList<AccessEntry> OrEveryone(IReadOnlyList<AccessEntry>? access) => access ?? [new(Everyone, 0x1F01FF)];
+
+    /// <summary>
+    /// Why something already on disk must not be used as it stands, or null when it may. Anything
+    /// the service opens again by name, rather than creating fresh, has to be owned and changeable
+    /// only by accounts it trusts: otherwise its owner could swap what is inside for a link.
+    /// </summary>
+    public static string? AdoptionProblem(string path, string? owner, IReadOnlyList<AccessEntry>? access, string? self)
+    {
+        if (!IsTrusted(owner, self))
+        {
+            return $"{path} is owned by {owner ?? "an unknown account"}, not SYSTEM or Administrators, so it was not used.";
+        }
+
+        var writers = UntrustedWriters(OrEveryone(access), self);
+        return writers.Count == 0
+            ? null
+            : $"{path} can be changed by accounts other than SYSTEM and Administrators ({string.Join(", ", writers)}), so it was not used.";
+    }
 }
+
+/// <summary>One entry directly inside the work folder, read through a handle that did not follow it.</summary>
+/// <param name="Owner">Read only for the service's own names; null for anything else.</param>
+/// <param name="Access">Read only for the service's own names; null for anything else.</param>
+public sealed record WorkRootEntry(string Name, bool IsLink, string? Owner, IReadOnlyList<AccessEntry>? Access);
 
 /// <summary>What the work folder looks like, as read through handles that do not follow links.</summary>
 /// <param name="LinkedComponent">The first folder on the path, the work folder included, that is
 /// a junction, symbolic link or mounted folder; null when there is none.</param>
 /// <param name="Access">The folder's access list; null when it has none, which Windows reads as
 /// full access for everyone.</param>
+/// <param name="Entries">What is directly inside it; null when that was not read, as on the cheap
+/// recheck before each job, which is then never enough to rebuild the folder.</param>
 public sealed record WorkRootFacts(
     bool Exists,
     string? LinkedComponent = null,
     bool VolumeHasAccessControl = true,
     string? Owner = null,
-    IReadOnlyList<AccessEntry>? Access = null);
+    IReadOnlyList<AccessEntry>? Access = null,
+    IReadOnlyList<WorkRootEntry>? Entries = null);
 
 public enum WorkRootAction
 {
@@ -65,8 +97,11 @@ public enum WorkRootAction
     /// <summary>The folder is missing; create it with administrator-only access.</summary>
     Create,
 
-    /// <summary>The service made it earlier, before it was locked: reset it to administrator-only.</summary>
-    LockDown,
+    /// <summary>
+    /// Other accounts can change it or the service's leftovers in it, and it holds nothing else:
+    /// delete those leftovers and the folder, and create it again administrator-only.
+    /// </summary>
+    Rebuild,
 
     /// <summary>Take no work there, for the reason given.</summary>
     Refuse,
@@ -85,13 +120,30 @@ public sealed record WorkRootVerdict(WorkRootAction Action, string? Problem = nu
 /// points, with SYSTEM's rights. So the folder must be owned by SYSTEM or Administrators, changeable
 /// by no one else, and reached without links.</para>
 ///
-/// <para>Every work folder the service created before this check has the drive's inherited access
-/// and SYSTEM as its owner. Those are reset in place, because the service made them and nobody else
-/// chose their access. A folder anyone else owns is refused with the commands that fix it: changing
-/// the access of a folder somebody made by hand is their decision.</para>
+/// <para>Every work folder the service created before this check has the drive's inherited access,
+/// and so does everything inside it. Resetting only the folder's own access would not be enough:
+/// what is inside keeps its access, and a handle another account opened before the reset keeps
+/// working. Such a folder is therefore rebuilt, deleted with the service's leftovers and created
+/// again, when it holds nothing but those leftovers. It is owned by SYSTEM or by Administrators,
+/// whichever the machine gives a service's new folders. Anything else inside means somebody keeps
+/// their own files there, and the folder is refused and left exactly as it is.</para>
 /// </summary>
 public static class WorkRootPolicy
 {
+    /// <summary>
+    /// A file the service keeps in the work folder and holds open while it runs. An empty folder
+    /// can be turned into a junction in place by anyone holding a handle to it that allows writing
+    /// its attributes, and a held file cannot be deleted, so the folder is never empty.
+    /// </summary>
+    public const string SentinelName = ".optimisarr-work-folder";
+
+    /// <summary>Whether a name in the work folder is one the service itself creates there.</summary>
+    public static bool IsServiceEntry(string name) =>
+        string.Equals(name, NativeScratchWorkspace.ControlDirectoryName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, SentinelName, StringComparison.OrdinalIgnoreCase)
+        || HasSuffixAfter(name, "job-")
+        || HasSuffixAfter(name, "native-");
+
     public static WorkRootVerdict Decide(string root, WorkRootFacts facts, bool allowUnprotected)
     {
         if (facts.LinkedComponent is { } link)
@@ -105,13 +157,13 @@ public static class WorkRootPolicy
             if (!allowUnprotected)
             {
                 return Refuse($"{root} is on a drive without access control (such as FAT32 or exFAT, which many RAM drives use), "
-                    + "so any account on this machine could redirect the files the worker writes and deletes there. Format the drive as NTFS, "
-                    + $"or accept the risk by setting the machine-wide variable {WorkLocation.AllowUnprotectedVariable}=1 and restarting the service.");
+                    + "so any account on this machine could change or replace a job's files there, including the VMAF log its quality is judged by. "
+                    + $"Format the drive as NTFS, or accept the risk by setting the machine-wide variable {WorkLocation.AllowUnprotectedVariable}=1 and restarting the service.");
             }
 
             return new(facts.Exists ? WorkRootAction.Use : WorkRootAction.Create,
                 Notice: $"{root} is on a drive without access control, used because {WorkLocation.AllowUnprotectedVariable} is set: "
-                    + "any account on this machine can redirect the files the worker writes and deletes there.");
+                    + "any account on this machine can change or replace a job's files there, including the VMAF log its quality is judged by.");
         }
 
         if (!facts.Exists)
@@ -124,18 +176,41 @@ public static class WorkRootPolicy
             return Refuse($"{root} is owned by {facts.Owner ?? "an unknown account"}, not SYSTEM or Administrators, so it was not trusted. {Fix(root)}");
         }
 
-        var writers = WorkAccess.UntrustedWriters(facts.Access ?? [new AccessEntry(WorkAccess.Everyone, 0x1F01FF)]);
-        if (writers.Count == 0)
+        var writers = WorkAccess.UntrustedWriters(WorkAccess.OrEveryone(facts.Access));
+        var tainted = (facts.Entries ?? []).Where(entry => IsServiceEntry(entry.Name) && Tainted(entry)).Select(entry => entry.Name).ToArray();
+        if (writers.Count == 0 && tainted.Length == 0)
         {
             return new(WorkRootAction.Use);
         }
 
-        var who = string.Join(", ", writers);
-        return string.Equals(facts.Owner, WorkAccess.LocalSystem, StringComparison.OrdinalIgnoreCase)
-            ? new(WorkRootAction.LockDown,
-                Notice: $"{root} could be changed by other accounts ({who}); its access was reset so only SYSTEM and Administrators can use it.")
-            : Refuse($"{root} can be changed by accounts other than SYSTEM and Administrators ({who}), so it was not used. {Fix(root)}");
+        var reason = writers.Count > 0
+            ? $"can be changed by accounts other than SYSTEM and Administrators ({string.Join(", ", writers)})"
+            : $"holds {Names(tainted)}, which accounts other than SYSTEM and Administrators can change or which are links";
+        if (facts.Entries is null)
+        {
+            return Refuse($"{root} {reason}, so it was not used. {Fix(root)}");
+        }
+
+        var foreign = facts.Entries.Where(entry => !IsServiceEntry(entry.Name)).Select(entry => entry.Name).ToArray();
+        if (foreign.Length > 0)
+        {
+            return Refuse($"{root} {reason}, and it holds files the worker did not make ({Names(foreign)}), so it was not used and nothing in it was changed. "
+                + "Move them out of it and restart the service, which then deletes the folder and creates it again for SYSTEM and Administrators only.");
+        }
+
+        return new(WorkRootAction.Rebuild,
+            Notice: $"{root} {reason}. It held only the worker's own leftovers, so they and the folder were deleted, "
+                + "and it was created again for SYSTEM and Administrators only.");
     }
+
+    private static bool Tainted(WorkRootEntry entry) =>
+        entry.IsLink || !WorkAccess.IsTrusted(entry.Owner) || WorkAccess.UntrustedWriters(WorkAccess.OrEveryone(entry.Access)).Count > 0;
+
+    private static bool HasSuffixAfter(string name, string prefix) =>
+        name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+    private static string Names(IReadOnlyList<string> names) =>
+        string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");
 
     private static WorkRootVerdict Refuse(string problem) => new(WorkRootAction.Refuse, problem);
 
@@ -146,7 +221,10 @@ public static class WorkRootPolicy
 }
 
 /// <summary>What is already at a job's folder path when the service goes to create it.</summary>
-public sealed record JobFolderFacts(bool IsLink, bool IsDirectory, string? Owner, bool VolumeHasAccessControl = true);
+/// <param name="Access">Its access list; null when it has none, which Windows reads as full access
+/// for everyone.</param>
+public sealed record JobFolderFacts(bool IsLink, bool IsDirectory, string? Owner, bool VolumeHasAccessControl = true,
+    IReadOnlyList<AccessEntry>? Access = null);
 
 public enum JobFolderAction { Create, ClearThenCreate, Refuse }
 
@@ -155,11 +233,14 @@ public sealed record JobFolderDecision(JobFolderAction Action, string? Problem =
 /// <summary>
 /// A job's folder is created fresh, never adopted. Job ids are predictable, so anything already at
 /// <c>job-&lt;id&gt;</c> could have been put there to be written through. Only a plain folder an
-/// earlier run of the service left behind is cleared away; anything else stops the job.
+/// earlier run of the service left behind, that no other account can change, is cleared away;
+/// anything else stops the job. Clearing walks into the folder, and anything another account can
+/// change could be emptied and turned into a link while that walk is under way.
 /// </summary>
 public static class JobFolderPolicy
 {
-    public static JobFolderDecision Decide(string path, JobFolderFacts? existing)
+    /// <param name="self">The account this process runs as: see <see cref="WorkAccess.IsTrusted"/>.</param>
+    public static JobFolderDecision Decide(string path, JobFolderFacts? existing, string? self = null)
     {
         if (existing is null)
         {
@@ -177,9 +258,22 @@ public static class JobFolderPolicy
             return new(JobFolderAction.Refuse, $"{path} already exists as a file, so the job was not started there. Delete it from an administrator prompt.");
         }
 
-        return !existing.VolumeHasAccessControl || WorkAccess.IsTrusted(existing.Owner)
+        if (!existing.VolumeHasAccessControl)
+        {
+            return new(JobFolderAction.ClearThenCreate);
+        }
+
+        if (!WorkAccess.IsTrusted(existing.Owner, self))
+        {
+            return new(JobFolderAction.Refuse,
+                $"{path} was made by another account, so the job was not started there. Delete it from an administrator prompt.");
+        }
+
+        var writers = WorkAccess.UntrustedWriters(WorkAccess.OrEveryone(existing.Access), self);
+        return writers.Count == 0
             ? new(JobFolderAction.ClearThenCreate)
             : new(JobFolderAction.Refuse,
-                $"{path} was made by another account, so the job was not started there. Delete it from an administrator prompt.");
+                $"{path} can be changed by accounts other than SYSTEM and Administrators ({string.Join(", ", writers)}), "
+                + "so it was not cleared and the job was not started there. Delete it from an administrator prompt.");
     }
 }

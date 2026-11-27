@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Optimisarr.Sidecar.Core.Session;
@@ -22,11 +23,18 @@ internal readonly record struct WindowsFileIdentity(uint Attributes, uint Volume
 /// opened as itself and can be refused, never silently followed. Every open also leaves out
 /// <c>FILE_SHARE_DELETE</c> and asks for at least one right that takes part in sharing, so while the
 /// handle is held nobody can rename or delete the object to put a link in its place.</para>
+///
+/// <para>Holding a folder does not stop it changing in place, though: anyone with a handle to an
+/// empty folder that may write its attributes can turn it into a junction, and later lookups by
+/// name then go wherever it points. So a walk below a held folder lists it through its handle and
+/// opens each entry relative to that handle (<see cref="OpenChild"/>), never by a path that would
+/// be resolved again from the top.</para>
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class WindowsFileApi
 {
     public const uint ListDirectory = 0x1;
+    public const uint ReadData = 0x1;
     public const uint ReadAttributes = 0x80;
     public const uint Delete = 0x10000;
     public const uint ReadControl = 0x20000;
@@ -35,10 +43,13 @@ internal static class WindowsFileApi
 
     public const uint ShareRead = 0x1;
     public const uint ShareReadWrite = 0x1 | 0x2;
+    public const uint ShareAll = 0x1 | 0x2 | 0x4;
 
     public const int ErrorFileNotFound = 2;
     public const int ErrorPathNotFound = 3;
+    public const int ErrorSharingViolation = 32;
     public const int ErrorAlreadyExists = 183;
+    private const int ErrorNoMoreFiles = 18;
     private const int ErrorInvalidOwner = 1307;
 
     private const uint OpenExisting = 3;
@@ -48,6 +59,26 @@ internal static class WindowsFileApi
     private const uint OwnerInformation = 0x1;
     private const uint DaclInformation = 0x4;
     private const uint FullControl = 0x1F01FF;
+    private const uint Synchronize = 0x100000;
+
+    private const uint FileOpen = 1;
+    private const uint FileCreate = 2;
+    private const uint FileOpenIf = 3;
+    private const uint DirectoryFileOption = 0x1;
+    private const uint SynchronousIoOption = 0x20;
+    private const uint NonDirectoryFileOption = 0x40;
+    private const uint BackupIntentOption = 0x4000;
+    private const uint OpenReparsePointOption = 0x200000;
+    private const uint CaseInsensitive = 0x40;
+
+    private static readonly Lazy<string?> Self = new(() =>
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return identity.User?.Value;
+    });
+
+    /// <summary>The account this process runs as: SYSTEM for the service.</summary>
+    public static string? CurrentUser => Self.Value;
 
     public static bool IsMissing(int error) => error is ErrorFileNotFound or ErrorPathNotFound;
 
@@ -64,6 +95,82 @@ internal static class WindowsFileApi
         error = Marshal.GetLastPInvokeError();
         handle.Dispose();
         return null;
+    }
+
+    /// <summary>
+    /// The named entry directly inside the folder <paramref name="parent"/> holds, opened as itself
+    /// (a link is not followed) and looked up in that folder only: no path is resolved, so nothing
+    /// above it, and no change to the folder itself, can send the open anywhere else.
+    /// </summary>
+    public static SafeFileHandle? OpenChild(SafeFileHandle parent, string name, uint access, uint share, out int error) =>
+        OpenRelative(parent, name, access, share, FileOpen, 0, null, out error);
+
+    /// <summary>
+    /// Creates a folder directly inside <paramref name="parent"/>, failing if anything is already
+    /// there, and returns it opened. Without a descriptor it inherits from the parent.
+    /// </summary>
+    public static SafeFileHandle? CreateChildDirectory(SafeFileHandle parent, string name, byte[]? descriptor, uint access, uint share, out int error) =>
+        OpenRelative(parent, name, access, share, FileCreate, DirectoryFileOption, descriptor, out error);
+
+    /// <summary>
+    /// A folder created inside <paramref name="parent"/> already locked to SYSTEM and Administrators,
+    /// owned by Administrators where this account may give it to them (the service and an elevated
+    /// prompt both may), and by the creator otherwise.
+    /// </summary>
+    public static SafeFileHandle? CreateAdministratorOnlyChildDirectory(SafeFileHandle parent, string name, uint access, uint share, out int error)
+    {
+        var created = CreateChildDirectory(parent, name, AdministratorOnlyDescriptor(ownedByAdministrators: true), access, share, out error);
+        return created is null && error == ErrorInvalidOwner
+            ? CreateChildDirectory(parent, name, AdministratorOnlyDescriptor(), access, share, out error)
+            : created;
+    }
+
+    /// <summary>The named file directly inside <paramref name="parent"/>, created if it is missing; never a folder.</summary>
+    public static SafeFileHandle? OpenOrCreateChildFile(SafeFileHandle parent, string name, uint access, uint share, out int error) =>
+        OpenRelative(parent, name, access, share, FileOpenIf, NonDirectoryFileOption, null, out error);
+
+    /// <summary>
+    /// The names directly inside the folder the handle holds, read through the handle, so they are
+    /// that folder's own entries even if its path now leads somewhere else. The handle needs list access.
+    /// </summary>
+    public static IReadOnlyList<string> ListNames(SafeFileHandle directory)
+    {
+        const int FullDirectoryInfo = 14, FullDirectoryRestartInfo = 15, NameLengthOffset = 60, NameOffset = 68;
+        var names = new List<string>();
+        var buffer = new byte[64 * 1024];
+        for (var kind = FullDirectoryRestartInfo; ; kind = FullDirectoryInfo)
+        {
+            if (!GetDirectoryInformation(directory, kind, buffer, (uint)buffer.Length))
+            {
+                if (Marshal.GetLastPInvokeError() is ErrorNoMoreFiles or ErrorFileNotFound) return names;
+                throw Failure("list a folder");
+            }
+
+            for (var offset = 0; ;)
+            {
+                if (offset + NameOffset > buffer.Length) throw new IOException("Windows returned a folder listing that could not be read.");
+                var next = BitConverter.ToInt32(buffer, offset);
+                var length = BitConverter.ToInt32(buffer, offset + NameLengthOffset);
+                if (length <= 0 || length % 2 != 0 || offset + NameOffset + length > buffer.Length || next < 0)
+                    throw new IOException("Windows returned a folder listing that could not be read.");
+                var name = Encoding.Unicode.GetString(buffer, offset + NameOffset, length);
+                if (name is not ("." or "..")) names.Add(name);
+                if (next == 0) break;
+                offset += next;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Why something already on disk must not be adopted as it stands, read through its handle:
+    /// see <see cref="WorkAccess.AdoptionProblem"/>. Null on a drive without access control, where
+    /// there is nothing to judge and the administrator has accepted that.
+    /// </summary>
+    public static string? TrustProblem(SafeFileHandle handle, string path)
+    {
+        if (!HasAccessControl(handle)) return null;
+        var (owner, access) = ReadAccess(handle);
+        return WorkAccess.AdoptionProblem(path, owner, access, CurrentUser);
     }
 
     public static WindowsFileIdentity Identify(SafeFileHandle handle)
@@ -157,33 +264,8 @@ internal static class WindowsFileApi
             throw Failure("reset the access list");
     }
 
-    /// <summary>
-    /// Creates a folder already locked to SYSTEM and Administrators, owned by Administrators where
-    /// this account may give it to them (the service and an elevated prompt both may), and by the
-    /// creator otherwise. Zero, or the Windows error.
-    /// </summary>
-    public static int CreateAdministratorOnlyDirectory(string path)
-    {
-        var error = CreateDirectory(path, AdministratorOnlyDescriptor(ownedByAdministrators: true));
-        return error == ErrorInvalidOwner ? CreateDirectory(path, AdministratorOnlyDescriptor()) : error;
-    }
-
-    /// <summary>Zero, or the Windows error. Without a descriptor the folder inherits from its parent.</summary>
-    public static int CreateDirectory(string path, byte[]? descriptor)
-    {
-        if (descriptor is null)
-        {
-            return CreateDirectoryInherited(path, IntPtr.Zero) ? 0 : Marshal.GetLastPInvokeError();
-        }
-
-        var pinned = GCHandle.Alloc(descriptor, GCHandleType.Pinned);
-        try
-        {
-            var attributes = new SecurityAttributes { Length = Marshal.SizeOf<SecurityAttributes>(), Descriptor = pinned.AddrOfPinnedObject() };
-            return CreateDirectorySecured(path, ref attributes) ? 0 : Marshal.GetLastPInvokeError();
-        }
-        finally { pinned.Free(); }
-    }
+    /// <summary>Zero, or the Windows error. The folder inherits its access from its parent.</summary>
+    public static int CreateDirectory(string path) => CreateDirectoryInherited(path, IntPtr.Zero) ? 0 : Marshal.GetLastPInvokeError();
 
     /// <summary>
     /// Deletes the object the handle opened: a link as a link, since it was opened as one. POSIX
@@ -200,6 +282,50 @@ internal static class WindowsFileApi
     }
 
     public static string Describe(int error) => new Win32Exception(error).Message;
+
+    private static SafeFileHandle? OpenRelative(SafeFileHandle parent, string name, uint access, uint share, uint disposition, uint options,
+        byte[]? descriptor, out int error)
+    {
+        if (name.Length is 0 or > 255 || name is "." or ".." || name.IndexOfAny(['\\', '/', ':', '\0']) >= 0)
+            throw new IOException($"\"{name}\" is not the name of something inside a folder.");
+
+        var text = Marshal.StringToHGlobalUni(name);
+        var objectName = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
+        var pinned = descriptor is null ? default : GCHandle.Alloc(descriptor, GCHandleType.Pinned);
+        var referenced = false;
+        try
+        {
+            parent.DangerousAddRef(ref referenced);
+            var bytes = (ushort)(name.Length * 2);
+            Marshal.StructureToPtr(new UnicodeString { Length = bytes, MaximumLength = bytes, Buffer = text }, objectName, false);
+            var attributes = new ObjectAttributes
+            {
+                Length = Marshal.SizeOf<ObjectAttributes>(),
+                RootDirectory = parent.DangerousGetHandle(),
+                ObjectName = objectName,
+                Attributes = CaseInsensitive,
+                SecurityDescriptor = descriptor is null ? IntPtr.Zero : pinned.AddrOfPinnedObject(),
+            };
+            var status = NtCreateFile(out var handle, access | Synchronize, ref attributes, out _, IntPtr.Zero, 0, share, disposition,
+                options | SynchronousIoOption | BackupIntentOption | OpenReparsePointOption, IntPtr.Zero, 0);
+            if (status >= 0 && !handle.IsInvalid)
+            {
+                error = 0;
+                return handle;
+            }
+
+            handle.Dispose();
+            error = RtlNtStatusToDosError(status);
+            return null;
+        }
+        finally
+        {
+            if (referenced) parent.DangerousRelease();
+            if (pinned.IsAllocated) pinned.Free();
+            Marshal.FreeHGlobal(objectName);
+            Marshal.FreeHGlobal(text);
+        }
+    }
 
     private static IOException Failure(string action)
     {
@@ -220,23 +346,48 @@ internal static class WindowsFileApi
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SecurityAttributes
+    private struct UnicodeString
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ObjectAttributes
     {
         public int Length;
-        public IntPtr Descriptor;
-        [MarshalAs(UnmanagedType.Bool)] public bool Inherit;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public uint Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoStatusBlock
+    {
+        public IntPtr Status;
+        public IntPtr Information;
     }
 
     [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
 
-    [DllImport("kernel32.dll", EntryPoint = "CreateDirectoryW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport("ntdll.dll")]
+    private static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes, out IoStatusBlock status,
+        IntPtr allocationSize, uint fileAttributes, uint share, uint disposition, uint options, IntPtr extendedAttributes, uint extendedAttributesLength);
+
+    [DllImport("ntdll.dll")]
+    private static extern int RtlNtStatusToDosError(int status);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateDirectoryInherited(string path, IntPtr security);
+    private static extern bool GetDirectoryInformation(SafeFileHandle handle, int informationClass, byte[] buffer, uint size);
 
     [DllImport("kernel32.dll", EntryPoint = "CreateDirectoryW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateDirectorySecured(string path, ref SecurityAttributes security);
+    private static extern bool CreateDirectoryInherited(string path, IntPtr security);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

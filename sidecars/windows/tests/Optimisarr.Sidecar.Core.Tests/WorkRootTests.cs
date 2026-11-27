@@ -20,6 +20,9 @@ public sealed class WorkRootTests
 
     private static readonly AccessEntry[] AdminOnly = [new(System, FullControl), new(Administrators, FullControl)];
 
+    private static WorkRootEntry Entry(string name, bool writable = false) =>
+        new(name, IsLink: false, Owner: System, Access: writable ? [.. AdminOnly, new(Users, Modify)] : AdminOnly);
+
     [Fact]
     public void A_missing_work_folder_is_created()
     {
@@ -36,15 +39,116 @@ public sealed class WorkRootTests
     }
 
     [Fact]
-    public void A_folder_the_service_made_that_other_accounts_can_change_is_locked_down()
+    public void A_folder_the_service_made_that_other_accounts_can_change_is_rebuilt()
     {
         // What every existing C:\OptimisarrWork looks like: created by the service, so owned by
-        // SYSTEM, but carrying the drive root's inherited "Authenticated Users: Modify".
-        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(AuthenticatedUsers, Modify)]), false);
+        // SYSTEM, but carrying the drive root's inherited "Authenticated Users: Modify", and
+        // holding only what the service itself puts there.
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(AuthenticatedUsers, Modify)],
+            Entries: [Entry(".optimisarr-native", writable: true), Entry("job-1", writable: true), Entry("native-job-1-a-b", writable: true)]), false);
 
-        Assert.Equal(WorkRootAction.LockDown, verdict.Action);
-        Assert.Contains("reset", verdict.Notice);
+        Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
+        Assert.Contains("created again", verdict.Notice);
         Assert.Contains(AuthenticatedUsers, verdict.Notice);
+    }
+
+    [Fact]
+    public void An_empty_folder_the_service_made_that_other_accounts_can_change_is_rebuilt()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(Users, Modify)], Entries: []), false);
+
+        Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
+    }
+
+    [Fact]
+    public void A_folder_administrators_own_that_holds_only_the_services_files_is_rebuilt()
+    {
+        // A service running as SYSTEM can be given Administrators as the default owner of what it
+        // creates, so an Administrators-owned folder is as likely to be the service's own.
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: Administrators, Access: [.. AdminOnly, new(Users, Modify)],
+            Entries: [Entry("job-7", writable: true)]), false);
+
+        Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
+    }
+
+    [Fact]
+    public void A_changeable_folder_holding_files_the_service_did_not_make_is_refused_and_left_alone()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: Administrators, Access: [.. AdminOnly, new(Users, Modify)],
+            Entries: [Entry("job-7", writable: true), Entry("holiday.mkv", writable: true)]), false);
+
+        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
+        Assert.Contains("holiday.mkv", verdict.Problem);
+        Assert.Contains("did not make", verdict.Problem);
+        Assert.DoesNotContain("job-7", verdict.Problem);
+    }
+
+    [Fact]
+    public void A_locked_folder_whose_leftovers_other_accounts_can_change_is_rebuilt()
+    {
+        // Locked in place by an earlier build: the folder is sound, but what was already inside
+        // kept the drive's access, and a handle opened before the reset still works.
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: AdminOnly,
+            Entries: [Entry(".optimisarr-native", writable: true), Entry(WorkRootPolicy.SentinelName)]), false);
+
+        Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
+        Assert.Contains(".optimisarr-native", verdict.Notice);
+    }
+
+    [Fact]
+    public void A_locked_folder_with_a_job_folder_planted_as_a_link_is_rebuilt()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: AdminOnly,
+            Entries: [new WorkRootEntry("job-3", IsLink: true, Owner: System, Access: AdminOnly)]), false);
+
+        Assert.Equal(WorkRootAction.Rebuild, verdict.Action);
+    }
+
+    [Fact]
+    public void A_locked_folder_holding_other_files_is_used_whatever_their_access()
+    {
+        // The service never opens them, so who can change them is not its concern.
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: AdminOnly,
+            Entries: [Entry("job-1"), new WorkRootEntry("notes.txt", false, null, null)]), false);
+
+        Assert.Equal(WorkRootAction.Use, verdict.Action);
+    }
+
+    [Fact]
+    public void A_locked_folder_with_changeable_leftovers_beside_files_the_service_did_not_make_is_refused()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: AdminOnly,
+            Entries: [Entry("job-1", writable: true), new WorkRootEntry("notes.txt", false, null, null)]), false);
+
+        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
+        Assert.Contains("notes.txt", verdict.Problem);
+    }
+
+    [Fact]
+    public void A_changeable_folder_whose_contents_were_not_read_is_refused_not_rebuilt()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: System, Access: [.. AdminOnly, new(Users, Modify)]), false);
+
+        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
+        Assert.Contains("can be changed", verdict.Problem);
+    }
+
+    [Theory]
+    [InlineData(".optimisarr-native", true)]
+    [InlineData(".optimisarr-work-folder", true)]
+    [InlineData("job-5", true)]
+    [InlineData("job-5-0123abcd-4567", true)]
+    [InlineData("JOB-5", true)]
+    [InlineData("native-job-5-a-b", true)]
+    [InlineData("native-capability-a", true)]
+    [InlineData("job-", false)]
+    [InlineData("native-", false)]
+    [InlineData("jobs", false)]
+    [InlineData("holiday.mkv", false)]
+    [InlineData(".optimisarr-native-old", false)]
+    public void Only_the_names_the_service_itself_creates_count_as_its_own(string name, bool own)
+    {
+        Assert.Equal(own, WorkRootPolicy.IsServiceEntry(name));
     }
 
     [Fact]
@@ -56,18 +160,6 @@ public sealed class WorkRootTests
         Assert.Contains("owned by", verdict.Problem);
         Assert.Contains("icacls", verdict.Problem);
         Assert.Contains(Root, verdict.Problem);
-    }
-
-    [Fact]
-    public void A_folder_administrators_own_that_other_accounts_can_change_is_refused_not_reset()
-    {
-        // Somebody made it by hand. Rewriting the access of a folder the service did not create
-        // would take a decision that is theirs.
-        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: Administrators, Access: [.. AdminOnly, new(Users, Modify)]), false);
-
-        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
-        Assert.Contains("can be changed", verdict.Problem);
-        Assert.Contains("icacls", verdict.Problem);
     }
 
     [Fact]
@@ -99,8 +191,12 @@ public sealed class WorkRootTests
         Assert.Equal(WorkRootAction.Refuse, refused.Action);
         Assert.Contains(WorkLocation.AllowUnprotectedVariable, refused.Problem);
         Assert.Contains("FAT", refused.Problem);
+        // Nothing can be locked on such a drive, so the risk is to the job's files themselves.
+        Assert.Contains("VMAF", refused.Problem);
+        Assert.DoesNotContain("redirect", refused.Problem);
         Assert.Equal(WorkRootAction.Use, accepted.Action);
         Assert.Contains("any account", accepted.Notice);
+        Assert.DoesNotContain("redirect", accepted.Notice);
         Assert.Equal(WorkRootAction.Create, created.Action);
     }
 
@@ -169,7 +265,35 @@ public sealed class WorkRootTests
     public void A_job_folder_left_by_an_earlier_run_of_the_service_is_cleared()
     {
         Assert.Equal(JobFolderAction.ClearThenCreate,
-            JobFolderPolicy.Decide(@"D:\w\job-5", new(IsLink: false, IsDirectory: true, Owner: System)).Action);
+            JobFolderPolicy.Decide(@"D:\w\job-5", new(IsLink: false, IsDirectory: true, Owner: System, Access: AdminOnly)).Action);
+    }
+
+    [Fact]
+    public void A_leftover_job_folder_other_accounts_can_change_is_refused_not_cleared()
+    {
+        // Clearing walks into it, and anything another account can change could be turned into a
+        // link while the walk is under way.
+        var decision = JobFolderPolicy.Decide(@"D:\w\job-5", new(false, true, System, Access: [.. AdminOnly, new(Users, Modify)]));
+
+        Assert.Equal(JobFolderAction.Refuse, decision.Action);
+        Assert.Contains("can be changed", decision.Problem);
+        Assert.Contains(Users, decision.Problem);
+    }
+
+    [Fact]
+    public void A_leftover_job_folder_with_no_access_list_is_refused()
+    {
+        Assert.Equal(JobFolderAction.Refuse, JobFolderPolicy.Decide(@"D:\w\job-5", new(false, true, System, Access: null)).Action);
+    }
+
+    [Fact]
+    public void A_leftover_job_folder_only_this_account_can_change_is_cleared()
+    {
+        // The account the worker runs as can already do anything the worker can.
+        const string self = "S-1-5-21-1-2-3-1001";
+        var decision = JobFolderPolicy.Decide(@"D:\w\job-5", new(false, true, self, Access: [.. AdminOnly, new(self, FullControl)]), self);
+
+        Assert.Equal(JobFolderAction.ClearThenCreate, decision.Action);
     }
 
     [Fact]
@@ -203,5 +327,17 @@ public sealed class WorkRootTests
         // Only reachable once the administrator has accepted an unprotected drive.
         Assert.Equal(JobFolderAction.ClearThenCreate,
             JobFolderPolicy.Decide(@"R:\w\job-5", new(false, true, Owner: null, VolumeHasAccessControl: false)).Action);
+    }
+
+    [Fact]
+    public void Something_the_service_adopts_must_be_owned_and_changeable_only_by_trusted_accounts()
+    {
+        const string self = "S-1-5-21-1-2-3-1001";
+
+        Assert.Null(WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", System, AdminOnly, self: null));
+        Assert.Null(WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", self, [.. AdminOnly, new(self, FullControl)], self));
+        Assert.Contains("owned by", WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", "S-1-5-21-9", AdminOnly, self));
+        Assert.Contains(Users, WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", System, [.. AdminOnly, new(Users, Modify)], self));
+        Assert.Contains(WorkAccess.Everyone, WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", System, null, self));
     }
 }

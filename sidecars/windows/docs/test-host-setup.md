@@ -139,7 +139,8 @@ single-volume machine is fine, and a second drive is not worth adding for this a
 Do not create the folder yourself. Point the worker at it with the work-location file (see
 [work directory and RAM scratch](../README.md#work-directory-and-ram-scratch)) and the service
 creates it at start, locked to SYSTEM and Administrators. A folder made by hand carries the drive's
-access for every account and is refused until it is locked; the README gives the `icacls` lines.
+access for every account: the service deletes and recreates it if it is empty and Administrators own
+it, and otherwise refuses it until it is locked; the README gives the `icacls` lines.
 
 ### 6. Graphics driver
 

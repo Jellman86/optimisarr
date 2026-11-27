@@ -220,13 +220,23 @@ wherever it pointed.
 
 - **A new work folder** is created by the service with SYSTEM and Administrators full control,
   nothing inherited from the drive, and is checked every time the service starts.
-- **An existing folder the service created earlier** (owned by SYSTEM, still carrying the drive's
-  access for other accounts) is locked down automatically when the service starts, and the Event
-  Log records that it was. Files already inside keep their own access; each job's folder is made
-  fresh, and leftovers are removed without following any link in them.
-- **A folder anyone else owns, or one Administrators own that other accounts can change** (one you
-  created by hand, for instance), is refused, and the Event Log entry gives the fix. From an
-  administrator window, either delete it and let the service create it, or lock it yourself:
+- **An existing folder other accounts can change, holding only the worker's own files** (one an
+  earlier version of the service created, owned by SYSTEM or Administrators and still carrying the
+  drive's access) is rebuilt when the service starts (an empty folder you made in an administrator window counts
+  too): the worker's leftovers in it
+  (`.optimisarr-native`, `job-*` and `native-*`) are deleted without following any link, the folder
+  is deleted, and it is created again locked. The Event Log records that it was. Resetting only the
+  folder's own access would not be enough, because everything already inside keeps the drive's
+  access, and a handle another account opened on the folder before keeps working; deleting it
+  retires both. A locked folder whose worker leftovers other accounts can change is rebuilt the same
+  way. A folder is rebuilt only at start, never under running jobs: one opened up while the service
+  runs stops work until the service is restarted.
+- **A folder that also holds files the worker did not make** is refused and left exactly as it is,
+  and the Event Log entry names them. Move them somewhere else and restart the service, which then
+  rebuilds the folder.
+- **A folder anyone else owns** (one you created by hand without an elevated prompt, for instance)
+  is refused, and the Event Log entry gives the fix. From an administrator window, either delete it
+  and let the service create it, or lock it yourself:
 
   ```powershell
   icacls 'D:\OptimisarrWork' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
@@ -237,17 +247,21 @@ wherever it pointed.
 - **A folder reached through a link** is refused: the work folder or any folder above it that is a
   junction, symbolic link or a volume mounted into a folder. Use the drive's own letter.
 - **A job's folder** (`job-<id>`) is created only where nothing exists. A plain folder an earlier run
-  left behind is cleared first; a link, a file, or a folder another account made stops that job and
-  hands it back.
+  left behind is cleared first; a link, a file, or a folder another account made or can change stops
+  that job and hands it back.
 
 While the service runs it holds the work folder and every folder above it open, so none of them can
 be renamed, deleted or replaced, and a RAM drive holding them cannot be unmounted cleanly. Stop the
-service first. It checks the folder again before every check-in and every job, and stops taking work
+service first. It also keeps a file, `.optimisarr-work-folder`, in the work folder and holds it
+open: an empty folder can be turned into a junction in place by anyone allowed to write its
+attributes, so the work folder is never left empty. Each folder on the path is found inside the
+one before it rather than by name, and a job's folder is emptied the same way, so a folder turned
+into a junction part-way through is never followed. It checks the folder again before every check-in and every job, and stops taking work
 the moment the folder fails.
 
 **Drives without access control.** FAT32 and exFAT, which many RAM-drive tools format by default,
 have no owners or permissions, so the folder cannot be protected: any account on the machine could
-redirect the files the worker writes and deletes there. Such a work folder is refused. Format the
+change or replace a job's files there, including the VMAF log its quality is judged by. Such a work folder is refused. Format the
 drive as NTFS if the tool allows it. To accept the risk instead, on a machine where every account
 is trusted, set the machine-wide variable and restart the service:
 
