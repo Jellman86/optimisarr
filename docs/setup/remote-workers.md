@@ -84,6 +84,10 @@ Source downloads stream directly to working storage without a temporary download
 
 The Windows sidecar currently uses a disk folder (`C:\OptimisarrWork`, overridable with
 `OPTIMISARR_SIDECAR_WORK`). It does not create or manage RAM disks.
+It takes one job at a time unless `OPTIMISARR_SIDECAR_CONCURRENCY` allows up to four; see
+[running more than one job](../../sidecars/windows/README.md#running-more-than-one-job-at-a-time).
+Each concurrent job holds its working-space estimate, so jobs that fit alone but not together are
+handed back rather than started.
 
 The Linux container uses `/work`, backed by disk or an operator-mounted bounded tmpfs. It has no
 automatic disk fallback or shared RAM reservation manager; see
