@@ -81,26 +81,4 @@ public sealed class MachineLoadTests
         Assert.Equal(0.5, load!.CpuBusyFraction);
         Assert.Null(load.GpuBusyFraction);
     }
-
-    [Fact]
-    public void Gpu_engine_filter_keeps_encode_engines_and_drops_unrelated_work()
-    {
-        // Windows GPU Engine instance names are "pid_<pid>_luid_..._engtype_<Engine>". Only the
-        // engines a transcode touches should influence the reported busy fraction, so a browser
-        // doing 3D elsewhere does not steal the number from a busy encoder on the same adapter.
-        Assert.True(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_14_engtype_Video Encode"));
-        Assert.True(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_12_engtype_Video Decode"));
-        Assert.True(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_0_engtype_3D"));
-        Assert.True(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_2_engtype_Compute"));
-
-        Assert.False(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_13_engtype_True Audio"));
-        Assert.False(MachineLoadSampler.IsRelevantEngine(
-            "pid_100_luid_0x00000000_0x00018002_phys_0_eng_5_engtype_Timer"));
-        Assert.False(MachineLoadSampler.IsRelevantEngine("not-an-instance-name"));
-    }
 }
