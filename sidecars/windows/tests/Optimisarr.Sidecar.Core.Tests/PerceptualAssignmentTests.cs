@@ -15,16 +15,18 @@ internal static class PerceptualJobFixture
         var policy = VerificationPolicy.Default with { RequireSizeReduction = false, ImagePerceptualGateEnabled = true,
             MinimumImagePerceptualScore = 85, ImageQualityGateEnabled = false, AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02 };
         var kind = image ? MediaKind.Image : MediaKind.Audio;
-        var encoder = image ? "libwebp" : "aac";
+        // AAC music is converted on the server (its tags are written after the encode), so a worker
+        // receives Opus or MP3 music.
+        var encoder = image ? "libwebp" : "libopus";
         var contract = new RemotePerceptualSearchContract(Guid.NewGuid(), kind, encoder,
             image ? PerceptualQualityPlan.Image(encoder, 80) : PerceptualQualityPlan.Audio(encoder, 128), policy,
             image ? [] : PerceptualSamplePlanner.AudioWindows(8), SourceAudio: image ? null : new(8, 2, 48000, "stereo"),
             SourceImage: image ? new(32, 32, false) : null);
-        var spec = new TranscodeSpec(WorkerProtocol.InputPlaceholder, WorkerProtocol.OutputPlaceholder + (image ? ".webp" : ".m4a"),
+        var spec = new TranscodeSpec(WorkerProtocol.InputPlaceholder, WorkerProtocol.OutputPlaceholder + (image ? ".webp" : ".opus"),
             null, null, null, false, Kind: kind, AudioEncoder: image ? null : encoder, AudioBitrateKbps: image ? null : 128,
             ImageEncoder: image ? encoder : null, ImageQuality: image ? 80 : null);
         return new(Guid.NewGuid(), 77, "Native fixture", 12, null, "None", DateTimeOffset.UtcNow.AddMinutes(5), 10,
-            FfmpegCommandBuilder.Build(spec, optimisedMarker: "worker-fixture"), image ? "webp" : "m4a",
+            FfmpegCommandBuilder.Build(spec, optimisedMarker: "worker-fixture"), image ? "webp" : "opus",
             new(false, "", 1, false, 0, 0, []), FullVerification: new(image ? 4 : 2, Guid.NewGuid(), false,
                 MeasureAudioQuality: !image, Image: image ? new(false, true, true) : null), Kind: kind, AudioEncoder: image ? null : encoder,
             PerceptualSearch: RemotePerceptualSearchPlanner.Plan(contract, contract.Plan.Baseline, 0, spec),
@@ -42,7 +44,7 @@ public sealed class PerceptualAssignmentTests
         var assignment = PerceptualJobFixture.Assignment(image);
         var restored = JsonSerializer.Deserialize<Assignment>(JsonSerializer.Serialize(assignment, SidecarClient.Json), SidecarClient.Json)!;
         Assert.Null(restored.RefuseMediaContract()); Assert.NotNull(restored.PerceptualSearch);
-        Assert.Equal(image ? "libwebp" : "aac", restored.Encoder);
+        Assert.Equal(image ? "libwebp" : "libopus", restored.Encoder);
         Assert.Equal(assignment.RequiredScratchBytes, restored.RequiredScratchBytes);
     }
 
