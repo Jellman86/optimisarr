@@ -36,6 +36,20 @@ public sealed class FfmpegErrorInterpreterTests
     }
 
     [Theory]
+    [InlineData("gif")]
+    [InlineData("webp")]
+    public void Explains_cover_art_an_m4a_cannot_hold(string codec)
+    {
+        var message = FfmpegErrorInterpreter.Explain(
+            $"[ipod @ 0x562799eb6640] Could not find tag for codec {codec} in stream #2, codec not currently supported in container");
+
+        Assert.NotNull(message);
+        Assert.Contains("cover art", message);
+        Assert.Contains("JPEG", message);
+        Assert.Contains("original was not touched", message);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]

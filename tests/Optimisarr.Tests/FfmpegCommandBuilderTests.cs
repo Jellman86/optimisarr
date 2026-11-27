@@ -151,11 +151,15 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_aac_audio_job_maps_metadata_and_timed_lyrics_but_not_unsafe_artwork()
+    public void An_aac_audio_job_maps_metadata_timed_lyrics_and_cover_art_after_the_audio()
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        Assert.DoesNotContain("0:v?", args);
+        // The cover art is copied as it is, so its bytes reach the M4A's covr atom unchanged.
+        Assert.Contains(("-map", "0:v?"), MapPairs(args));
+        Assert.Equal("copy", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v") + 1]);
+        Assert.True(IndexOf(args, "0:a") < IndexOf(args, "0:v?"));
         Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
@@ -193,7 +197,8 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void An_audio_job_still_stamps_the_optimisation_marker()
     {
-        var args = FfmpegCommandBuilder.Build(AudioReencode(), optimisedMarker: "0.4.2");
+        var args = FfmpegCommandBuilder.Build(AudioReencode() with { OutputPath = "/work/Track.mp3", AudioEncoder = "libmp3lame" },
+            optimisedMarker: "0.4.2");
 
         var metaIndex = IndexOf(args, "-metadata");
         Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
@@ -1313,18 +1318,19 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
     }
 
+    // With use_metadata_tags FFmpeg writes every tag of an M4A as QuickTime keys, which most music
+    // software cannot read, and drops its cover art; Optimisarr writes the marker after the encode (#593).
     [Theory]
     [InlineData(".m4a")]
     [InlineData(".m4b")]
-    public void Adds_the_mp4_flag_so_custom_tags_round_trip_for_mp4_audio_outputs(string extension)
+    public void Leaves_the_tags_of_mp4_audio_outputs_as_the_itunes_atoms_ffmpeg_writes(string extension)
     {
         var spec = AudioReencode() with { OutputPath = $"/work/Track{extension}" };
 
         var args = FfmpegCommandBuilder.Build(spec, optimisedMarker: "0.4.2");
 
-        var flagsIndex = IndexOf(args, "-movflags");
-        Assert.True(flagsIndex >= 0);
-        Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
+        Assert.DoesNotContain("-movflags", args);
+        Assert.DoesNotContain("optimisarr=0.4.2", args);
     }
 
     [Fact]

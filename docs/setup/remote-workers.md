@@ -169,8 +169,10 @@ records the hardware and formats actually tested; it does not certify every GPU 
 
 ## Standalone audio
 
-Protocol 6 sidecars can encode music to AAC/M4A, Opus or MP3 using the library’s
-selected audio encoder and bitrate. A worker must prove that encoder before it can
+Protocol 6 sidecars can encode music to Opus or MP3 using the library’s
+selected audio encoder and bitrate. Music converted to AAC (`.m4a`) is always encoded on the
+server, whatever the library's placement: the server writes the file's remaining tags and its marker
+into it after the encode (see [Tags and cover art in converted files](configuration.md#tags-and-cover-art-in-converted-files)). A worker must prove that encoder before it can
 claim the job; protocol 1–5 workers keep their existing video work. Music libraries
 use the same placement controls as video libraries. With **Only on workers** and
 strict verification enabled, an unsupported worker does not trigger local fallback.
@@ -187,8 +189,8 @@ brighter colour means stronger signal. It samples only while a monitor is viewed
 at most once per 1.5 seconds, with one bounded process per job. Preview failure is
 labelled and never fails an encode. The display is not a loudness or quality verdict.
 
-Embedded covers are preserved when encoding to MP3. AAC/Opus sources containing
-embedded cover art remain safely ineligible, with guidance to select MP3. Existing
+Embedded covers are preserved when encoding to MP3 or AAC. Sources with embedded cover art remain
+safely ineligible for Opus, with guidance to select AAC or MP3. Existing
 channel compatibility and timed-lyrics guards apply unchanged.
 
 ![Mac Compact Monitor encoding a generated audio fixture with measured source spectrum](../images/optimisarr-sidecar-macos-audio.png)

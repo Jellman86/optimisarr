@@ -243,9 +243,9 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     [Fact]
     public async Task Audio_gate_checks_valid_worker_measurements_and_rejects_a_report_for_different_files()
     {
-        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"mp3","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mp3"}}""";
         Directory.CreateDirectory(_root);
-        var output = Path.Combine(_root, "gated-candidate.m4a");
+        var output = Path.Combine(_root, "gated-candidate.mp3");
         await File.WriteAllTextAsync(output, "candidate");
         var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
             Kind: MediaKind.Audio, VideoReencoded: false);
@@ -271,9 +271,9 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     [Fact]
     public async Task Opt_in_audio_reporting_never_reads_remote_media_when_the_worker_omits_observations()
     {
-        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"mp3","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mp3"}}""";
         Directory.CreateDirectory(_root);
-        var output = Path.Combine(_root, "candidate.m4a");
+        var output = Path.Combine(_root, "candidate.mp3");
         await File.WriteAllTextAsync(output, "candidate");
         var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
             Kind: MediaKind.Audio, VideoReencoded: false);
@@ -298,9 +298,9 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     [Fact]
     public async Task Audio_worker_evidence_is_evaluated_without_server_media_tools_or_VMAF()
     {
-        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"mp3","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mp3"}}""";
         Directory.CreateDirectory(_root);
-        var output = Path.Combine(_root, "candidate.m4a");
+        var output = Path.Combine(_root, "candidate.mp3");
         await File.WriteAllTextAsync(output, "candidate");
         var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
             Kind: MediaKind.Audio, VideoReencoded: false);

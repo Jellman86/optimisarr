@@ -619,8 +619,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return job.Id;
     }
 
+    // An M4A's tags are written into it on this server after the encode (#593), so AAC music is never offered.
     [Theory]
-    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.Anywhere, false)]
     [InlineData("aac", "aac", "m4a", 5, WorkPlacement.WorkerOnly, false)]
     [InlineData("aac", "libopus", "m4a", 6, WorkPlacement.WorkerOnly, false)]
     [InlineData("aac", "aac", "m4a", 6, WorkPlacement.LocalOnly, false)]

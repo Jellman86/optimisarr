@@ -23,6 +23,24 @@ public sealed class MediaProbeParseTests
     }
 
     [Theory]
+    // A FLAC's LANGUAGE comment and an MP3's TLAN are container tags.
+    [InlineData("flac", "\"tags\":{\"LANGUAGE\":\"eng\"}", "{}", "eng")]
+    [InlineData("mp3", "\"tags\":{\"language\":\"eng\"}", "{}", "eng")]
+    // An MP4 or Matroska audio track's language is the track's, not a tag; a container tag still wins.
+    [InlineData("mov,mp4,m4a,3gp,3g2,mj2", "\"tags\":{\"title\":\"T\"}", "{\"language\":\"und\"}", null)]
+    [InlineData("matroska,webm", "\"tags\":{\"LANGUAGE\":\"fra\"}", "{\"language\":\"eng\"}", "fra")]
+    // Ogg keeps a file's comments on its stream.
+    [InlineData("ogg", "\"tags\":{}", "{\"LANGUAGE\":\"eng\"}", "eng")]
+    public void Parse_records_the_language_a_music_file_s_tags_state(string container, string formatTags, string streamTags, string? language)
+    {
+        var result = MediaProbeService.Parse($$"""
+            {"format":{"format_name":"{{container}}",{{formatTags}}},
+             "streams":[{"index":0,"codec_type":"audio","codec_name":"flac","tags":{{streamTags}}}]}
+            """);
+        Assert.Equal(language, result.TagLanguage);
+    }
+
+    [Theory]
     [InlineData("\"sample_aspect_ratio\":\"64:45\",", 64, 45)]
     [InlineData("\"sample_aspect_ratio\":\"1:1\",", 1, 1)]
     public void Parse_records_the_primary_videos_pixel_shape(string field, int numerator, int denominator)

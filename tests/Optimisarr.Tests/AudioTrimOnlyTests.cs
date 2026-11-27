@@ -74,7 +74,7 @@ public sealed class AudioTrimOnlyTests
         var decision = AudioTrimOnly.Decide(codec, "Album/Track.m4a", pictures);
 
         Assert.Null(decision.Plan);
-        Assert.Equal("Trimming M4A without converting would rewrite its tags in a form many players can't read.", decision.Reason);
+        Assert.Equal("M4A files are not yet trimmed without converting: it has not been proved that their audio and tags come through a trim unchanged.", decision.Reason);
     }
 
     [Fact]

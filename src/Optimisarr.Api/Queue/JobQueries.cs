@@ -348,7 +348,7 @@ public static class JobQueries
 
         var libraries = await db.Libraries
             .AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction })
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction, library.AudioTargetCodec })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var ids = queued.Select(job => job.Id).ToList();
         var facts = await db.Jobs
@@ -372,7 +372,8 @@ public static class JobQueries
                     QueueDispatcher.EffectivePlacement(library.WorkPlacement,
                         SuperResolutionRouting.Applies(superResolutionOn, library.SuperResolutionEnabled, fact.Kind, replaceBound: fact.Type == JobType.Normal)
                         || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, fact.FieldOrder)
-                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, fact.Kind)),
+                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, fact.Kind)
+                        || AudioTarget.KeepsOnServer(library.AudioTargetCodec, fact.Kind)),
                     availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
             .Select(job => job.Id)
             .ToHashSet();
