@@ -83,6 +83,17 @@ public sealed class TrayApp : Application
             }
             return;
         }
+        if (args.Contains("--set-settings"))
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+            { MessageBox.Show("Run this action as administrator.", "Optimisarr Sidecar"); Shutdown(); return; }
+            var idx = Array.IndexOf(args, "--set-settings");
+            if (idx + 2 >= args.Length)
+            { MessageBox.Show("Provide a work location and a concurrency.", "Optimisarr Sidecar"); Shutdown(); return; }
+            SaveSettingsAndRestart(args[idx + 1], args[idx + 2]);
+            Shutdown(); return;
+        }
         singleInstance = new Mutex(true, "Local\\Optimisarr.Sidecar.Tray", out var created);
         if (!created) { Shutdown(); return; }
         var window = new MonitorWindow();
@@ -123,6 +134,7 @@ public sealed class TrayApp : Application
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
             { Forms.MessageBox.Show("Diagnostic export was cancelled or administrator access could not start.", "Optimisarr Sidecar"); }
         }));
+        menu.Items.Add("Settings… (work & concurrency)", null, (_, _) => Dispatcher.Invoke(ShowSettings));
         menu.Items.Add("Quit tray — keep worker running", null, (_, _) => Dispatcher.Invoke(Shutdown));
         tray.ContextMenuStrip = menu;
         _ = WatchActivityAsync();
@@ -179,6 +191,95 @@ public sealed class TrayApp : Application
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    private void ShowSettings()
+    {
+        var panel = new StackPanel { Margin = new Thickness(24), Width = 400 };
+        var window = new Window
+        {
+            Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Resources/BrandMark.png")),
+            Title = "Work location & concurrency", Width = 460, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen, ResizeMode = ResizeMode.NoResize,
+            Content = panel,
+        };
+        panel.Children.Add(new TextBlock { Text = "Work location & concurrency", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock { Text = "Where job source and candidate are written, and how many jobs run at once. This restarts the worker so the change takes effect (a running job hands back; originals are safe).", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 14) });
+
+        panel.Children.Add(new TextBlock { Text = "Work directory — a plain folder, or a RAM drive path (e.g. a mounted ImDisk) to work on RAM" });
+        var work = new TextBox { Text = CurrentWorkLocation(), Margin = new Thickness(0, 5, 0, 12), Padding = new Thickness(8) };
+        panel.Children.Add(work);
+
+        panel.Children.Add(new TextBlock { Text = "Concurrent jobs (1–4) — a dGPU + iGPU box can fill both at once" });
+        var conc = new ComboBox { Margin = new Thickness(0, 5, 0, 8) };
+        for (var i = 1; i <= 4; i++) conc.Items.Add(i.ToString());
+        conc.SelectedIndex = Math.Clamp(CurrentConcurrency() - 1, 0, 3);
+        panel.Children.Add(conc);
+
+        var message = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        var apply = new Button { Content = "Save & restart worker", Padding = new Thickness(12), Margin = new Thickness(0, 14, 0, 0), HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (TryFindResource("AccentButtonStyle") is Style accent) apply.Style = accent;
+        panel.Children.Add(apply);
+        panel.Children.Add(message);
+
+        apply.Click += (_, _) =>
+        {
+            var target = work.Text.Trim();
+            if (string.IsNullOrWhiteSpace(target)) { message.Text = "Enter a work directory."; return; }
+            var concurrency = (conc.SelectedItem as string) ?? "1";
+            try
+            {
+                var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Optimisarr.Sidecar.Tray.exe"))
+                { UseShellExecute = true, Verb = "runas" };
+                start.ArgumentList.Add("--set-settings");
+                start.ArgumentList.Add(target);
+                start.ArgumentList.Add(concurrency);
+                Process.Start(start);
+                window.Close();
+            }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+            { message.Text = "Administrator elevation was cancelled or could not start."; }
+        };
+        window.Show();
+        work.Focus();
+    }
+
+    private static string CurrentWorkLocation()
+    {
+        var file = Path.Combine(ProgramData(), "work-location");
+        try { if (File.Exists(file) && File.ReadAllText(file).Trim() is { Length: > 0 } text) return text; } catch { }
+        return Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK") ?? @"C:\OptimisarrWork";
+    }
+
+    private static int CurrentConcurrency()
+    {
+        try
+        {
+            var file = Path.Combine(ProgramData(), "concurrency");
+            if (File.Exists(file) && int.TryParse(File.ReadAllText(file).Trim(), out var c) && c is >= 1 and <= 4) return c;
+        }
+        catch { }
+        return int.TryParse(Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_CONCURRENCY"), out var e) && e is >= 1 and <= 4 ? e : 1;
+    }
+
+    private static string ProgramData() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar");
+
+    private static void SaveSettingsAndRestart(string work, string concurrency)
+    {
+        var dir = ProgramData();
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "work-location"), work);
+        File.WriteAllText(Path.Combine(dir, "concurrency"), concurrency);
+        using var service = new System.ServiceProcess.ServiceController("OptimisarrSidecar");
+        if (service.Status != System.ServiceProcess.ServiceControllerStatus.Stopped)
+        {
+            service.Stop();
+            service.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+        }
+        service.Start();
+        service.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+        Forms.MessageBox.Show($"Applied.\nWork directory: {work}\nConcurrent jobs: {concurrency}\n\nThe worker restarted with the new settings.", "Optimisarr Sidecar");
     }
 
     private void ShowSetup()
