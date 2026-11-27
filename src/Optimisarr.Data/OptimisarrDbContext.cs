@@ -377,6 +377,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(connection => connection.Type).HasConversion<string>().HasMaxLength(32);
             entity.Property(connection => connection.BaseUrl).IsRequired().HasMaxLength(1024);
             entity.Property(connection => connection.ApiKey).HasMaxLength(512);
+            entity.Property(connection => connection.WebhookSecretFingerprint).HasMaxLength(64);
+            entity.Property(connection => connection.RemotePathPrefix).HasMaxLength(1024);
+            entity.Property(connection => connection.LocalPathPrefix).HasMaxLength(1024);
+            entity.Property(connection => connection.WebhookLastOutcome).HasConversion<string>().HasMaxLength(32);
+            entity.Property(connection => connection.WebhookLastDetail).HasMaxLength(1024);
         });
 
         modelBuilder.Entity<Exclusion>(entity =>

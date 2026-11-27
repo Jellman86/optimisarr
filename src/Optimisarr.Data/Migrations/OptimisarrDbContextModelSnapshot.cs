@@ -101,9 +101,17 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("LocalPathPrefix")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePathPrefix")
+                        .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("RescanAfterChanges")
@@ -115,6 +123,21 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookLastDetail")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookLastOutcome")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("WebhookLastReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookSecretFingerprint")
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

@@ -239,6 +239,10 @@ public static class ConfigSnapshotValidator
             RequireText(connection.Name, $"{where} name", errors);
             RequireText(connection.BaseUrl, $"{where} base URL", errors);
             RequireEnum<ArrConnectionType>(connection.Type, $"{where} type", errors);
+            if (string.IsNullOrWhiteSpace(connection.RemotePathPrefix) != string.IsNullOrWhiteSpace(connection.LocalPathPrefix))
+            {
+                errors.Add($"{where} path mapping needs both folders, or neither.");
+            }
         }
 
         return errors.Count == 0 ? ConfigValidationResult.Valid : new ConfigValidationResult(false, errors);

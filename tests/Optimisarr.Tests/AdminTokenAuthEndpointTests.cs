@@ -98,6 +98,9 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("DELETE", "/api/workers/pairing-code")]
     [InlineData("GET", "/api/workers")]
     [InlineData("DELETE", "/api/workers/1")]
+    // Only the webhook itself is open; minting or removing its password needs the admin token.
+    [InlineData("POST", "/api/arr-connections/1/webhook-password")]
+    [InlineData("DELETE", "/api/arr-connections/1/webhook-password")]
     public async Task A_protected_endpoint_is_401_without_the_token(string method, string path)
     {
         using var response = await _api.CreateClient()

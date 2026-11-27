@@ -79,16 +79,7 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
                 continue;
             }
 
-            db.Jobs.Add(new Job
-            {
-                MediaFileId = candidate.MediaFileId,
-                LibraryId = candidate.LibraryId,
-                Status = JobStatus.Queued,
-                Priority = library.Priority,
-                EnqueueReason = Truncate(candidate.Reason),
-                EnqueuedAt = now,
-                UpdatedAt = now
-            });
+            db.Jobs.Add(AutomaticJob(candidate, library, now));
             enqueued++;
         }
 
@@ -96,6 +87,49 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
         await write.CommitAsync(cancellationToken);
         return new EnqueueResult(enqueued, eligible.Count - enqueued - importing, ineligible, importing);
     }
+
+    /// <summary>
+    /// Queues one file exactly as <see cref="EnqueueEligibleAsync"/> would if it ran now: the same
+    /// candidate evaluation, active-job check and import hold, and the same job. Used when a manager reports
+    /// a file it just imported, so that file need not wait for the next automatic tick. The caller decides,
+    /// as the automatic tick does, whether the library optimises automatically right now.
+    /// </summary>
+    public async Task<FileEnqueueResult> EnqueueEligibleFileAsync(Data.Library library, int mediaFileId, CancellationToken cancellationToken)
+    {
+        var activeImports = await arrActivity.GetActiveImportsAsync(cancellationToken);
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
+        var candidate = (await candidates.EvaluateAsync(library.Id, cancellationToken))
+            .FirstOrDefault(c => c.MediaFileId == mediaFileId);
+        if (candidate is null) return new(FileEnqueueOutcome.NeedsProbe, null, "The file has not been probed.");
+        if (!candidate.Eligible) return new(FileEnqueueOutcome.Ineligible, null, candidate.Reason);
+
+        var active = await db.Jobs.AsNoTracking()
+            .Where(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId && ActiveStatuses.Contains(job.Status))
+            .Select(job => (int?)job.Id).FirstOrDefaultAsync(cancellationToken);
+        if (active is not null) return new(FileEnqueueOutcome.AlreadyActive, active, null);
+
+        var path = await db.MediaFiles.AsNoTracking().Where(file => file.Id == mediaFileId)
+            .Select(file => file.Path).SingleAsync(cancellationToken);
+        if (ArrImportExclusionEvaluator.ExclusionReason(path, activeImports) is { } importing)
+            return new(FileEnqueueOutcome.Importing, null, importing);
+
+        var job = AutomaticJob(candidate, library, DateTimeOffset.UtcNow);
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        return new(FileEnqueueOutcome.Enqueued, job.Id, null);
+    }
+
+    private static Job AutomaticJob(Candidate candidate, Data.Library library, DateTimeOffset now) => new()
+    {
+        MediaFileId = candidate.MediaFileId,
+        LibraryId = candidate.LibraryId,
+        Status = JobStatus.Queued,
+        Priority = library.Priority,
+        EnqueueReason = Truncate(candidate.Reason),
+        EnqueuedAt = now,
+        UpdatedAt = now
+    };
 
     /// <summary>
     /// Queues one file the operator chose. Choosing it only overrides "optimise automatically" being

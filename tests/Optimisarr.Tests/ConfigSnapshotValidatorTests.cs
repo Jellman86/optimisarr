@@ -5,6 +5,16 @@ namespace Optimisarr.Tests;
 public sealed class ConfigSnapshotValidatorTests
 {
     [Fact]
+    public void A_half_filled_manager_path_mapping_is_refused()
+    {
+        var sonarr = new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true);
+
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr with { RemotePathPrefix = "/tv", LocalPathPrefix = "/data/tv" }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr with { RemotePathPrefix = "/tv" }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { ArrConnections = [sonarr with { LocalPathPrefix = "/data/tv" }] }, AllowedKeys).IsValid);
+    }
+
+    [Fact]
     public void An_imported_silence_trim_is_held_to_the_same_rules_as_a_saved_one()
     {
         var music = new LibrarySnapshot("Music", "/music", "Music", "ConservativeHevc", true, 0,

@@ -150,11 +150,18 @@ public sealed record NotificationTargetSnapshot(
     bool NotifyOnFailure,
     string? Token = null);
 
-/// <summary>A Sonarr/Radarr connection definition, matched on its <see cref="Name"/> when imported.</summary>
+/// <summary>
+/// A Sonarr/Radarr connection definition, matched on its <see cref="Name"/> when imported. The webhook
+/// password is deliberately absent: only its fingerprint is stored, the webhook URL names the connection's
+/// id, which a restore onto another server does not keep, so the manager has to be given a new URL and
+/// password there anyway, and a backup file should not widen who can feed files into the queue.
+/// </summary>
 public sealed record ArrConnectionSnapshot(
     string Name,
     string Type,
     string BaseUrl,
     bool Enabled,
     string? ApiKey = null,
-    bool? RescanAfterChanges = null);
+    bool? RescanAfterChanges = null,
+    string? RemotePathPrefix = null,
+    string? LocalPathPrefix = null);

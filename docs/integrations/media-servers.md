@@ -18,8 +18,8 @@ No copyrighted material is used.
 | Plex | Pause new work during active sessions; refresh libraries after replacement or rollback. | Plex sign-in/PIN flow, then choose a discovered server or enter the URL manually. |
 | Jellyfin | Pause new work during active sessions; refresh changed folders after replacement or rollback. | Quick Connect or API key. |
 | Emby | Pause new work during active sessions; refresh changed folders after replacement or rollback. | API key. |
-| Sonarr | Avoid immediately reprocessing recently imported TV files; rescan a series after replacement or rollback. | Base URL and API key. |
-| Radarr | Avoid immediately reprocessing recently imported movie files; rescan a movie after replacement or rollback. | Base URL and API key. |
+| Sonarr | Avoid immediately reprocessing recently imported TV files; rescan a series after replacement or rollback; pick up an imported episode straight away. | Base URL and API key; optional import webhook. |
+| Radarr | Avoid immediately reprocessing recently imported movie files; rescan a movie after replacement or rollback; pick up an imported movie straight away. | Base URL and API key; optional import webhook. |
 
 Test each connection before enabling it. Keep only the pause and refresh
 behaviour you actually need.
@@ -74,6 +74,87 @@ manager sees the old file as gone. Radarr then unmonitors the movie if its
 names unchanged with the **Same as source** output container.
 
 ![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
+
+### Import webhook
+
+Without a webhook, a newly imported file waits for the next library scan
+(**Settings → Encoding → Library scan interval**, hourly by default). The import
+webhook lets Sonarr or Radarr tell Optimisarr the moment it imports or upgrades a
+file, so Optimisarr picks up just that file:
+
+1. It finds the library whose folder holds the file. A file outside every
+   enabled library is left alone and the delivery still succeeds.
+2. It checks the file exactly as a library scan would. A file modified within
+   the settling period (two minutes) is looked at again once it settles. Links
+   out of the library and paths containing `..` are refused.
+3. It probes the file and queues it only if the library optimises
+   automatically, is inside its schedule, and its rules select the file. That is
+   the same decision automatic optimisation makes every minute, so the webhook
+   never queues anything automatic optimisation would not. A library that does
+   not optimise automatically only gains the file in its inventory.
+
+The library scan carries on as before and still finds anything a webhook
+missed, for example a delivery made while Optimisarr was restarting.
+
+#### Set it up
+
+1. In Optimisarr, open **Settings → Download managers**, choose **Edit** on the
+   connection, and choose **Create webhook password**. Copy the password now:
+   Optimisarr keeps only a fingerprint of it and cannot show it again. If you
+   lose it, choose **Replace password**.
+2. In Sonarr or Radarr, open **Settings → Connect**, add a connection and choose
+   **Webhook**.
+3. Turn on **On File Import** and **On File Upgrade** (**On Import** and **On
+   Upgrade** in older versions). Leave the other triggers off; Optimisarr
+   accepts them but does nothing with them.
+4. Paste the **Webhook URL** Optimisarr shows, leave **Method** as **POST**, and
+   enter the **Username** and **Password** Optimisarr shows.
+5. Choose **Test**. Optimisarr shows the result under **Last delivery**.
+
+The URL is built from the address you opened Optimisarr at. If Sonarr or
+Radarr reaches Optimisarr at a different address, such as its container name,
+use that address with the same path, `/api/arr-webhooks/<id>`.
+
+If Sonarr or Radarr sees your library under a different folder than Optimisarr
+does, for example `/tv` in Sonarr and `/data/tv` in Optimisarr, set the
+connection's **Path mapping** to those two folders. Only the start of the path
+is rewritten, and the result must still be inside a library.
+
+#### Security
+
+The webhook does not use the admin token, because Sonarr and Radarr cannot send
+it. Each connection has its own 32-byte random password, sent with HTTP basic
+authentication from the webhook's username and password fields. Any username is
+accepted. The password is not in the URL, so it does not end up in proxy access
+logs. Optimisarr stores only its SHA-256 fingerprint, and a backup export never
+includes it. A restored connection has its webhook off until you create a new
+password. **Turn off webhook** removes the password and refuses every
+delivery. Each delivery body is limited to 1 MiB, and deliveries are processed
+one at a time.
+
+If your reverse proxy adds its own sign-in, exempt `/api/arr-webhooks/` from it
+or Sonarr and Radarr cannot reach the webhook. See [Running behind a reverse
+proxy](../setup/reverse-proxy.md#built-in-admin-token).
+
+#### Troubleshooting
+
+**Last delivery** shows when Optimisarr last heard from the manager and what it
+did:
+
+| Result | Meaning |
+|---|---|
+| Test received | The manager's **Test** reached Optimisarr with the right password. |
+| Queued | The file was added to the queue. |
+| Not queued | The file is in the inventory but was not queued. The detail says why, for example the library does not optimise automatically, it is outside its schedule, or its rules skip the file. |
+| Waiting for the file to finish writing | The file was modified within the settling period. Optimisarr looks again once it settles. |
+| Not in any enabled library | The file's path, after any path mapping, is not inside an enabled library. Check the path mapping. |
+| Refused | The delivery named a path Optimisarr will not accept, or a file it cannot find. The detail says which. |
+| Ignored | The event was not an import or upgrade, or the connection is turned off. |
+
+A wrong password gets `401` and records nothing. The manager marks the
+connection as failing for that, for a malformed body, and when Optimisarr is
+busy for over a minute with earlier deliveries (`503`). Every other result is a
+successful delivery.
 
 ## Notifications
 

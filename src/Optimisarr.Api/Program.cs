@@ -119,6 +119,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
+builder.Services.AddSingleton<LibraryInventoryLocks>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>();
 builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
@@ -153,6 +154,9 @@ builder.Services.AddScoped<ArrTrackedFilesService>(services => new ArrTrackedFil
     services.GetRequiredService<IHttpClientFactory>(),
     services.GetRequiredService<ILogger<ArrTrackedFilesService>>()));
 builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddSingleton<ArrWebhookSettlingQueue>();
+builder.Services.AddSingleton<ArrWebhookGate>();
+builder.Services.AddScoped<ArrWebhookService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
 builder.Services.AddSingleton<BlindCalibrationService>();
@@ -197,6 +201,7 @@ builder.Services.AddHostedService<TimedCleanupWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
+builder.Services.AddHostedService<ArrWebhookSettlingWorker>();
 builder.Services.AddSingleton<MediaProbeBatches>();
 builder.Services.AddHostedService<MediaProbeBatchWorker>();
 
@@ -322,6 +327,8 @@ app.MapSystemEndpoints();
 app.MapDiagnosticCaptureEndpoints();
 
 app.MapLibraryEndpoints();
+
+app.MapArrWebhookEndpoints();
 
 app.MapCalibrationEndpoints();
 

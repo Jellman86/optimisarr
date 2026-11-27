@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -9,6 +10,32 @@ namespace Optimisarr.Api.Library;
 public sealed record ScanSummary(int Discovered, int Added, int Updated, int Removed, int SkippedUnsettled);
 
 /// <summary>
+/// One writer at a time per library's inventory. A scan reads the library's rows, then adds what is new;
+/// a webhook adding the same new file in between would make the scan's save fail on the unique path.
+/// </summary>
+public sealed class LibraryInventoryLocks
+{
+    private readonly ConcurrentDictionary<int, SemaphoreSlim> _locks = new();
+
+    public async Task<IDisposable> AcquireAsync(int libraryId, CancellationToken cancellationToken)
+    {
+        var gate = _locks.GetOrAdd(libraryId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        return new Release(gate);
+    }
+
+    private sealed class Release(SemaphoreSlim gate) : IDisposable
+    {
+        private int _released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0) gate.Release();
+        }
+    }
+}
+
+/// <summary>
 /// Orchestrates filesystem discovery and ffprobe inspection with the database.
 /// Scans are idempotent: re-running against an unchanged library produces no
 /// new rows and no changes, matching the repository's database standards.
@@ -18,8 +45,11 @@ public sealed class LibraryInventoryService(
     LibraryScanner scanner,
     IMediaProbeService probe,
     ImageMarkerService imageMarker,
-    MusicTagService? musicTags = null)
+    MusicTagService? musicTags = null,
+    LibraryInventoryLocks? locks = null)
 {
+    private readonly LibraryInventoryLocks _locks = locks ?? new LibraryInventoryLocks();
+
     /// <summary>Scans every enabled library and returns the combined summary.</summary>
     public async Task<ScanSummary> ScanEnabledAsync(CancellationToken cancellationToken)
     {
@@ -44,6 +74,7 @@ public sealed class LibraryInventoryService(
 
     public async Task<ScanSummary> ScanAsync(Data.Library library, CancellationToken cancellationToken)
     {
+        using var held = await _locks.AcquireAsync(library.Id, cancellationToken);
         // Discover the file types this library's media type actually holds (audio for Music,
         // images for Photo, video for Film/TV, all for Other), not just video.
         var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(library.MediaType) };
@@ -61,71 +92,11 @@ public sealed class LibraryInventoryService(
         {
             if (!existingByPath.TryGetValue(scanned.AbsolutePath, out var file))
             {
-                db.MediaFiles.Add(new MediaFile
-                {
-                    LibraryId = library.Id,
-                    Path = scanned.AbsolutePath,
-                    RelativePath = scanned.RelativePath,
-                    SizeBytes = scanned.SizeBytes,
-                    ModifiedAt = scanned.ModifiedAt,
-                    HardLinkCount = scanned.HardLinkCount,
-                    DiscoveredAt = now,
-                    UpdatedAt = now,
-                    Status = MediaFileStatus.Discovered
-                });
+                db.MediaFiles.Add(NewMediaFile(library, scanned, now));
                 added++;
-                continue;
             }
-
-            // A file whose size or modified time changed must be re-probed, so
-            // clear any stale probe results and reset it to Discovered.
-            var contentChanged = file.SizeBytes != scanned.SizeBytes || file.ModifiedAt != scanned.ModifiedAt;
-            if (contentChanged)
+            else if (ApplyScan(file, scanned, now))
             {
-                file.SizeBytes = scanned.SizeBytes;
-                file.ModifiedAt = scanned.ModifiedAt;
-                file.Status = MediaFileStatus.Discovered;
-                file.MediaKind = MediaKind.Unknown;
-                file.Container = null;
-                file.DurationSeconds = null;
-                file.VideoCodec = null;
-                file.VideoProfile = null;
-                file.FieldOrder = null;
-                file.IsVariableFrameRate = null;
-                file.AttachedPictureCount = 0;
-                file.TrimOnlyTagRefusal = null;
-                file.Width = null;
-                file.Height = null;
-                file.AudioCodecs = null;
-                file.AudioLanguages = null;
-                file.AudioTrackCount = null;
-                file.MaxAudioChannels = 0;
-                file.AudioBitrateKbps = null;
-                file.SubtitleTrackCount = null;
-                file.SubtitleLanguages = null;
-                file.AudioTrackBytes = null;
-                file.SubtitleTrackBytes = null;
-                file.IsHdr = false;
-                file.IsDolbyVision = false;
-                file.OptimisedMarker = null;
-                file.ProbedAt = null;
-                file.ProbeError = null;
-            }
-
-            // The link count moves independently of the content: a download client can add or drop
-            // a link without changing a byte or the modified time. Refresh it on every scan, but
-            // only count a row as updated when the value actually differs, so a repeat scan of an
-            // unchanged library still writes nothing.
-            var linkCountChanged = file.HardLinkCount != scanned.HardLinkCount;
-            if (linkCountChanged)
-            {
-                file.HardLinkCount = scanned.HardLinkCount;
-            }
-
-            if (contentChanged || linkCountChanged || file.RelativePath != scanned.RelativePath)
-            {
-                file.RelativePath = scanned.RelativePath;
-                file.UpdatedAt = now;
                 updated++;
             }
         }
@@ -135,6 +106,105 @@ public sealed class LibraryInventoryService(
         await db.SaveChangesAsync(cancellationToken);
 
         return new ScanSummary(result.Files.Count, added, updated, removed, result.SkippedUnsettled);
+    }
+
+    /// <summary>
+    /// Records one settled file exactly as a scan of <paramref name="library"/> would, so a file a manager
+    /// reported lands in the inventory in the same state the next scan would have left it. Unchanged
+    /// files write nothing. The caller has already chosen the library that holds the file's row, if any.
+    /// </summary>
+    public async Task<MediaFile> RecordScannedFileAsync(Data.Library library, ScannedFile scanned, CancellationToken cancellationToken)
+    {
+        using var held = await _locks.AcquireAsync(library.Id, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Path == scanned.AbsolutePath, cancellationToken);
+        if (file is null)
+        {
+            file = NewMediaFile(library, scanned, now);
+            db.MediaFiles.Add(file);
+        }
+        else if (file.LibraryId != library.Id)
+        {
+            throw new InvalidOperationException("The file's inventory row belongs to another library.");
+        }
+        else
+        {
+            ApplyScan(file, scanned, now);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return file;
+    }
+
+    private static MediaFile NewMediaFile(Data.Library library, ScannedFile scanned, DateTimeOffset now) => new()
+    {
+        LibraryId = library.Id,
+        Path = scanned.AbsolutePath,
+        RelativePath = scanned.RelativePath,
+        SizeBytes = scanned.SizeBytes,
+        ModifiedAt = scanned.ModifiedAt,
+        HardLinkCount = scanned.HardLinkCount,
+        DiscoveredAt = now,
+        UpdatedAt = now,
+        Status = MediaFileStatus.Discovered
+    };
+
+    /// <summary>Brings an existing row up to date with what a scan saw; true when anything changed.</summary>
+    private static bool ApplyScan(MediaFile file, ScannedFile scanned, DateTimeOffset now)
+    {
+        // A file whose size or modified time changed must be re-probed, so
+        // clear any stale probe results and reset it to Discovered.
+        var contentChanged = file.SizeBytes != scanned.SizeBytes || file.ModifiedAt != scanned.ModifiedAt;
+        if (contentChanged)
+        {
+            file.SizeBytes = scanned.SizeBytes;
+            file.ModifiedAt = scanned.ModifiedAt;
+            file.Status = MediaFileStatus.Discovered;
+            file.MediaKind = MediaKind.Unknown;
+            file.Container = null;
+            file.DurationSeconds = null;
+            file.VideoCodec = null;
+            file.VideoProfile = null;
+            file.FieldOrder = null;
+            file.IsVariableFrameRate = null;
+            file.AttachedPictureCount = 0;
+            file.TrimOnlyTagRefusal = null;
+            file.Width = null;
+            file.Height = null;
+            file.AudioCodecs = null;
+            file.AudioLanguages = null;
+            file.AudioTrackCount = null;
+            file.MaxAudioChannels = 0;
+            file.AudioBitrateKbps = null;
+            file.SubtitleTrackCount = null;
+            file.SubtitleLanguages = null;
+            file.AudioTrackBytes = null;
+            file.SubtitleTrackBytes = null;
+            file.IsHdr = false;
+            file.IsDolbyVision = false;
+            file.OptimisedMarker = null;
+            file.ProbedAt = null;
+            file.ProbeError = null;
+        }
+
+        // The link count moves independently of the content: a download client can add or drop
+        // a link without changing a byte or the modified time. Refresh it on every scan, but
+        // only count a row as updated when the value actually differs, so a repeat scan of an
+        // unchanged library still writes nothing.
+        var linkCountChanged = file.HardLinkCount != scanned.HardLinkCount;
+        if (linkCountChanged)
+        {
+            file.HardLinkCount = scanned.HardLinkCount;
+        }
+
+        if (contentChanged || linkCountChanged || file.RelativePath != scanned.RelativePath)
+        {
+            file.RelativePath = scanned.RelativePath;
+            file.UpdatedAt = now;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

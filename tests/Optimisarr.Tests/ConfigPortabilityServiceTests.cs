@@ -518,6 +518,60 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_backup_carries_the_path_mapping_but_never_the_webhook_password()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989",
+                RemotePathPrefix = "/tv", LocalPathPrefix = "/data/tv",
+                WebhookSecretFingerprint = new string('A', 64),
+            });
+            await db.SaveChangesAsync();
+        }
+        var exported = await ExportAsync();
+
+        var snapshot = Assert.Single(exported.ArrConnections);
+        Assert.Equal("/tv", snapshot.RemotePathPrefix);
+        Assert.Equal("/data/tv", snapshot.LocalPathPrefix);
+        Assert.DoesNotContain(new string('A', 64), System.Text.Json.JsonSerializer.Serialize(exported));
+
+        await ResetDatabaseAsync();
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.RemoveRange(db.ArrConnections);
+            await db.SaveChangesAsync();
+        }
+        await ImportAsync(exported);
+
+        await using var restored = CreateDb();
+        var connection = await restored.ArrConnections.SingleAsync();
+        Assert.Equal("/tv", connection.RemotePathPrefix);
+        Assert.Equal("/data/tv", connection.LocalPathPrefix);
+        Assert.Null(connection.WebhookSecretFingerprint);
+    }
+
+    [Fact]
+    public async Task Restoring_a_backup_keeps_a_webhook_password_already_set_on_this_server()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989",
+                WebhookSecretFingerprint = new string('B', 64),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await ImportAsync(await ExportAsync());
+
+        await using var restored = CreateDb();
+        Assert.Equal(new string('B', 64), (await restored.ArrConnections.SingleAsync()).WebhookSecretFingerprint);
+    }
+
+    [Fact]
     public async Task A_backup_from_before_the_rescan_setting_recreates_connections_with_it_off_and_keeps_existing_choices()
     {
         await using (var db = CreateDb())

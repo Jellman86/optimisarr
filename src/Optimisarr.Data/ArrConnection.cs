@@ -31,6 +31,26 @@ public sealed class ArrConnection
     /// </summary>
     public bool RescanAfterChanges { get; set; } = true;
 
+    /// <summary>
+    /// The SHA-256 fingerprint of the password the manager's webhook presents. Only the fingerprint is kept,
+    /// so the password is shown once when it is made. Null means the webhook is off.
+    /// </summary>
+    public string? WebhookSecretFingerprint { get; set; }
+
+    /// <summary>Where the library starts as the manager sees it, when it mounts the files differently.</summary>
+    public string? RemotePathPrefix { get; set; }
+
+    /// <summary>The same folder as Optimisarr sees it. Set together with <see cref="RemotePathPrefix"/>.</summary>
+    public string? LocalPathPrefix { get; set; }
+
+    /// <summary>When the webhook last received an authenticated delivery, for troubleshooting.</summary>
+    public DateTimeOffset? WebhookLastReceivedAt { get; set; }
+
+    public ArrWebhookOutcome? WebhookLastOutcome { get; set; }
+
+    /// <summary>The file or reason behind <see cref="WebhookLastOutcome"/>.</summary>
+    public string? WebhookLastDetail { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

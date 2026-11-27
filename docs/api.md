@@ -43,7 +43,9 @@ Common status codes:
 ## Authentication
 
 `GET /api/health`, `GET /api/ready`, and `GET /api/auth/status` are always open
-so health checks and clients can detect whether a token is required.
+so health checks and clients can detect whether a token is required. Worker routes
+and the Sonarr/Radarr import webhook carry their own credentials instead of the
+admin token.
 
 ```bash
 curl -fsS http://localhost:8787/api/auth/status
@@ -874,6 +876,9 @@ When updating, send an empty `apiToken` to keep the stored token.
 | `POST` | `/api/arr-connections` | Create connection. |
 | `PUT` | `/api/arr-connections/{id}` | Update connection. |
 | `DELETE` | `/api/arr-connections/{id}` | Delete connection. |
+| `POST` | `/api/arr-connections/{id}/webhook-password` | Create or replace the connection's import-webhook password. Returns `username`, `password` and `webhookPath` once; only a fingerprint is stored, and the previous password stops working. |
+| `DELETE` | `/api/arr-connections/{id}/webhook-password` | Turn the import webhook off by removing its password. |
+| `POST`, `PUT` | `/api/arr-webhooks/{id}` | Receives a Sonarr/Radarr webhook delivery. Open route; authenticated by the connection's webhook password as HTTP basic auth, not the admin token. `401` for a missing or wrong password, an unknown connection, or a connection without a password. `400` for a malformed body, `413` over 1 MiB, `503` when earlier deliveries keep it busy for over a minute. Anything else, including events it does not use, is `200` with the outcome. See [Import webhook](integrations/media-servers.md#import-webhook). |
 
 Body:
 
@@ -883,11 +888,17 @@ Body:
   "type": "Sonarr",
   "baseUrl": "http://sonarr:8989",
   "apiKey": "key",
-  "enabled": true
+  "enabled": true,
+  "remotePathPrefix": "/tv",
+  "localPathPrefix": "/data/tv"
 }
 ```
 
-When updating, send an empty `apiKey` to keep the stored key.
+When updating, send an empty `apiKey` to keep the stored key. Leave out both
+path prefixes to keep the saved mapping, or send both empty to remove it. The
+list reports `webhookEnabled`, `webhookPath` and the last delivery's
+`webhookLastReceivedAt`, `webhookLastOutcome` and `webhookLastDetail`; it never
+returns the API key or the webhook password.
 
 ### Notifications
 

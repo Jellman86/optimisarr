@@ -169,6 +169,75 @@ public sealed class LibraryScannerTests : IDisposable
         finally { Directory.Delete(alias); }
     }
 
+    [Fact]
+    public void ScanFile_returns_one_settled_file_exactly_as_a_library_scan_would()
+    {
+        var episode = WriteFile("Show/Season 01/S01E01.mkv", modifiedMinutesAgo: 30);
+
+        var scanned = Assert.IsType<SingleFileScan.Settled>(_scanner.ScanFile(_root, episode, new LibraryScanOptions(), _now));
+
+        Assert.Equal(Assert.Single(_scanner.Scan(_root, new LibraryScanOptions(), _now).Files), scanned.File);
+    }
+
+    [Fact]
+    public void ScanFile_says_when_a_file_still_being_written_will_have_settled()
+    {
+        var episode = WriteFile("Show/S01E01.mkv", modifiedMinutesAgo: 0);
+        var options = new LibraryScanOptions();
+
+        var settling = Assert.IsType<SingleFileScan.Settling>(_scanner.ScanFile(_root, episode, options, _now));
+
+        Assert.Equal(new DateTimeOffset(File.GetLastWriteTimeUtc(episode), TimeSpan.Zero) + options.SettlingPeriod, settling.SettlesAt);
+    }
+
+    [Fact]
+    public void ScanFile_reports_a_missing_file()
+    {
+        Assert.IsType<SingleFileScan.Missing>(
+            _scanner.ScanFile(_root, Path.Combine(_root, "Show", "gone.mkv"), new LibraryScanOptions(), _now));
+    }
+
+    [Fact]
+    public void ScanFile_skips_a_file_the_library_does_not_hold()
+    {
+        var subtitle = WriteFile("Show/S01E01.srt", modifiedMinutesAgo: 30);
+        var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(MediaType.Tv) };
+
+        Assert.IsType<SingleFileScan.NotMedia>(_scanner.ScanFile(_root, subtitle, options, _now));
+    }
+
+    [Fact]
+    public void ScanFile_refuses_a_file_outside_the_library()
+    {
+        using var outside = new TemporaryDirectory();
+        var stray = System.IO.Path.Combine(outside.Path, "stray.mkv");
+        File.WriteAllText(stray, "x");
+        File.SetLastWriteTimeUtc(stray, _now.UtcDateTime.AddDays(-1));
+
+        Assert.IsType<SingleFileScan.Refused>(_scanner.ScanFile(_root, stray, new LibraryScanOptions(), _now));
+    }
+
+    [Fact]
+    public void ScanFile_refuses_a_copy_waiting_in_duplicate_quarantine()
+    {
+        var quarantined = WriteFile(Optimisarr.Core.Deduplication.DedupeQuarantinePaths.FolderName + "/action/Copy.mkv", modifiedMinutesAgo: 60);
+
+        Assert.IsType<SingleFileScan.Refused>(_scanner.ScanFile(_root, quarantined, new LibraryScanOptions(), _now));
+    }
+
+    [PosixFact]
+    public void ScanFile_refuses_a_file_reached_through_a_link()
+    {
+        using var outside = new TemporaryDirectory();
+        var real = System.IO.Path.Combine(outside.Path, "real.mkv");
+        File.WriteAllText(real, "x");
+        File.SetLastWriteTimeUtc(real, _now.UtcDateTime.AddDays(-1));
+        var link = System.IO.Path.Combine(_root, "linked.mkv");
+        File.CreateSymbolicLink(link, real);
+
+        Assert.IsType<SingleFileScan.Refused>(_scanner.ScanFile(_root, link, new LibraryScanOptions(), _now));
+    }
+
     private string WriteFile(string relativePath, int modifiedMinutesAgo)
     {
         var fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));

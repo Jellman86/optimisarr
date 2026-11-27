@@ -259,6 +259,11 @@ internal static class IntegrationEndpoints
                 return ApiErrors.BadRequest("arr.validation", error!);
             }
 
+            if (!ArrConnectionRequestParser.TryParsePathMapping(request, out var mapping, out var mappingError))
+            {
+                return ApiErrors.BadRequest("arr.pathMapping.invalid", mappingError!);
+            }
+
             var connection = new ArrConnection
             {
                 Name = parsed.Name,
@@ -266,7 +271,9 @@ internal static class IntegrationEndpoints
                 BaseUrl = parsed.BaseUrl,
                 ApiKey = parsed.ApiKey,
                 Enabled = parsed.Enabled,
-                RescanAfterChanges = parsed.RescanAfterChanges ?? true
+                RescanAfterChanges = parsed.RescanAfterChanges ?? true,
+                RemotePathPrefix = mapping?.RemotePrefix,
+                LocalPathPrefix = mapping?.LocalPrefix
             };
             db.ArrConnections.Add(connection);
             await db.SaveChangesAsync(cancellationToken);
@@ -292,6 +299,11 @@ internal static class IntegrationEndpoints
                 return ApiErrors.BadRequest("arr.validation", error!);
             }
 
+            if (!ArrConnectionRequestParser.TryParsePathMapping(request, out var mapping, out var mappingError))
+            {
+                return ApiErrors.BadRequest("arr.pathMapping.invalid", mappingError!);
+            }
+
             connection.Name = parsed.Name;
             connection.Type = parsed.Type;
             connection.BaseUrl = parsed.BaseUrl;
@@ -302,6 +314,12 @@ internal static class IntegrationEndpoints
             }
             connection.Enabled = parsed.Enabled;
             connection.RescanAfterChanges = parsed.RescanAfterChanges ?? connection.RescanAfterChanges;
+            // Left out by an older client: keep the saved mapping.
+            if (mapping is not null)
+            {
+                connection.RemotePathPrefix = mapping.RemotePrefix;
+                connection.LocalPathPrefix = mapping.LocalPrefix;
+            }
             connection.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 

@@ -142,7 +142,7 @@ the former global policy into each existing library so behaviour does not change
 
 | Control | Behaviour |
 |---|---|
-| Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. |
+| Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. A Sonarr or Radarr [import webhook](../integrations/media-servers.md#import-webhook) picks up an imported file straight away instead. |
 | Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |

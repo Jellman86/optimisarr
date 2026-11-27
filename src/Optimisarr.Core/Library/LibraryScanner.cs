@@ -21,6 +21,24 @@ public sealed record LibraryScanOptions
     public IReadOnlySet<string> Extensions { get; init; } = LibraryScanner.DefaultMediaExtensions;
 }
 
+/// <summary>What a scan found at one path.</summary>
+public abstract record SingleFileScan
+{
+    private SingleFileScan() { }
+
+    public sealed record Settled(ScannedFile File) : SingleFileScan;
+
+    /// <summary>Modified too recently to be finished; a scan from <paramref name="SettlesAt"/> on would take it.</summary>
+    public sealed record Settling(DateTimeOffset SettlesAt) : SingleFileScan;
+
+    public sealed record Missing : SingleFileScan;
+
+    /// <summary>Not a file type this library holds.</summary>
+    public sealed record NotMedia : SingleFileScan;
+
+    public sealed record Refused(string Reason) : SingleFileScan;
+}
+
 public sealed record LibraryScanResult(
     IReadOnlyList<ScannedFile> Files,
     int SkippedUnsettled,
@@ -97,43 +115,79 @@ public sealed class LibraryScanner
 
         foreach (var path in Directory.EnumerateFiles(root, "*", enumerationOptions))
         {
-            if (!LibraryPathSafety.IsSafeFile(path, root)) continue;
-            if (Deduplication.DedupeQuarantinePaths.IsInside(root, path)) continue;
-            var extension = System.IO.Path.GetExtension(path);
-            if (!options.Extensions.Contains(extension))
+            switch (Inspect(root, path, options, nowUtc))
             {
-                skippedNonMedia++;
-                continue;
+                case SingleFileScan.Settled settled:
+                    files.Add(settled.File);
+                    break;
+                case SingleFileScan.Settling:
+                    skippedUnsettled++;
+                    break;
+                case SingleFileScan.NotMedia:
+                    skippedNonMedia++;
+                    break;
             }
-
-            FileInfo info;
-            try
-            {
-                info = new FileInfo(path);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-
-            var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
-            if (nowUtc - modifiedAt < options.SettlingPeriod)
-            {
-                skippedUnsettled++;
-                continue;
-            }
-
-            files.Add(new ScannedFile(
-                path,
-                System.IO.Path.GetRelativePath(root, path),
-                info.Length,
-                modifiedAt,
-                // One extra stat on a file this walk has already stat'ed. Captured for every scan
-                // rather than only when some library wants it, so turning the exclusion on takes
-                // effect immediately instead of waiting for the next rescan.
-                IO.HardLinkProbe.CountLinks(path)));
         }
 
         return new LibraryScanResult(files, skippedUnsettled, skippedNonMedia);
+    }
+
+    /// <summary>
+    /// Looks at one file a manager reported, applying exactly the checks a full scan of
+    /// <paramref name="root"/> applies to it, so a file is never taken in by this route that a scan
+    /// would have passed over.
+    /// </summary>
+    public SingleFileScan ScanFile(string root, string path, LibraryScanOptions options, DateTimeOffset nowUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        if (!Directory.Exists(root) || !LibraryPathSafety.IsSafeDirectory(root))
+        {
+            return new SingleFileScan.Refused("The library folder is missing or is not a plain folder.");
+        }
+
+        root = Path.GetFullPath(root);
+        if (!File.Exists(path))
+        {
+            return Directory.Exists(path)
+                ? new SingleFileScan.Refused("The path is a folder, not a file.")
+                : new SingleFileScan.Missing();
+        }
+
+        return Inspect(root, path, options, nowUtc);
+    }
+
+    private static SingleFileScan Inspect(string root, string path, LibraryScanOptions options, DateTimeOffset nowUtc)
+    {
+        if (!LibraryPathSafety.IsSafeFile(path, root)) return new SingleFileScan.Refused(LibraryPathSafety.Refusal);
+        if (Deduplication.DedupeQuarantinePaths.IsInside(root, path))
+            return new SingleFileScan.Refused("The file is waiting in duplicate quarantine.");
+        if (!options.Extensions.Contains(System.IO.Path.GetExtension(path))) return new SingleFileScan.NotMedia();
+
+        FileInfo info;
+        try
+        {
+            info = new FileInfo(path);
+            _ = info.Length;
+        }
+        catch (IOException)
+        {
+            return new SingleFileScan.Missing();
+        }
+
+        var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+        if (nowUtc - modifiedAt < options.SettlingPeriod)
+        {
+            return new SingleFileScan.Settling(modifiedAt + options.SettlingPeriod);
+        }
+
+        return new SingleFileScan.Settled(new ScannedFile(
+            path,
+            System.IO.Path.GetRelativePath(root, path),
+            info.Length,
+            modifiedAt,
+            // One extra stat on a file this walk has already stat'ed. Captured for every scan
+            // rather than only when some library wants it, so turning the exclusion on takes
+            // effect immediately instead of waiting for the next rescan.
+            IO.HardLinkProbe.CountLinks(path)));
     }
 }

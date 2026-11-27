@@ -582,6 +582,12 @@ public sealed class ConfigPortabilityService(
             }
             connection.Enabled = snapshot.Enabled;
             connection.RescanAfterChanges = snapshot.RescanAfterChanges ?? connection.RescanAfterChanges;
+            // A backup from before path mappings existed leaves any mapping saved here alone.
+            if (snapshot.RemotePathPrefix is not null || snapshot.LocalPathPrefix is not null)
+            {
+                connection.RemotePathPrefix = snapshot.RemotePathPrefix;
+                connection.LocalPathPrefix = snapshot.LocalPathPrefix;
+            }
         }
 
         return (created, updated);
@@ -711,7 +717,9 @@ public sealed class ConfigPortabilityService(
         connection.BaseUrl,
         connection.Enabled,
         connection.ApiKey,
-        connection.RescanAfterChanges);
+        connection.RescanAfterChanges,
+        connection.RemotePathPrefix,
+        connection.LocalPathPrefix);
 
     // Snapshots are validated before import, so these parses cannot fail here.
     private static T ParseEnum<T>(string value) where T : struct, Enum =>
