@@ -1,9 +1,14 @@
+using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
+using Optimisarr.Api.Security;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
-/// <summary>An arr connection shaped for the client. The API key is never returned — only whether one is set.</summary>
+/// <summary>
+/// An arr connection shaped for the client. Neither the API key nor the webhook password is returned,
+/// only whether each is set.
+/// </summary>
 public sealed record ArrConnectionDto(
     int Id,
     string Name,
@@ -13,7 +18,14 @@ public sealed record ArrConnectionDto(
     bool Enabled,
     bool RescanAfterChanges,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    bool WebhookEnabled,
+    string WebhookPath,
+    string? RemotePathPrefix,
+    string? LocalPathPrefix,
+    DateTimeOffset? WebhookLastReceivedAt,
+    string? WebhookLastOutcome,
+    string? WebhookLastDetail)
 {
     public static ArrConnectionDto From(ArrConnection connection) => new(
         connection.Id,
@@ -24,8 +36,18 @@ public sealed record ArrConnectionDto(
         connection.Enabled,
         connection.RescanAfterChanges,
         connection.CreatedAt,
-        connection.UpdatedAt);
+        connection.UpdatedAt,
+        connection.WebhookSecretFingerprint is not null,
+        ArrWebhookAuth.PathFor(connection.Id),
+        connection.RemotePathPrefix,
+        connection.LocalPathPrefix,
+        connection.WebhookLastReceivedAt,
+        connection.WebhookLastOutcome?.ToString(),
+        connection.WebhookLastDetail);
 }
+
+/// <summary>A new webhook password, returned once. Only its fingerprint is stored.</summary>
+public sealed record ArrWebhookPasswordDto(string Username, string Password, string WebhookPath);
 
 public sealed record SaveArrConnectionRequest(
     string? Name,
@@ -33,7 +55,12 @@ public sealed record SaveArrConnectionRequest(
     string? BaseUrl,
     string? ApiKey,
     bool? Enabled,
-    bool? RescanAfterChanges = null);
+    bool? RescanAfterChanges = null,
+    string? RemotePathPrefix = null,
+    string? LocalPathPrefix = null);
+
+/// <summary>A path mapping to save: both prefixes, or neither to remove it.</summary>
+public sealed record ArrPathMappingUpdate(string? RemotePrefix, string? LocalPrefix);
 
 public sealed record ParsedArrConnection(
     string Name,
@@ -45,6 +72,31 @@ public sealed record ParsedArrConnection(
 
 public static class ArrConnectionRequestParser
 {
+    public const string PathMappingError = ArrPathMappingRules.Error;
+
+    /// <summary>
+    /// Reads the optional path mapping by <see cref="ArrPathMappingRules"/>. Null <paramref name="update"/>
+    /// means the request left it out, so the saved one stays; two blank prefixes remove it.
+    /// </summary>
+    public static bool TryParsePathMapping(SaveArrConnectionRequest request, out ArrPathMappingUpdate? update, out string? error)
+    {
+        update = null;
+        error = null;
+        if (request.RemotePathPrefix is null && request.LocalPathPrefix is null)
+        {
+            return true;
+        }
+
+        if (!ArrPathMappingRules.TryParse(request.RemotePathPrefix, request.LocalPathPrefix, out var mapping))
+        {
+            error = PathMappingError;
+            return false;
+        }
+
+        update = new ArrPathMappingUpdate(mapping?.RemotePrefix, mapping?.LocalPrefix);
+        return true;
+    }
+
     /// <summary>
     /// Validates a save request. A blank <c>ApiKey</c> is returned as null so the caller
     /// can keep an existing secret on update rather than wiping it. An omitted <c>RescanAfterChanges</c>

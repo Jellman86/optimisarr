@@ -831,4 +831,30 @@ public sealed class MigrationTests : IDisposable
             File.Delete(_dbPath);
         }
     }
+
+    [Fact]
+    public async Task Import_webhook_migration_leaves_existing_connections_working_with_the_webhook_off()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261126231643_RecordTrackSizesForTrackCleanupMinimum");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO ArrConnections (Name, Type, BaseUrl, ApiKey, Enabled, RescanAfterChanges, CreatedAt, UpdatedAt)
+            VALUES ('Sonarr', 'Sonarr', 'http://sonarr:8989', 'key', 1, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        var connection = await db.ArrConnections.SingleAsync();
+        Assert.Equal("key", connection.ApiKey);
+        Assert.True(connection.Enabled);
+        Assert.Null(connection.WebhookSecretFingerprint);
+        Assert.Null(connection.RemotePathPrefix);
+        Assert.Null(connection.LocalPathPrefix);
+        Assert.Null(connection.WebhookLastReceivedAt);
+        Assert.Null(connection.WebhookLastOutcome);
+    }
 }

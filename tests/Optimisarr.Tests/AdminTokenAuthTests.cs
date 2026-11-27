@@ -22,6 +22,8 @@ public sealed class AdminTokenAuthTests
     [InlineData("/api/workers/pair")]
     // A paired sidecar likewise checks in with its own credential, not the admin token.
     [InlineData("/api/workers/heartbeat")]
+    // A Sonarr/Radarr webhook presents its connection's own password instead.
+    [InlineData("/api/arr-webhooks/1")]
     public void Health_readiness_auth_status_and_worker_pairing_are_open_paths(string path)
     {
         Assert.True(AdminTokenAuth.IsOpenPath(path));
@@ -33,6 +35,14 @@ public sealed class AdminTokenAuthTests
     [InlineData("/api/workers")]
     [InlineData("/api/workers/1")]
     [InlineData("/api/workers/pairing-code")]
+    [InlineData("/api/arr-connections/1/webhook-password")]
+    [InlineData("/api/arr-webhooksx/1")]
+    // Only the delivery route itself is open, never the bare prefix or anything beneath an id.
+    [InlineData("/api/arr-webhooks")]
+    [InlineData("/api/arr-webhooks/")]
+    [InlineData("/api/arr-webhooks/1/extra")]
+    [InlineData("/api/arr-webhooks/1/")]
+    [InlineData("/api/arr-webhooks/abc")]
     public void Other_worker_routes_are_not_open(string path)
     {
         Assert.False(AdminTokenAuth.IsOpenPath(path));

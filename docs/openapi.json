@@ -215,8 +215,20 @@
           "enabled": {
             "type": "boolean"
           },
+          "localPathPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "name": {
             "type": "string"
+          },
+          "remotePathPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "rescanAfterChanges": {
             "type": [
@@ -233,6 +245,47 @@
           "type",
           "baseUrl",
           "enabled"
+        ],
+        "type": "object"
+      },
+      "ArrWebhookFileReceipt": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "outcome",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ArrWebhookReceipt": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ArrWebhookFileReceipt"
+            },
+            "type": "array"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "detail",
+          "files"
         ],
         "type": "object"
       },
@@ -5565,7 +5618,19 @@
               "boolean"
             ]
           },
+          "localPathPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "remotePathPrefix": {
             "type": [
               "null",
               "string"
@@ -8071,6 +8136,162 @@
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/arr-connections/{id}/webhook-password": {
+      "delete": {
+        "operationId": "DeleteArrWebhookPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Integrations"
+        ]
+      },
+      "post": {
+        "operationId": "CreateArrWebhookPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/arr-webhooks/{id}": {
+      "post": {
+        "operationId": "ReceiveArrWebhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArrWebhookReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArrWebhookReceipt"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "413": {
+            "description": "Payload Too Large"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Receives a Sonarr/Radarr webhook delivery, authenticated by the connection's webhook password (HTTP basic).",
+        "tags": [
+          "Integrations"
+        ]
+      },
+      "put": {
+        "operationId": "ReceiveArrWebhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArrWebhookReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArrWebhookReceipt"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "413": {
+            "description": "Payload Too Large"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Receives a Sonarr/Radarr webhook delivery, authenticated by the connection's webhook password (HTTP basic).",
         "tags": [
           "Integrations"
         ]

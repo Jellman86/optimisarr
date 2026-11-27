@@ -1058,6 +1058,84 @@ test('a manager asked to rescan after changes says so, and the choice can be tur
   await expect.poll(() => saved?.rescanAfterChanges).toBe(false)
 })
 
+test('a connection\'s import webhook shows its URL and a password once, and the last delivery', async ({ page }) => {
+  await mockSettings(page)
+  const sonarr = {
+    id: 4, name: 'Sonarr', type: 'Sonarr', baseUrl: 'http://sonarr:8989', hasApiKey: true, enabled: true, rescanAfterChanges: true,
+    createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z',
+    webhookEnabled: false, webhookPath: '/api/arr-webhooks/4', remotePathPrefix: null, localPathPrefix: null,
+    webhookLastReceivedAt: null, webhookLastOutcome: null, webhookLastDetail: null,
+  }
+  let current = sonarr
+  await page.route('**/api/arr-connections', route => json(route, [current]))
+  let issued = 0
+  await page.route('**/api/arr-connections/4/webhook-password', route => {
+    issued++
+    current = {
+      ...sonarr, webhookEnabled: true, webhookLastReceivedAt: new Date().toISOString(), webhookLastOutcome: 'Queued',
+      webhookLastDetail: 'Queued Show/Season 01/S01E01.mkv.',
+    }
+    return json(route, { username: 'optimisarr', password: 'fabricated-password-0123456789', webhookPath: '/api/arr-webhooks/4' })
+  })
+  await page.goto('/#/settings/download-managers')
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const webhook = page.getByTestId('arr-webhook')
+  await expect(webhook).toContainText('The webhook is off.')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Nothing received yet.')
+
+  await webhook.getByRole('button', { name: 'Create webhook password' }).click()
+
+  await expect.poll(() => issued).toBe(1)
+  const origin = new URL(page.url()).origin
+  await expect(webhook.getByLabel('Webhook URL')).toHaveValue(`${origin}/api/arr-webhooks/4`)
+  await expect(webhook.getByLabel('Username')).toHaveValue('optimisarr')
+  await expect(webhook.getByLabel('Password')).toHaveValue('fabricated-password-0123456789')
+  await expect(webhook).toContainText('it cannot be shown again')
+  await expect(webhook).toContainText('Turn on On File Import and On File Upgrade')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Queued')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Queued Show/Season 01/S01E01.mkv.')
+  await expect(page.locator('li').filter({ hasText: 'http://sonarr:8989' }).getByText('webhook', { exact: true })).toBeVisible()
+})
+
+test('a saved webhook password is never shown again, and a path mapping is saved with the connection', async ({ page }) => {
+  await mockSettings(page)
+  const radarr = {
+    id: 5, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, rescanAfterChanges: true,
+    createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z',
+    webhookEnabled: true, webhookPath: '/api/arr-webhooks/5', remotePathPrefix: '/movies', localPathPrefix: '/data/movies',
+    webhookLastReceivedAt: '2026-11-07T00:00:00Z', webhookLastOutcome: 'NotInLibrary', webhookLastDetail: '/elsewhere/Film.mkv is not inside any enabled library.',
+  }
+  await page.route('**/api/arr-connections', route => json(route, [radarr]))
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/arr-connections/5', route => {
+    saved = route.request().postDataJSON()
+    return json(route, radarr)
+  })
+  await page.goto('/#/settings/download-managers')
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const webhook = page.getByTestId('arr-webhook')
+  await expect(webhook).toContainText('Set. It cannot be shown again.')
+  await expect(webhook.getByLabel('Password')).toHaveCount(0)
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Not in any enabled library')
+
+  await expect(page.getByLabel('Folder in Radarr')).toHaveValue('/movies')
+  await page.getByLabel('Same folder in Optimisarr').fill('/media/movies')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+
+  await expect.poll(() => saved?.localPathPrefix).toBe('/media/movies')
+  expect(saved?.remotePathPrefix).toBe('/movies')
+})
+
+test('a new connection says to save it before setting up its webhook', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/download-managers')
+
+  await expect(page.getByText('Save this connection first, then edit it to set up its webhook.')).toBeVisible()
+  await expect(page.getByTestId('arr-webhook')).toHaveCount(0)
+})
+
 test('each super-resolution engine can be checked and tested on its own', async ({ page }) => {
   await mockSettings(page)
   const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }

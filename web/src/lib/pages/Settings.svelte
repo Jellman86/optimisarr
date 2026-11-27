@@ -42,6 +42,7 @@
   import ToolsPanel from '../components/ToolsPanel.svelte'
   import WorkersPanel from '../components/WorkersPanel.svelte'
   import DiagnosticCapturePanel from '../components/DiagnosticCapturePanel.svelte'
+  import ArrWebhookPanel from '../components/ArrWebhookPanel.svelte'
 
   // Settings is a set of rooms rather than a strip of tabs. The landing page is a grouped list,
   // one row per room, and each row reports what that room is currently set to — so
@@ -204,13 +205,14 @@
   }
 
   const arrTypes: ArrConnectionType[] = ['Sonarr', 'Radarr']
-  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true, rescanAfterChanges: true })
+  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true, rescanAfterChanges: true, remotePathPrefix: '', localPathPrefix: '' })
 
   let arrs = $state<ArrConnection[]>([])
   let arrError = $state<string | null>(null)
   let editingArrId = $state<number | null>(null)
   let arrDraft = $state<SaveArrConnection>(emptyArr())
   let savingArr = $state(false)
+  let editingArr = $derived(editingArrId === null ? null : arrs.find(c => c.id === editingArrId) ?? null)
   let arrTracking = $state<ArrTracking[] | null>(null)
   let checkingArrTracking = $state(false)
 
@@ -244,7 +246,10 @@
 
   function startEditArr(c: ArrConnection) {
     editingArrId = c.id
-    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled, rescanAfterChanges: c.rescanAfterChanges }
+    arrDraft = {
+      name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled, rescanAfterChanges: c.rescanAfterChanges,
+      remotePathPrefix: c.remotePathPrefix ?? '', localPathPrefix: c.localPathPrefix ?? '',
+    }
   }
 
   async function saveArr() {
@@ -1599,6 +1604,7 @@ let settings = $state<Settings>({
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
                 {#if c.enabled && c.rescanAfterChanges}{@render explainedBadge('tone-neutral', i18n.m.settings.badge_rescans, i18n.m.settings.arr_rescan_hint)}{/if}
+                {#if c.enabled && c.webhookEnabled}{@render explainedBadge('tone-neutral', i18n.m.settings.badge_webhook, i18n.m.settings.badge_webhook_title)}{/if}
                 {#if !c.hasApiKey}{@render explainedBadge('tone-warn', i18n.m.settings.badge_no_key, i18n.m.settings.badge_no_key_title)}{/if}
                 <button class="btn btn-sm btn-ghost" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-sm btn-ghost text-bad" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
@@ -1661,6 +1667,20 @@ let settings = $state<Settings>({
         <div class="mt-3">
           <Toggle bind:checked={arrDraft.rescanAfterChanges} label={i18n.m.settings.arr_rescan} hint={i18n.m.settings.arr_rescan_hint} />
         </div>
+        <fieldset class="mt-4">
+          <legend class="text-sm font-semibold text-ink-2">{i18n.m.settings.arr_webhook_mapping_title}</legend>
+          <p class="mt-1 max-w-3xl text-xs text-ink-4">{tr(i18n.m.settings.arr_webhook_mapping_hint, { type: arrDraft.type })}</p>
+          <div class="mt-2 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="label" for="arr-remote-path">{tr(i18n.m.settings.arr_webhook_mapping_remote, { type: arrDraft.type })}</label>
+              <input id="arr-remote-path" class="input font-mono" placeholder="/tv" bind:value={arrDraft.remotePathPrefix} />
+            </div>
+            <div>
+              <label class="label" for="arr-local-path">{i18n.m.settings.arr_webhook_mapping_local}</label>
+              <input id="arr-local-path" class="input font-mono" placeholder="/data/tv" bind:value={arrDraft.localPathPrefix} />
+            </div>
+          </div>
+        </fieldset>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <button class="btn btn-primary" onclick={saveArr} disabled={savingArr}>
             {savingArr ? i18n.m.settings.saving : editingArrId === null ? i18n.m.settings.add_download_manager_btn : i18n.m.settings.save_changes}
@@ -1669,6 +1689,13 @@ let settings = $state<Settings>({
             <button class="btn btn-ghost" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
+        {#if editingArr}
+          {#key editingArr.id}
+            <ArrWebhookPanel connection={editingArr} onChange={loadArrs} />
+          {/key}
+        {:else}
+          <p class="mt-4 border-t border-line-soft pt-4 text-xs text-ink-4">{i18n.m.settings.arr_webhook_save_first}</p>
+        {/if}
       </div>
     </ConfigSection>
   </div>

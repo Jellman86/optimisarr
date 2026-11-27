@@ -33,6 +33,7 @@ internal static class OptimisarrApiTags
         if (p.StartsWith("/api/activity-watchers", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/notification-targets", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/arr-connections", StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith("/api/arr-webhooks", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/connect", StringComparison.OrdinalIgnoreCase)) return "Integrations";
 
         // Health, readiness, auth status, system tools/hardware, fs browse, library-options, stats,

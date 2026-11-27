@@ -1111,7 +1111,29 @@ export type ArrConnection = {
   rescanAfterChanges: boolean
   createdAt: string
   updatedAt: string
+  webhookEnabled: boolean
+  // Server-relative; the page joins it to the address the browser reached Optimisarr at.
+  webhookPath: string
+  remotePathPrefix: string | null
+  localPathPrefix: string | null
+  webhookLastReceivedAt: string | null
+  webhookLastOutcome: ArrWebhookOutcome | null
+  webhookLastDetail: string | null
 }
+
+export type ArrWebhookOutcome =
+  | 'Test'
+  | 'Queued'
+  | 'NotQueued'
+  | 'Settling'
+  | 'WaitingForScan'
+  | 'NotInLibrary'
+  | 'Ignored'
+  | 'Refused'
+  | 'ConnectionOff'
+
+// Returned once, when the password is made. The server keeps only its fingerprint.
+export type ArrWebhookPassword = { username: string; password: string; webhookPath: string }
 
 export type ArrTracking = {
   id: number
@@ -1130,6 +1152,9 @@ export type SaveArrConnection = {
   apiKey: string
   enabled: boolean
   rescanAfterChanges: boolean
+  // Both blank removes the mapping.
+  remotePathPrefix: string
+  localPathPrefix: string
 }
 
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
@@ -1453,6 +1478,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'notification.validation': return error
     case 'arr.notFound': return t(i18n.m.common.api_arr_not_found, args)
     case 'arr.validation': return i18n.m.common.api_arr_invalid
+    case 'arr.pathMapping.invalid': return i18n.m.common.api_arr_path_mapping_invalid
     case 'plex.signIn.start': return i18n.m.common.api_plex_start_failed
     case 'plex.signIn.check': return i18n.m.common.api_plex_check_failed
     case 'plex.signIn.required': return i18n.m.common.api_plex_required
@@ -1702,6 +1728,10 @@ export const api = {
     request<ArrConnection>(`/api/arr-connections/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteArrConnection: (id: number) =>
     request<void>(`/api/arr-connections/${id}`, { method: 'DELETE' }),
+  createArrWebhookPassword: (id: number) =>
+    request<ArrWebhookPassword>(`/api/arr-connections/${id}/webhook-password`, { method: 'POST' }),
+  deleteArrWebhookPassword: (id: number) =>
+    request<ArrConnection>(`/api/arr-connections/${id}/webhook-password`, { method: 'DELETE' }),
 
   plexConnectStart: () => request<PlexConnectStart>('/api/connect/plex/start', { method: 'POST' }),
   plexConnectPoll: (id: number) => request<ConnectResult>(`/api/connect/plex/poll?id=${id}`),

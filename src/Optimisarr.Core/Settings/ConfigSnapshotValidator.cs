@@ -241,6 +241,10 @@ public static class ConfigSnapshotValidator
             RequireText(connection.Name, $"{where} name", errors);
             RequireText(connection.BaseUrl, $"{where} base URL", errors);
             RequireEnum<ArrConnectionType>(connection.Type, $"{where} type", errors);
+            if (!Activity.ArrPathMappingRules.TryParse(connection.RemotePathPrefix, connection.LocalPathPrefix, out _))
+            {
+                errors.Add($"{where} path mapping: {Activity.ArrPathMappingRules.Error}");
+            }
         }
 
         return errors.Count == 0 ? ConfigValidationResult.Valid : new ConfigValidationResult(false, errors);
