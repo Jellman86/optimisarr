@@ -25,11 +25,11 @@ the selected encoder on each job.
 The per-library **Encoder effort** setting describes intent rather than storing a raw FFmpeg
 preset. Optimisarr resolves it after the exact encoder has been selected:
 
-| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | VAAPI |
-|---|---|---:|---|---|---|
-| Fast | `fast` | `10` | `p2` | `fast` | Driver default |
-| Balanced | `medium` | `8` | `p4` | `medium` | Driver default |
-| Efficient | `slow` | `6` | `p7` | `slow` | Driver default |
+| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | AMD AMF | VAAPI |
+|---|---|---:|---|---|---|---|
+| Fast | `fast` | `10` | `p2` | `fast` | `speed` | Driver default |
+| Balanced | `medium` | `8` | `p4` | `medium` | Driver default | Driver default |
+| Efficient | `slow` | `6` | `p7` | `slow` | `quality` | Driver default |
 
 This is particularly important in **Auto** mode, where the encoder depends on the target codec,
 proved host capabilities, and source bit depth. Existing libraries, API requests, and imported
@@ -71,12 +71,129 @@ and retries once with software decode and tone mapping. The normal decode, HDR-s
 metadata, timing, stream, size, and optional VMAF verification gates still decide whether the
 completed output may replace its original.
 
+## AMD AMF
+
+AMD's own encoder, AMF (`h264_amf` and `hevc_amf`), is a separate encoder family from VA-API.
+**Auto** prefers it after NVIDIA NVENC and before Intel QSV and VA-API, and **Settings → Encoding**
+offers it as **AMD AMF**. It is used only where a real test encode proved it: on this server under
+**Settings → System → Tools**, or on a [remote worker](remote-workers.md) by the worker's own test.
+
+Optimisarr asks AMF for constant quantisation (`-rc cqp` with the same `-qp_i` and `-qp_p`),
+with the same headroom as the other hardware encoders, and passes a library's
+[keyframe interval](configuration.md#keyframe-interval) as `-g`. AMF encodes frames decoded in
+software, so **Hardware decoding** does not apply to it. Content tuning, bitrate limits and
+adaptive quantisation are not passed to AMF. AV1 AMF (`av1_amf`) is not used, because it reads
+its quantiser on a 0–255 scale rather than the scale Optimisarr's quality number is on.
+
+AMD AMF support was contributed by [gnolnos](https://github.com/gnolnos) and validated by them on
+an AMD Radeon RX 6600 through the Windows sidecar. The project has no AMD hardware and has not
+tested it. Every AMF output goes through the same verification checks before an original is
+replaced.
+
+On Linux, the bundled Jellyfin FFmpeg lists the AMF encoders, but they also need AMD's
+proprietary AMF runtime, which the Optimisarr image and the Linux sidecar image do not include.
+Without it the test encode fails, AMF is shown as unavailable, and Auto keeps choosing VA-API or
+the CPU. For an AMD GPU on Linux, use [VA-API](#intel-and-amd). A Windows sidecar needs
+nothing extra: its bundled FFmpeg includes AMF and uses the AMD driver's runtime. Workers need
+sidecar protocol 16 for AMF jobs; an older AMD worker keeps encoding with its other encoders.
+
+Once an AMD worker updates, Auto moves its video jobs from the CPU to AMF by itself. To keep a
+worker on the CPU, choose **CPU only** in the queue's encoder settings. The test encode proves
+8-bit encoding only, so on an older card that encodes HEVC in 8-bit alone, a 10-bit source can
+fail when the encoder opens and is then retried or left as it is; the original is not touched. With
+**AMD AMF** chosen as the encoder, a library that targets AV1 cannot run, because AV1 AMF is not
+used.
+
 ## NVIDIA
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and
 `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. The `video` capability is
-required for NVENC and NVDEC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
+required for NVENC and NVDEC. If you also enable experimental AI super-resolution,
+add `graphics` (`compute,video,utility,graphics`) so Vulkan sees the NVIDIA GPU
+instead of falling back to CPU rendering (`llvmpipe`). Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
 and select a hardware mode only after Tools reports success.
+
+### Install the driver on a Debian or Ubuntu host
+
+The container uses the host's NVIDIA driver, so the driver and the NVIDIA Container Toolkit are
+installed on the host, not in Optimisarr. Optimisarr never changes host drivers. These steps keep
+**Secure Boot on**, which matters if the machine also boots Windows.
+
+**Check your card is supported.** GeForce 10-series (Pascal) and older cards are dropped by the newest
+NVIDIA driver branches. Debian's packaged drivers (535 on Debian 12, 550 on Debian 13) still support
+Pascal; Debian's wiki marks the Debian 12 driver as no longer maintained, so prefer Debian 13. If you
+install a driver from NVIDIA, or on Ubuntu from a PPA, use branch 580 or older for a 10-series card.
+
+**Debian 12 or 13**
+
+1. Enable the `contrib`, `non-free` and `non-free-firmware` components for the release and security
+   suites in your APT sources. Then bring the system up to date with `sudo apt update` and
+   `sudo apt full-upgrade`, and reboot if that installed a new kernel, so the driver is built for the
+   kernel you will boot.
+2. Install the headers and driver for the standard 64-bit PC kernel:
+   - Debian 12: `sudo apt install linux-headers-amd64 nvidia-driver firmware-misc-nonfree`
+   - Debian 13: `sudo apt install linux-headers-amd64 nvidia-kernel-dkms nvidia-driver firmware-misc-nonfree`
+
+   DKMS builds the `nvidia` module for your kernel. With Secure Boot on, it signs the module with a
+   machine owner key (MOK) that it creates on first use, at `/var/lib/dkms/mok.key` and
+   `/var/lib/dkms/mok.pub`. Before rebooting, check that `dkms status 'nvidia*'` shows it installed for
+   the kernel that `uname -r` prints.
+
+   If you run a backports kernel, the stable driver will not build for it; install the driver from
+   `trixie-backports` instead, as Debian's wiki describes.
+3. Enrol that key so the firmware trusts the module:
+
+   ```bash
+   sudo mokutil --import /var/lib/dkms/mok.pub   # asks you to choose a one-time password
+   sudo mokutil --list-new                       # confirms it is queued for the next boot
+   ```
+
+4. Reboot. Before the system starts, a blue screen says to press a key for MOK management. Press a
+   key within about ten seconds, choose **Enroll MOK**, then **Continue**, then **Yes**, enter the
+   one-time password, and reboot. The MOK screen uses a US keyboard layout, so choose a password of
+   plain letters and digits. If you miss the screen, the system still starts but the NVIDIA driver
+   will not load, so the desktop may be low-resolution or missing: log in on a text console
+   (Ctrl+Alt+F3) or over SSH, run the `mokutil --import` command again, and reboot.
+5. Check it worked:
+
+   ```bash
+   mokutil --sb-state          # SecureBoot enabled
+   sudo mokutil --test-key /var/lib/dkms/mok.pub   # is already enrolled
+   dkms status 'nvidia*'       # installed for the running kernel
+   nvidia-smi                  # lists the GPU and driver version
+   ```
+
+   If `nvidia-smi` says it cannot communicate with the driver while Secure Boot is on, the key is
+   usually not enrolled yet; repeat steps 3 and 4.
+
+See Debian's [NVIDIA driver](https://wiki.debian.org/NvidiaGraphicsDrivers) and
+[Secure Boot](https://wiki.debian.org/SecureBoot) pages for other releases and details.
+
+**Ubuntu**
+
+1. Run `sudo ubuntu-drivers install`. It picks the recommended driver for the card; to choose one, list
+   them with `ubuntu-drivers list` and install with `sudo ubuntu-drivers install nvidia:580`.
+2. By default `ubuntu-drivers` installs prebuilt modules that Canonical has already signed, so Secure
+   Boot needs nothing more. If you install a DKMS driver instead (`sudo ubuntu-drivers install
+   --include-dkms`, or a driver from a PPA), the installer asks you to choose a Secure Boot password;
+   at the next boot use the same MOK management screen as above (Enroll MOK, Continue, Yes, the
+   password).
+3. Reboot and check with `mokutil --sb-state` and `nvidia-smi`.
+
+**Then, on either system: the container toolkit**
+
+1. Install the NVIDIA Container Toolkit from NVIDIA's APT repository, following
+   [NVIDIA's install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+2. Point Docker at it and restart Docker:
+
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+
+3. Check a container can see the GPU: `docker run --rm --gpus all ubuntu nvidia-smi`.
+4. Start Optimisarr from the [NVIDIA Compose example](../../compose.nvidia.example.yml) and check
+   **Settings → System → Tools** reports NVENC before choosing it.
 
 With **Hardware decoding** enabled (the default), an NVENC transcode uses FFmpeg's
 `-hwaccel cuda -hwaccel_output_format cuda` path. FFmpeg selects the compatible NVDEC decoder for

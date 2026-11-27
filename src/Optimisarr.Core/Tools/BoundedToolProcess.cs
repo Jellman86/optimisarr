@@ -12,11 +12,20 @@ public static class BoundedToolProcess
 
     public static Task<ToolProcessResult> RunAsync(
         string command, IReadOnlyList<string> arguments, CancellationToken cancellationToken,
-        TimeSpan? timeout = null) => RunWithInputAsync(command, arguments, null, cancellationToken, timeout);
+        TimeSpan? timeout = null) => RunCoreAsync(command, arguments, null, cancellationToken, timeout);
 
-    public static async Task<ToolProcessResult> RunWithInputAsync(
+    public static Task<ToolProcessResult> RunWithInputAsync(
         string command, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null) => RunCoreAsync(command, arguments, standardInput, cancellationToken, timeout);
+
+    /// <summary>Retains all bounded stderr output when the caller needs to inspect the tool's diagnostics.</summary>
+    public static Task<ToolProcessResult> RunWithStandardErrorAsync(
+        string command, IReadOnlyList<string> arguments, CancellationToken cancellationToken,
+        TimeSpan? timeout = null) => RunCoreAsync(command, arguments, null, cancellationToken, timeout, retainStandardError: true);
+
+    private static async Task<ToolProcessResult> RunCoreAsync(
+        string command, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken,
+        TimeSpan? timeout, bool retainStandardError = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -56,9 +65,12 @@ public static class BoundedToolProcess
             await Task.WhenAll(stdout, stderr, input, process.WaitForExitAsync(deadline.Token));
             var output = await stdout;
             var error = await stderr;
-            return output.Truncated || error.Truncated
-                ? new(-1, string.Empty, "Tool probe output exceeded its bounded capture limit.")
-                : new(process.ExitCode, output.Text, FirstLine(error.Text));
+            if (output.Truncated || error.Truncated)
+            {
+                return new(-1, string.Empty, "Tool probe output exceeded its bounded capture limit.");
+            }
+            var errorText = retainStandardError ? error.Text.Trim() : FirstLine(error.Text);
+            return new(process.ExitCode, output.Text, string.IsNullOrEmpty(errorText) ? null : errorText);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

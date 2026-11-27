@@ -114,6 +114,12 @@ public sealed record RuleSettings
     /// </summary>
     public Queue.NoiseReduction NoiseReduction { get; init; }
 
+    /// <summary>
+    /// The longest gap between keyframes in a video re-encode, in whole seconds, or null for the
+    /// encoder's own default. Longer saves a little space and makes seeking slower.
+    /// </summary>
+    public int? KeyframeIntervalSeconds { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 
@@ -196,6 +202,13 @@ public sealed record RuleSettings
     public double AudioSilenceMinimumSeconds { get; init; } = SilenceTrimSettings.DefaultMinimumSeconds;
 
     /// <summary>
+    /// When <c>true</c> as well as <see cref="TrimAudioSilence"/>, a music file that is not
+    /// converted still has its silence trimmed, keeping its format: lossless audio is encoded
+    /// again losslessly and lossy audio is cut by copying its frames. See <see cref="Queue.AudioTrimOnly"/>.
+    /// </summary>
+    public bool TrimSilenceWithoutConverting { get; init; }
+
+    /// <summary>
     /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other
     /// language are removed from the output. Empty (the default) keeps every track. Tracks
     /// whose language is unknown are always kept, and when no track matches a kept language
@@ -211,6 +224,20 @@ public sealed record RuleSettings
     /// with none. See <see cref="Queue.SubtitleTrackSelection"/>.
     /// </summary>
     public IReadOnlyList<string> KeepSubtitleLanguages { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// When set, a file whose only change would be removing tracks — track cleanup, or a remux
+    /// clean-up of a file already in its target container — is rewritten only if the removed tracks
+    /// are at least this percentage of the file. Rewriting a 60 GB film to drop a 100 MB commentary
+    /// costs a full write of the file for almost nothing. Null (the default) sets no minimum.
+    /// </summary>
+    public double? MinimumTrackRemovalSavingPercent { get; init; }
+
+    /// <summary>
+    /// As <see cref="MinimumTrackRemovalSavingPercent"/>, as a size in bytes. When both are set a
+    /// file must meet both. Null (the default) sets no minimum.
+    /// </summary>
+    public long? MinimumTrackRemovalSavingBytes { get; init; }
 
     /// <summary>
     /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for

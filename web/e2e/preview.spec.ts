@@ -86,7 +86,7 @@ async function mockPreview(page: Page, preview: unknown = completedPreview) {
       return json(route, {
         items: [{ file: media, eligible: true, reason: 'Ready to optimise' }],
         total: 1,
-        counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0 },
+        counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0, interlaced: 0 },
       })
     }
     if (path === '/api/media/7/preview' && route.request().method() === 'POST') {
@@ -254,7 +254,7 @@ test('Escape minimises the preview, restores file browsing, and closing returns 
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Expand', exact: true }).click()
   const deleted = page.waitForRequest(r => r.method() === 'DELETE' && r.url().endsWith('/api/preview/41'))
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close and discard the preview', exact: true }).click()
   await deleted
   await expect(page.getByRole('dialog', { name: 'Example Film' })).toBeVisible()
   await page.keyboard.press('Escape')
@@ -280,7 +280,7 @@ test('closing before preview creation finishes deletes the late job exactly once
   await page.goto('/#/inventory')
   await page.getByText('Example Film.mkv', { exact: true }).click()
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close and discard the preview', exact: true }).click()
   release()
   await expect.poll(() => deletes.length).toBe(1)
   await page.waitForTimeout(150)
@@ -292,7 +292,7 @@ test('previewing another file while minimised replaces the old comparison and di
   await mockPreview(page)
   await page.route('**/api/inventory?**', route => json(route, {
     items: [media, { ...media, id: 8, relativePath: 'Second Film.mkv' }].map(file => ({ file, eligible: true, reason: 'Ready to optimise' })),
-    total: 2, counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0 },
+    total: 2, counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0, interlaced: 0 },
   }))
   await page.route('**/api/media/8/preview', route => json(route, { jobId: 42 }))
   await page.route('**/api/preview/42', route => route.request().method() === 'DELETE' ? route.fulfill({ status: 204 }) : json(route, { ...completedPreview, jobId: 42, mediaFileId: 8 }))
@@ -300,7 +300,7 @@ test('previewing another file while minimised replaces the old comparison and di
   await page.getByRole('button', { name: /Example Film.mkv/ }).click()
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.getByText('Encoded (sample)', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Minimise', exact: true }).click()
+  await page.getByRole('button', { name: 'Minimise — keep running in the background', exact: true }).click()
   await page.getByRole('button', { name: /Second Film.mkv/ }).click()
   const discarded = page.waitForRequest(r => r.method() === 'DELETE' && r.url().endsWith('/api/preview/41'))
   const created = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/media/8/preview'))

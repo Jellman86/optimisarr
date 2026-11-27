@@ -60,7 +60,13 @@ public sealed record OriginalSnapshot(
     bool PixelShapeMustMatch = false,
     // The silence the encode trimmed from a music file's start and end, with the level that counted
     // as silence, so verification expects the shorter length and checks where the cut fell.
-    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null);
+    Optimisarr.Core.Queue.AudioTrimPlan? SilenceTrim = null,
+    // A music file that kept its format and was only trimmed, so verification also proves the
+    // audio between the cuts is the source's own.
+    Optimisarr.Core.Queue.AudioTrimOnlyPlan? AudioTrimOnly = null,
+    // The library recorded the original as Dolby Vision, so a copied video stream must keep its
+    // configuration even if a fresh probe of the original no longer shows one.
+    bool IsDolbyVision = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -112,7 +118,9 @@ public sealed class VerificationService(
     AudioQualityObservationService? audioQuality = null,
     SoundtrackQualityObservationService? soundtrackQuality = null,
     ImagePerceptualObservationService? imagePerceptualQuality = null,
-    SilenceDetectService? silence = null)
+    SilenceDetectService? silence = null,
+    KeptAudioComparisonService? keptAudio = null,
+    MusicTagService? musicTags = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -351,6 +359,31 @@ public sealed class VerificationService(
             var outputEdgeSilence = reference.SilenceTrim is { } trim && silence is not null && remoteEvidence is null
                 ? await silence.MeasureEdgesAsync(outputPath, trim.ThresholdDb, cancellationToken)
                 : null;
+            // Missing evidence fails the check rather than skipping it.
+            var keptAudioEvidence = reference.AudioTrimOnly is { } trimOnly
+                ? reference.SilenceTrim is { } kept && keptAudio is not null && remoteEvidence is null && clip is null
+                    ? await keptAudio.CompareAsync(reference.Path, outputPath, trimOnly.Method, kept, cancellationToken)
+                    : new KeptAudioEvidence(trimOnly.Method)
+                : null;
+            // ffprobe shows a lost or rewritten tag the same as a kept one, so both files' tags are
+            // read byte for byte. The source is the original itself: a trim-only job has no clip.
+            var tagsKeptEvidence = reference.AudioTrimOnly is not null
+                ? musicTags is not null && remoteEvidence is null && clip is null
+                    ? new TagsKeptEvidence(
+                        await musicTags.ReadAsync(reference.Path, cancellationToken),
+                        await musicTags.ReadAsync(outputPath, cancellationToken))
+                    : new TagsKeptEvidence(null, null)
+                : null;
+            // ffprobe reads QuickTime keys as readily as iTunes atoms, so an M4A's own atoms are read.
+            // The source is the original, not a reference clip, whose tags FFmpeg wrote.
+            var mp4TagEvidence = reference.Kind == MediaKind.Audio && Optimisarr.Core.Library.Mp4TagReader.IsMp4Family(outputPath)
+                ? musicTags is null
+                    ? new Mp4TagEvidence(null, null)
+                    : new Mp4TagEvidence(
+                        Optimisarr.Core.Library.Mp4TagReader.IsMp4Family(original.Path) ? await musicTags.ReadMp4Async(original.Path, cancellationToken) : null,
+                        await musicTags.ReadMp4Async(outputPath, cancellationToken),
+                        originalProbe.TagLanguage)
+                : null;
 
             var input = new VerificationInput(
                 DecodeSucceeded: decodeResult.Healthy,
@@ -423,6 +456,9 @@ public sealed class VerificationService(
                 ExpectedHeight: reference.ExpectedHeight,
                 SilenceTrim: reference.SilenceTrim,
                 OutputEdgeSilence: outputEdgeSilence,
+                KeptAudio: keptAudioEvidence,
+                TagsKept: tagsKeptEvidence,
+                Mp4Tags: mp4TagEvidence,
                 RequirePixelShapeRetained: reference.PixelShapeMustMatch,
                 OriginalPixelAspect: originalProbe.PixelAspect,
                 OutputPixelAspect: outputProbe.PixelAspect,
@@ -453,6 +489,9 @@ public sealed class VerificationService(
                 OutputVideoProfile: outputProbe.VideoProfile,
                 SubtitleTracksRemoved: reference.RemovedSubtitleStreamIndexes?.Count ?? 0,
                 RequireContainerUnchanged: reference.ContainerMustMatch,
+                OriginalIsDolbyVision: originalProbe.IsDolbyVision || reference.IsDolbyVision,
+                OriginalDolbyVision: originalProbe.DolbyVision,
+                OutputDolbyVision: outputProbe.DolbyVision,
                 OriginalContainer: originalProbe.Container,
                 OutputContainer: outputProbe.Container,
                 ExpectedAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
@@ -741,7 +780,8 @@ public sealed class VerificationService(
             DurationSeconds = original.Kind == MediaKind.Video ? clip.ExpectedDuration(original.DurationSeconds) : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
-            IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
+            IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr,
+            IsDolbyVision = clipProbe.Success ? clipProbe.IsDolbyVision : original.IsDolbyVision
         };
         var presentationOffset = 0.0;
         if (clip.VideoOnly && clip.StartSeconds is { } start and > 0)

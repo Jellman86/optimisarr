@@ -197,5 +197,15 @@ Audio and subtitles are copied untouched; the library's audio re-encode rules do
   installation without `libvulkan.so.1`.
 - **The sample run fails with `vkCreateInstance failed`:** no GPU driver is reachable. Check the
   device mapping, or the NVIDIA `graphics` capability.
+- **The sample run warns about software Vulkan (`llvmpipe`):** the engine used CPU rendering.
+  On NVIDIA in Docker, check that `NVIDIA_DRIVER_CAPABILITIES` includes `graphics`
+  (`compute,video,utility,graphics`); on Intel or AMD, pass `/dev/dri`.
+  If NVIDIA encoding works and the warning persists with `graphics` enabled, temporarily set
+  `VK_LOADER_DEBUG=error,warn,driver` in the container environment and repeat the sample run.
+  Open **Technical details** below the result to see which Vulkan driver manifests the loader found
+  and any errors loading them.
+  On a native Linux host, compare this with `vulkaninfo --summary` on the host. If the GPU appears
+  on the host only, check the NVIDIA Container Toolkit version and the driver files it mounts.
+  Remove the debug setting after collecting the output.
 - **Not enough working space:** free space on the work volume, or lower the queue's free-space
   reserve.

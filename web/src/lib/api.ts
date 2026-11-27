@@ -88,12 +88,12 @@ export type SetupReadiness = {
 }
 
 export type SetupRecommendation = {
-  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
+  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi' | 'AmdAmf'
   hardwareDecode: boolean
   vmafTier: 'Off' | 'Balanced' | 'Keep'
   scheduleStart: string
   scheduleEnd: string
-  encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
+  encoderReason: 'nvidia' | 'amd' | 'intel' | 'vaapi' | 'cpu'
   vmafReason: 'cuda-balanced' | 'cpu-cost' | 'unavailable'
 }
 
@@ -150,6 +150,8 @@ export type LibraryRules = {
   deinterlaceVideo: boolean
   /** How strongly video re-encodes reduce noise, such as tape grain. */
   noiseReduction: NoiseReduction
+  /** The longest gap between keyframes, in whole seconds; null keeps the encoder default. Absent from servers before it existed. */
+  keyframeIntervalSeconds?: number | null
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -172,6 +174,8 @@ export type LibraryRules = {
   audioSilenceThresholdDb?: number
   /** The shortest silence, in seconds, that is trimmed from an edge. */
   audioSilenceMinimumSeconds?: number
+  /** Also trim music files the library does not convert, keeping their format. Absent from servers before it existed. */
+  trimSilenceWithoutConverting?: boolean
   /** Video jobs in this library run through the super-resolution pipeline. */
   superResolutionEnabled: boolean
   superResolutionQualityCheck: SuperResolutionQualityCheck
@@ -181,6 +185,13 @@ export type LibraryRules = {
   superResolutionScale: number | null
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
+  /**
+   * A job that only removes tracks rewrites the file only when they are at least this share of it.
+   * Null sets no minimum. Absent from servers before it existed.
+   */
+  minimumTrackRemovalSavingPercent?: number | null
+  /** As the percentage, in bytes; with both set a file must meet both. */
+  minimumTrackRemovalSavingBytes?: number | null
   reencodeLossyAudio: boolean
   targetImageFormat: string | null
   imageQuality: number | null
@@ -354,6 +365,9 @@ export type SuperResolutionProbe = {
   error: string | null
   outputTail: string | null
   deviceUsed: string | null
+  detectedDevice?: string | null
+  usingSoftwareVulkan?: boolean
+  warning?: string | null
 }
 
 export type Settings = {
@@ -1097,7 +1111,29 @@ export type ArrConnection = {
   rescanAfterChanges: boolean
   createdAt: string
   updatedAt: string
+  webhookEnabled: boolean
+  // Server-relative; the page joins it to the address the browser reached Optimisarr at.
+  webhookPath: string
+  remotePathPrefix: string | null
+  localPathPrefix: string | null
+  webhookLastReceivedAt: string | null
+  webhookLastOutcome: ArrWebhookOutcome | null
+  webhookLastDetail: string | null
 }
+
+export type ArrWebhookOutcome =
+  | 'Test'
+  | 'Queued'
+  | 'NotQueued'
+  | 'Settling'
+  | 'WaitingForScan'
+  | 'NotInLibrary'
+  | 'Ignored'
+  | 'Refused'
+  | 'ConnectionOff'
+
+// Returned once, when the password is made. The server keeps only its fingerprint.
+export type ArrWebhookPassword = { username: string; password: string; webhookPath: string }
 
 export type ArrTracking = {
   id: number
@@ -1116,6 +1152,9 @@ export type SaveArrConnection = {
   apiKey: string
   enabled: boolean
   rescanAfterChanges: boolean
+  // Both blank removes the mapping.
+  remotePathPrefix: string
+  localPathPrefix: string
 }
 
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
@@ -1145,6 +1184,8 @@ export type MediaFile = {
   probeError: string | null
   // The Optimisarr version stamped into the file when Optimisarr produced it, or null for a source.
   optimisedMarker: string | null
+  // ffprobe's field order ("tt", "bb", "tb", "bt" are interlaced), or null before it was recorded.
+  fieldOrder: string | null
 }
 
 export type Candidate = {
@@ -1169,6 +1210,9 @@ export type CandidateSummary = {
 }
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
+
+/** A sortable Inventory column and direction; leaving it out keeps the server's path order. */
+export type InventorySort = 'name_asc' | 'name_desc' | 'size_asc' | 'size_desc' | 'verdict_asc' | 'verdict_desc'
 
 /** What queueing one file would do, by its library's settings as they are now. */
 export type MediaPlan = {
@@ -1212,15 +1256,31 @@ export type MediaPlan = {
     noiseReduction: NoiseReduction
     /** The job would run through AI upscaling, which copies its sound. */
     upscales: boolean
+    /** Seconds, as the library sets it; null keeps the encoder default. Absent from servers before it existed. */
+    keyframeIntervalSeconds?: number | null
   } | null
   /** Null unless the file is an image. */
   image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
   /** A null codec means every kept track is copied untouched. */
-  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean; trimsSilence?: boolean } | null
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean; trimsSilence?: boolean; trimOnly?: boolean } | null
   /** Null when the file was probed before track languages were recorded. */
   audioTracks: MediaPlanTrack[] | null
   subtitleTracks: MediaPlanTrack[] | null
   file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+  /**
+   * What removing tracks would save, for a job that only removes tracks; null otherwise. A null
+   * size means a removed track's size is not known. `meetsMinimum` is null when the library sets no
+   * minimum or the saving is not known. `needsReprobe` is true when the file was probed before track
+   * sizes were recorded, so a re-probe can still find them. Absent from servers before it existed.
+   */
+  trackSaving?: {
+    bytes: number | null
+    percent: number | null
+    minimumPercent: number | null
+    minimumBytes: number | null
+    meetsMinimum: boolean | null
+    needsReprobe?: boolean
+  } | null
 }
 export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
 
@@ -1249,6 +1309,8 @@ export type InventoryCounts = {
   eligible: number
   skipped: number
   unprobed: number
+  /** Interlaced files in the library and search scope, whichever verdict filter is chosen. */
+  interlaced: number
 }
 
 export type InventoryPage = {
@@ -1355,6 +1417,23 @@ function tryParseJson(text: string): unknown {
   }
 }
 
+/** A failed API request, keeping the server's error code so callers can react to a specific cause. */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+
+  constructor(message: string, status: number, code: string | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+function apiErrorCode(payload: unknown): string | null {
+  return payload && typeof payload === 'object' && 'code' in payload ? String(payload.code) : null
+}
+
 function apiErrorMessage(payload: unknown, status: number): string {
   if (!payload || typeof payload !== 'object') return t(i18n.m.common.api_request_failed, { status })
   const error = 'error' in payload ? String(payload.error) : t(i18n.m.common.api_request_failed, { status })
@@ -1399,6 +1478,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'notification.validation': return error
     case 'arr.notFound': return t(i18n.m.common.api_arr_not_found, args)
     case 'arr.validation': return i18n.m.common.api_arr_invalid
+    case 'arr.pathMapping.invalid': return i18n.m.common.api_arr_path_mapping_invalid
     case 'plex.signIn.start': return i18n.m.common.api_plex_start_failed
     case 'plex.signIn.check': return i18n.m.common.api_plex_check_failed
     case 'plex.signIn.required': return i18n.m.common.api_plex_required
@@ -1443,7 +1523,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (response.status === 401) handleAuthRequired()
 
   if (!response.ok) {
-    throw new Error(apiErrorMessage(payload, response.status))
+    throw new ApiError(apiErrorMessage(payload, response.status), response.status, apiErrorCode(payload))
   }
 
   return payload as T
@@ -1568,11 +1648,13 @@ export const api = {
   candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
 
   // The paginated Inventory view: a page of files with their verdicts, plus per-filter counts.
-  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; page?: number; pageSize?: number }) => {
+  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; interlaced?: boolean; sort?: InventorySort; page?: number; pageSize?: number }) => {
     const q = new URLSearchParams()
     if (params.libraryId !== undefined) q.set('libraryId', String(params.libraryId))
     if (params.show && params.show !== 'all') q.set('show', params.show)
     if (params.search) q.set('search', params.search)
+    if (params.interlaced) q.set('interlaced', 'true')
+    if (params.sort) q.set('sort', params.sort)
     if (params.page !== undefined) q.set('page', String(params.page))
     if (params.pageSize !== undefined) q.set('pageSize', String(params.pageSize))
     const query = q.toString()
@@ -1646,6 +1728,10 @@ export const api = {
     request<ArrConnection>(`/api/arr-connections/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteArrConnection: (id: number) =>
     request<void>(`/api/arr-connections/${id}`, { method: 'DELETE' }),
+  createArrWebhookPassword: (id: number) =>
+    request<ArrWebhookPassword>(`/api/arr-connections/${id}/webhook-password`, { method: 'POST' }),
+  deleteArrWebhookPassword: (id: number) =>
+    request<ArrConnection>(`/api/arr-connections/${id}/webhook-password`, { method: 'DELETE' }),
 
   plexConnectStart: () => request<PlexConnectStart>('/api/connect/plex/start', { method: 'POST' }),
   plexConnectPoll: (id: number) => request<ConnectResult>(`/api/connect/plex/poll?id=${id}`),

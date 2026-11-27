@@ -6,7 +6,7 @@
 import { api, type Job } from '../api'
 import { hasBrandActivity } from '../brand-activity'
 import { pickLeadJob } from '../lead-job'
-import { createJobsConnection, type JobProgress, type SystemMetrics } from '../realtime'
+import { createJobsConnection, type JobProgress, type JobsHandlers, type SystemMetrics } from '../realtime'
 
 // ~90 s of history at the broadcaster's 1.5 s cadence.
 const HISTORY = 60
@@ -22,7 +22,14 @@ function createActivity() {
   let gpuHistory = $state<number[]>([])
   let leadJob = $state<Job | null>(null)
   let leadProgress = $state<JobProgress | null>(null)
+  let connectionStatus = $state<'connecting' | 'live' | 'reconnecting' | 'polling'>('connecting')
   let started = false
+  const listeners = new Set<Partial<Pick<JobsHandlers, 'onChanged' | 'onProgress'>>>()
+
+  function subscribe(listener: Partial<Pick<JobsHandlers, 'onChanged' | 'onProgress'>>) {
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }
 
   async function refreshStatus() {
     try {
@@ -57,17 +64,25 @@ function createActivity() {
     }
   }
 
+  function refreshActivity() {
+    void refreshStatus()
+    void refreshLead()
+  }
+
+  function reconcile() {
+    refreshActivity()
+    for (const listener of listeners) listener.onChanged?.()
+  }
+
   function start() {
     if (started) return
     started = true
     const connection = createJobsConnection({
-      onChanged: () => {
-        void refreshStatus()
-        void refreshLead()
-      },
+      onChanged: reconcile,
       // Progress arrives far more often than the list changes; fold it into the card's job so the
       // bar moves between reads instead of jumping when the next change event lands.
       onProgress: (progress) => {
+        for (const listener of listeners) listener.onProgress?.(progress)
         if (!leadJob || progress.jobId !== leadJob.id) return
         leadProgress = progress
         leadJob = { ...leadJob, progress: progress.progress }
@@ -78,27 +93,40 @@ function createActivity() {
         gpuHistory = [...gpuHistory, m.gpuSupported && m.gpuPercent != null ? m.gpuPercent : 0].slice(-HISTORY)
       },
     })
-    // Read immediately; a stalled negotiation must not leave the activity indicator idle.
-    void refreshStatus()
-    void refreshLead()
-    window.setInterval(() => {
-      if (!document.hidden && connection.state !== 'Connected') {
-        void refreshStatus()
-        void refreshLead()
+    connection.onreconnecting(() => { connectionStatus = 'reconnecting' })
+    connection.onreconnected(() => { connectionStatus = 'live' })
+    connection.onclose(() => { connectionStatus = 'polling' })
+
+    async function connect() {
+      const recovering = connectionStatus === 'polling'
+      try {
+        await connection.start()
+        connectionStatus = 'live'
+        // Events before the hub went live were missed. Pages do their own first read, so they are
+        // only asked to re-read after a failed start or exhausted retries.
+        if (recovering) reconcile()
+        else refreshActivity()
+      } catch {
+        connectionStatus = 'polling'
       }
+    }
+
+    // Read immediately; a stalled negotiation must not leave the activity indicator idle.
+    refreshActivity()
+    void connect()
+    window.setInterval(() => {
+      if (document.hidden || connection.state === 'Connected') return
+      refreshActivity()
+      if (connection.state === 'Disconnected') void connect()
     }, 15_000)
-    connection
-      .start()
-      .then(() => Promise.all([refreshStatus(), refreshLead()]))
-      .catch(() => {
-        // Reconcile after a failed negotiation; the fallback interval keeps this current.
-        void refreshStatus()
-        void refreshLead()
-      })
   }
 
   return {
     start,
+    subscribe,
+    get connectionStatus() {
+      return connectionStatus
+    },
     get brandWorking() {
       return brandWorking
     },

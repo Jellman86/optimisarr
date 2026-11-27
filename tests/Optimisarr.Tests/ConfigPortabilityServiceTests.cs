@@ -194,6 +194,111 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Trimming_files_that_are_not_converted_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Vinyl", Path = "/data/vinyl", MediaType = MediaType.Music, TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/vinyl").TrimSilenceWithoutConverting);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { TrimSilenceWithoutConverting = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/vinyl")).TrimSilenceWithoutConverting);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/vinyl")).TrimSilenceWithoutConverting);
+    }
+
+    [Fact]
+    public async Task A_keyframe_interval_travels_with_its_backup_and_an_older_backup_means_the_encoder_default()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Films", Path = "/data/films", MediaType = MediaType.Film, RuleProfile = RuleProfile.ConservativeHevc,
+                KeyframeIntervalSeconds = 10,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal(10, snapshot.Libraries.Single(library => library.Path == "/data/films").KeyframeIntervalSeconds);
+
+        var older = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { KeyframeIntervalSeconds = null }).ToArray(),
+        };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Null((await restored.Libraries.SingleAsync(library => library.Path == "/data/films")).KeyframeIntervalSeconds);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(10, (await restored.Libraries.SingleAsync(library => library.Path == "/data/films")).KeyframeIntervalSeconds);
+
+        var invalid = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { KeyframeIntervalSeconds = 240 }).ToArray(),
+        };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
+    public async Task A_minimum_track_removal_saving_travels_with_its_backup_and_an_older_backup_means_none()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Films", Path = "/data/films", MediaType = MediaType.Film, RuleProfile = RuleProfile.TrackCleanup,
+                KeepAudioLanguages = "eng", MinimumTrackRemovalSavingPercent = 5, MinimumTrackRemovalSavingBytes = 1_073_741_824,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var exported = snapshot.Libraries.Single(library => library.Path == "/data/films");
+        Assert.Equal(5, exported.MinimumTrackRemovalSavingPercent);
+        Assert.Equal(1_073_741_824, exported.MinimumTrackRemovalSavingBytes);
+
+        var older = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with
+            {
+                MinimumTrackRemovalSavingPercent = null, MinimumTrackRemovalSavingBytes = null,
+            }).ToArray(),
+        };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+        {
+            var library = await restored.Libraries.SingleAsync(library => library.Path == "/data/films");
+            Assert.Null(library.MinimumTrackRemovalSavingPercent);
+            Assert.Null(library.MinimumTrackRemovalSavingBytes);
+        }
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+        {
+            var library = await restored.Libraries.SingleAsync(library => library.Path == "/data/films");
+            Assert.Equal(5, library.MinimumTrackRemovalSavingPercent);
+            Assert.Equal(1_073_741_824, library.MinimumTrackRemovalSavingBytes);
+        }
+
+        var invalid = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { MinimumTrackRemovalSavingPercent = 150 }).ToArray(),
+        };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
     public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
     {
         await using (var db = CreateDb())
@@ -444,6 +549,60 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
 
         await using var restored = CreateDb();
         Assert.Equal(rescan, (await restored.ArrConnections.SingleAsync()).RescanAfterChanges);
+    }
+
+    [PosixFact]
+    public async Task A_backup_carries_the_path_mapping_but_never_the_webhook_password()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989",
+                RemotePathPrefix = "/tv", LocalPathPrefix = "/data/tv",
+                WebhookSecretFingerprint = new string('A', 64),
+            });
+            await db.SaveChangesAsync();
+        }
+        var exported = await ExportAsync();
+
+        var snapshot = Assert.Single(exported.ArrConnections);
+        Assert.Equal("/tv", snapshot.RemotePathPrefix);
+        Assert.Equal("/data/tv", snapshot.LocalPathPrefix);
+        Assert.DoesNotContain(new string('A', 64), System.Text.Json.JsonSerializer.Serialize(exported));
+
+        await ResetDatabaseAsync();
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.RemoveRange(db.ArrConnections);
+            await db.SaveChangesAsync();
+        }
+        await ImportAsync(exported);
+
+        await using var restored = CreateDb();
+        var connection = await restored.ArrConnections.SingleAsync();
+        Assert.Equal("/tv", connection.RemotePathPrefix);
+        Assert.Equal("/data/tv", connection.LocalPathPrefix);
+        Assert.Null(connection.WebhookSecretFingerprint);
+    }
+
+    [Fact]
+    public async Task Restoring_a_backup_keeps_a_webhook_password_already_set_on_this_server()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989",
+                WebhookSecretFingerprint = new string('B', 64),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await ImportAsync(await ExportAsync());
+
+        await using var restored = CreateDb();
+        Assert.Equal(new string('B', 64), (await restored.ArrConnections.SingleAsync()).WebhookSecretFingerprint);
     }
 
     [Fact]

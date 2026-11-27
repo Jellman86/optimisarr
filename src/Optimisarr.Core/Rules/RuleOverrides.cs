@@ -21,6 +21,7 @@ public sealed record RuleOverrides
     public bool? OptimiseDolbyVision { get; init; }
     public bool? DeinterlaceVideo { get; init; }
     public Queue.NoiseReduction? NoiseReduction { get; init; }
+    public int? KeyframeIntervalSeconds { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public bool? ExcludeHardLinkedFiles { get; init; }
     public IReadOnlyList<string>? SkipSourceCodecs { get; init; }
@@ -34,8 +35,11 @@ public sealed record RuleOverrides
     public bool? TrimAudioSilence { get; init; }
     public double? AudioSilenceThresholdDb { get; init; }
     public double? AudioSilenceMinimumSeconds { get; init; }
+    public bool? TrimSilenceWithoutConverting { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
+    public double? MinimumTrackRemovalSavingPercent { get; init; }
+    public long? MinimumTrackRemovalSavingBytes { get; init; }
     public bool? ReencodeLossyAudio { get; init; }
     public string? TargetImageFormat { get; init; }
     public int? ImageQuality { get; init; }

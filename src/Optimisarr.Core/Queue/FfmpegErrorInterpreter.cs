@@ -35,6 +35,15 @@ public static class FfmpegErrorInterpreter
                 + "The original was not touched.";
         }
 
+        // MP4's covr atom holds JPEG, PNG or BMP pictures only, and FFmpeg's M4A writer refuses any other.
+        if (System.Text.RegularExpressions.Regex.IsMatch(stderr, @"Could not find tag for codec (gif|webp|tiff|jpegxl|jpeg2000) in stream",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            return "This file's cover art is a picture format an M4A file can't hold (it takes JPEG, PNG or BMP), "
+                + "so the conversion failed. Choose MP3 for this library, or replace the cover art with a JPEG or PNG. "
+                + "The original was not touched.";
+        }
+
         return null;
     }
 }

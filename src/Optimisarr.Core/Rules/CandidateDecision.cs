@@ -15,6 +15,9 @@ public sealed record CandidateDecision(CandidateOutcome Outcome, string Reason, 
 {
     public bool IsEligible => Outcome == CandidateOutcome.Eligible;
 
+    /// <summary>A music file that is not converted, only trimmed of silence. Whether there is any is measured by the job.</summary>
+    public bool TrimsOnly { get; init; }
+
     public static CandidateDecision Eligible(string reason) => new(CandidateOutcome.Eligible, reason);
 
     public static CandidateDecision Skipped(string reason) => new(CandidateOutcome.Skipped, reason);

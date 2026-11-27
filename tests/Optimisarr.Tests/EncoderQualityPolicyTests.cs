@@ -9,6 +9,7 @@ public sealed class EncoderQualityPolicyTests
     [InlineData("hevc_qsv", 24, 20, "ICQ")]
     [InlineData("hevc_nvenc", 24, 20, "CQ")]
     [InlineData("hevc_vaapi", 24, 20, "QP")]
+    [InlineData("hevc_amf", 24, 20, "CQP")]
     // VideoToolbox stays on the CRF scale here; the command builder owns the translation to the
     // encoder's own 1–100 control, the same division of labour as -cq and -global_quality.
     [InlineData("hevc_videotoolbox", 24, 20, "VT-Q")]

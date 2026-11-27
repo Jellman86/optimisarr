@@ -66,7 +66,7 @@
       {i18n.m.shared.failures_intro}
     {/if}
   </p>
-  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={load} disabled={loading}>
+  <button class="btn btn-sm btn-ghost" onclick={load} disabled={loading}>
     <Icon name="retry" class="h-4 w-4" />
     {i18n.m.shared.refresh}
   </button>
@@ -84,7 +84,7 @@
   <div class="space-y-4">
     {#each groups as group (group.category)}
       <div class="card overflow-hidden">
-        <div class="flex items-start gap-3 border-b border-line-soft p-4 border-line">
+        <div class="hairline-b flex items-start gap-3 p-4">
           <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-bad" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
@@ -114,7 +114,7 @@
                   {/if}
                   {#if sample.errorMessage || sample.verificationChecks.length > 0}
                     <details class="mt-1 text-xs text-ink-3">
-                      <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
+                      <summary class="focus-ring cursor-pointer rounded">{i18n.m.queue.technical_error}</summary>
                       {#if sample.verificationChecks.length > 0}
                         <dl class="mt-2 space-y-1.5">
                           {#each sample.verificationChecks as check}
@@ -125,13 +125,13 @@
                           {/each}
                         </dl>
                       {:else if sample.errorMessage}
-                        <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px]">{sample.errorMessage}</p>
+                        <p class="mt-1 whitespace-pre-line break-words font-mono text-caption">{sample.errorMessage}</p>
                       {/if}
                     </details>
                   {/if}
                 </div>
                 <button
-                  class="btn btn-ghost inline-flex flex-shrink-0 items-center gap-1 px-2 py-1 text-xs"
+                  class="btn btn-sm btn-ghost flex-shrink-0"
                   onclick={() => toggleLog(sample.jobId)}
                 >
                   <Icon name="chevron" class="h-3.5 w-3.5 transition-transform {openLogJobId === sample.jobId ? 'rotate-180' : ''}" />
@@ -146,7 +146,7 @@
                   {#if logLoadingId === sample.jobId}
                     <p class="text-xs text-ink-4">{i18n.m.shared.loading_log}</p>
                   {:else if logs[sample.jobId]}
-                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-[11px] leading-relaxed text-ink-2">{logs[sample.jobId]}</pre>
+                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-caption leading-relaxed text-ink-2">{logs[sample.jobId]}</pre>
                   {:else}
                     <p class="text-xs text-ink-4">{i18n.m.shared.no_log}</p>
                   {/if}
@@ -157,7 +157,7 @@
         </ul>
 
         {#if group.count > group.samples.length}
-          <div class="border-t border-line-soft px-4 py-2 text-xs text-ink-4 border-line">
+          <div class="hairline-t px-4 py-2 text-xs text-ink-4">
             {t(i18n.m.shared.failures_showing, { shown: group.samples.length, total: group.count })}
           </div>
         {/if}

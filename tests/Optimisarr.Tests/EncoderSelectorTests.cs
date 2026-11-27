@@ -12,6 +12,7 @@ public sealed class EncoderSelectorTests
         new("libsvtav1", "av1", "CPU", false),
         new("hevc_nvenc", "hevc", "NVIDIA NVENC", true),
         new("h264_qsv", "h264", "Intel QSV", true),
+        new("hevc_amf", "hevc", "AMD AMF", true),
         new("hevc_vaapi", "hevc", "VAAPI", false)
     ];
 
@@ -127,5 +128,41 @@ public sealed class EncoderSelectorTests
         Assert.False(selection.Succeeded);
         Assert.Contains("Intel QSV", selection.Error);
         Assert.Contains("Auto", selection.Error);
+    }
+
+    [Fact]
+    public void Auto_prefers_nvenc_before_amd_amf()
+    {
+        Assert.Equal("hevc_nvenc", EncoderSelector.Select("hevc", EncoderMode.Auto, Capabilities).EncoderName);
+    }
+
+    private static readonly EncoderCapability[] AmdOnly =
+    [
+        new("libx265", "hevc", "CPU", true),
+        new("hevc_amf", "hevc", "AMD AMF", true)
+    ];
+
+    [Fact]
+    public void Auto_prefers_amd_amf_before_cpu()
+    {
+        Assert.Equal("hevc_amf", EncoderSelector.Select("hevc", EncoderMode.Auto, AmdOnly).EncoderName);
+    }
+
+    [Fact]
+    public void Amd_amf_mode_uses_the_amf_encoder()
+    {
+        var selection = EncoderSelector.Select("hevc", EncoderMode.AmdAmf, AmdOnly);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("hevc_amf", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Amd_amf_mode_rejects_a_codec_it_does_not_offer()
+    {
+        var selection = EncoderSelector.Select("av1", EncoderMode.AmdAmf, AmdOnly);
+
+        Assert.False(selection.Succeeded);
+        Assert.Contains("No available", selection.Error);
     }
 }

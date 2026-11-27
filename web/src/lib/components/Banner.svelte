@@ -1,24 +1,26 @@
 <script lang="ts">
   // A small inline status banner with a leading icon, shared across pages so error,
-  // success, and info messages look the same everywhere. Margins are left to the
-  // caller via `class` so it drops into existing layouts unchanged.
+  // success, and info messages look the same everywhere. It is a flat toned callout, not a
+  // lifted card: a message sits in or above a surface rather than becoming another one.
+  // Margins are left to the caller via `class` so it drops into existing layouts unchanged.
   import Icon from './Icon.svelte'
   import type { Snippet } from 'svelte'
 
   let { kind = 'info', class: className = '', children }: {
-    kind?: 'error' | 'success' | 'info'
+    kind?: 'error' | 'success' | 'info' | 'warn'
     class?: string
     children: Snippet
   } = $props()
 
   const styles = {
     error: { icon: 'warning', tone: 'tone-bad', ink: 'text-bad' },
+    warn: { icon: 'warning', tone: 'tone-warn', ink: 'text-warn' },
     success: { icon: 'check', tone: 'tone-ok', ink: 'text-ok' },
-    info: { icon: 'info', tone: 'tone-accent', ink: 'text-accent' },
+    info: { icon: 'info', tone: 'tone-info', ink: 'text-info' },
   } as const
 </script>
 
-<div class="card flex items-start gap-2 p-3 text-sm {styles[kind].tone} {className}">
+<div class="callout flex items-start gap-2 {styles[kind].tone} {className}">
   <Icon name={styles[kind].icon} class="mt-0.5 h-4 w-4 flex-shrink-0 {styles[kind].ink}" />
   <span class="min-w-0">{@render children()}</span>
 </div>

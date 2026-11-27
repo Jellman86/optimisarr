@@ -32,8 +32,9 @@ public sealed class CandidateEvaluatorTests
         int? audioBitrateKbps = null,
         int attachedPictureCount = 0,
         int subtitleTrackCount = 0,
-        int maxAudioChannels = 2) =>
-        new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
+        int maxAudioChannels = 2,
+        string relativePath = "Music/Album/Track.flac") =>
+        new(null, null, null, null, sizeBytes, false, relativePath, null,
             MediaKind.Audio, audioCodec, audioBitrateKbps, AttachedPictureCount: attachedPictureCount,
             SubtitleTrackCount: subtitleTrackCount, MaxAudioChannels: maxAudioChannels);
 
@@ -123,19 +124,26 @@ public sealed class CandidateEvaluatorTests
         Assert.Contains("Already", decision.Reason);
     }
 
-    [Theory]
-    [InlineData("aac")]
-    [InlineData("opus")]
-    public void Unsafe_audio_targets_reject_attached_cover_art_before_queueing(string targetCodec)
+    [Fact]
+    public void An_opus_target_rejects_attached_cover_art_before_queueing()
     {
-        var rules = Hevc with { TargetAudioCodec = targetCodec };
+        var rules = Hevc with { TargetAudioCodec = "opus" };
 
         var decision = CandidateEvaluator.Evaluate(
             AudioFile("flac", attachedPictureCount: 1), rules);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("cover art", decision.Reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AAC or MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The M4A's covr atom takes the source's pictures once FFmpeg writes iTunes atoms (#593).
+    [Fact]
+    public void An_aac_target_accepts_attached_cover_art()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", attachedPictureCount: 2), Hevc);
+
+        Assert.True(decision.IsEligible);
     }
 
     [Fact]
@@ -201,6 +209,78 @@ public sealed class CandidateEvaluatorTests
 
         Assert.False(decision.IsEligible);
         Assert.Contains("384 kbps target", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly RuleSettings TrimsOnly = Hevc with { TrimAudioSilence = true, TrimSilenceWithoutConverting = true };
+
+    [Fact]
+    public void A_lossy_file_that_is_not_converted_is_trimmed_only_when_the_library_asks()
+    {
+        var mp3 = AudioFile("mp3", audioBitrateKbps: 128, relativePath: "Music/Album/Track.mp3");
+
+        var trimmed = CandidateEvaluator.Evaluate(mp3, TrimsOnly);
+        var leftAlone = CandidateEvaluator.Evaluate(mp3, TrimsOnly with { TrimSilenceWithoutConverting = false });
+        var notTrimming = CandidateEvaluator.Evaluate(mp3, TrimsOnly with { TrimAudioSilence = false });
+
+        Assert.True(trimmed.IsEligible);
+        Assert.True(trimmed.TrimsOnly);
+        Assert.Contains("Trims silence only", trimmed.Reason);
+        Assert.False(leftAlone.IsEligible);
+        Assert.False(notTrimming.IsEligible);
+    }
+
+    [Fact]
+    public void A_file_that_is_converted_is_not_a_trim_only_job()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac"), TrimsOnly);
+
+        Assert.True(decision.IsEligible);
+        Assert.False(decision.TrimsOnly);
+        Assert.Null(CandidateEvaluator.TrimOnlyPlanFor(AudioFile("flac"), TrimsOnly));
+    }
+
+    [Fact]
+    public void Every_reason_a_file_is_not_converted_can_lead_to_a_trim_only_job()
+    {
+        var already = AudioFile("opus", audioBitrateKbps: 256, relativePath: "Music/Album/Track.opus");
+        var lossyLeftAlone = AudioFile("opus", audioBitrateKbps: 320, relativePath: "Music/Album/Track.opus");
+        var artBlocksConversion = AudioFile("flac", attachedPictureCount: 1);
+        var tooSmallToSave = AudioFile("mp3", sizeBytes: 3L * 1024 * 1024, audioBitrateKbps: 320, relativePath: "Music/Album/Track.mp3");
+
+        Assert.True(CandidateEvaluator.Evaluate(already, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
+        Assert.True(CandidateEvaluator.Evaluate(artBlocksConversion, TrimsOnly with { TargetAudioCodec = "opus" }).TrimsOnly);
+        Assert.All([lossyLeftAlone, tooSmallToSave],
+            media => Assert.True(CandidateEvaluator.Evaluate(media, TrimsOnly).TrimsOnly));
+        // An M4A already in the target codec is not converted, and is not trimmed without converting either.
+        var m4a = CandidateEvaluator.Evaluate(AudioFile("aac", audioBitrateKbps: 256, relativePath: "Music/Album/Track.m4a"), TrimsOnly);
+        Assert.False(m4a.IsEligible);
+        Assert.EndsWith("M4A files are not yet trimmed without converting: it has not been proved that their audio and tags come through a trim unchanged.", m4a.Reason);
+        Assert.Equal(new Optimisarr.Core.Queue.AudioTrimOnlyPlan(Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode, "flac", "flac"),
+            CandidateEvaluator.TrimOnlyPlanFor(artBlocksConversion, TrimsOnly with { TargetAudioCodec = "opus" }));
+    }
+
+    [Fact]
+    public void A_file_that_cannot_be_trimmed_without_converting_says_both_why_it_is_not_converted_and_not_trimmed()
+    {
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("vorbis", audioBitrateKbps: 128, relativePath: "Music/Album/Track.ogg"), TrimsOnly);
+
+        Assert.False(decision.IsEligible);
+        Assert.False(decision.TrimsOnly);
+        Assert.Contains("lossy", decision.Reason);
+        Assert.Contains("cannot be trimmed without converting", decision.Reason);
+    }
+
+    [Fact]
+    public void A_file_with_no_audio_or_one_excluded_by_the_library_is_never_trimmed()
+    {
+        var noAudio = new MediaProperties(null, null, null, null, 40L * 1024 * 1024, false, "Music/Track.mp3", Kind: MediaKind.Audio);
+        var excluded = TrimsOnly with { SkipSourceCodecs = ["mp3"] };
+        var mp3 = AudioFile("mp3", audioBitrateKbps: 128, relativePath: "Music/Album/Track.mp3");
+
+        Assert.False(CandidateEvaluator.Evaluate(noAudio, TrimsOnly).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(mp3, excluded).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(mp3 with { OptimisedMarker = "v1" }, TrimsOnly).IsEligible);
     }
 
     [Fact]
@@ -799,6 +879,105 @@ public sealed class CandidateEvaluatorTests
         var decision = CandidateEvaluator.Evaluate(media, rules);
 
         Assert.True(decision.IsEligible);
+    }
+
+    [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4")]
+    [InlineData("Movies/Example (2020)/Example.M4V")]
+    [InlineData("Movies/Example (2020)/Example.mov")]
+    public void Track_cleanup_leaves_dolby_vision_in_an_mp4_family_file_untouched(string relativePath)
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+        Assert.Contains("MP4", decision.Reason);
+    }
+
+    [Fact]
+    public void A_dolby_vision_mp4_with_nothing_to_remove_keeps_that_reason()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with { KeepSubtitleLanguages = new[] { "eng" } };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with { SubtitleLanguages = new string?[] { "eng" } };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("No removable tracks", decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.m4v", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mov", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mkv", "matroska,webm", true)]
+    [InlineData("Movies/Example (2020)/Example.ts", "mpegts", true)]
+    public void A_same_as_source_remux_refuses_dolby_vision_only_where_the_copy_stays_mp4(string relativePath, string container, bool eligible)
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            TargetContainer = "source",
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: container, isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, remux);
+
+        if (eligible) Assert.False(decision.Reason.StartsWith("Dolby Vision", StringComparison.Ordinal), decision.Reason);
+        else Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_into_mp4_leaves_dolby_vision_untouched()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with { TargetContainer = "mp4" };
+
+        var decision = CandidateEvaluator.Evaluate(File(isHdr: true, isDolbyVision: true), remux);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_of_dolby_vision_into_matroska_stays_eligible()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+                relativePath: "Movies/Example (2020)/Example.mp4"),
+            remux);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void An_mp4_without_dolby_vision_still_gets_track_cleanup()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        Assert.True(CandidateEvaluator.Evaluate(media, rules).IsEligible);
     }
 
     [Theory]

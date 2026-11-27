@@ -22,6 +22,11 @@ for _ in {1..30}; do
     # Trace the synthetic commands: all inputs are fixed test fixtures and contain no secrets,
     # while a bare `sh -e` otherwise reports only exit 1 and hides which safety assertion failed.
     docker exec "$name" sh -exc '
+      # The NVIDIA injected Vulkan ICD (libGLX_nvidia.so.0) requires libEGL.so.1 in the container
+      # to expose vkCreateInstance; without libegl1 the loader silently falls back to CPU llvmpipe.
+      ldconfig -p | grep -Eq "libvulkan\.so\.1[[:space:]]"
+      ldconfig -p | grep -Eq "libEGL\.so\.1[[:space:]]"
+
       vmaf_log=/tmp/optimisarr-ci-vmaf.json
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
@@ -115,13 +120,15 @@ for _ in {1..30}; do
       test "$("$probe" -v error -show_entries format_tags=artist \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = "Optimisarr Smoke Artist"
 
-      # Default AAC/M4A remains safe for art-free music and retains ordinary metadata. Sources
-      # with attached art are rejected by candidate evaluation before this command can be built.
+      # Default AAC/M4A keeps ordinary metadata as iTunes atoms and the cover art in covr. The
+      # server writes its marker into the tag list after this command (#593).
       "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
-        -map_metadata 0 -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
-        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
+        -map_metadata 0 -map 0:a -c:a aac -b:a 128k -map 0:v? -c:v copy -disposition:v attached_pic \
+        -map 0:s? -c:s mov_text "$fixture/output.m4a"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = 1
       test "$("$probe" -v error -show_entries format_tags=artist \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
 

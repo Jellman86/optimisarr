@@ -293,8 +293,8 @@ test('settings and tool capability cards stay within a small mobile viewport', a
   await page.locator('html').evaluate((element) => {
     element.style.fontSize = '125%'
   })
-  // Seven cards are taller than a phone, so the last one is reached by scrolling — what
-  // matters is that it is reachable and fully inside the column, not that it starts on screen.
+  // Seven rows can be taller than a phone at 125% text, so the last one may be reached by
+  // scrolling — what matters is that it is reachable and inside the column, not that it starts on screen.
   const systemCard = page.getByRole('button', { name: /^System/ })
   await systemCard.scrollIntoViewIfNeeded()
   await expect(systemCard).toBeInViewport()
@@ -337,7 +337,7 @@ test('every settings room reflows without horizontal page overflow', async ({ pa
 
   const rooms = ['Encoding', 'AI super-resolution', 'Files & safety', 'Media servers', 'Download managers', 'Notifications', 'System']
 
-  // The landing grid itself has to fit before any room does.
+  // The landing list itself has to fit before any room does.
   const gridFit = await page.locator('main').evaluate((main) => ({
     scrollWidth: main.scrollWidth,
     clientWidth: main.clientWidth,
@@ -375,9 +375,12 @@ test('information tooltips are translated, populated, and readable in every loca
     // by card position, because the card labels are translated and the order is not the point.
     for (const room of ['encoding', 'files']) {
       await page.goto(`/#/settings/${room}`)
+      await expect(page.locator('main h1')).toBeVisible()
       if (room === 'encoding') await page.locator('.workload-details summary').click()
       const tooltips = page.locator('main [role="tooltip"]')
-      expect(await tooltips.count()).toBeGreaterThan(0)
+      // Files & safety shows each explanation as its row's sentence, so only Encoding still
+      // has to carry tips; every tip that is there must work.
+      if (room === 'encoding') expect(await tooltips.count()).toBeGreaterThan(0)
 
       for (const tooltip of await tooltips.all()) {
         const id = await tooltip.getAttribute('id')
@@ -422,13 +425,142 @@ test('control rooms separate processing from connections and keep complete state
   await expect(page.locator('#max-jobs')).toHaveValue('3')
 })
 
-test('returning from a room restores keyboard focus to its card', async ({ page }) => {
+test('returning from a room restores keyboard focus to its row', async ({ page }) => {
   await mockSettings(page)
   await page.goto('/#/settings')
   await page.getByRole('button', { name: /^Files & safety/ }).click()
   await page.getByRole('button', { name: 'All settings' }).click()
   await expect(page.getByRole('button', { name: /^Files & safety/ })).toBeFocused()
 })
+
+test('the overview is two grouped lists with body-sized state and quiet icons', async ({ page }) => {
+  await mockSettings(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/settings')
+
+  const groups = page.locator('[data-settings-group]')
+  await expect(groups).toHaveCount(2)
+  for (const group of await groups.all()) {
+    await expect(group).toHaveClass(/\bcard\b/)
+    expect(await group.locator(':scope > ul > li > button[data-settings-room]').count()).toBeGreaterThan(0)
+  }
+  await expect(page.locator('[data-settings-room]')).toHaveCount(7)
+
+  // State is read at body size, never as micro-text, and nothing on a row wears the accent
+  // fill: that is kept for the one action that advances the work.
+  const rows = await page.locator('[data-settings-room]').evaluateAll(buttons => {
+    const probe = document.createElement('span')
+    probe.style.background = 'var(--accent-fill)'
+    document.body.append(probe)
+    const accentFill = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return buttons.map(button => ({
+      height: button.getBoundingClientRect().height,
+      stateSize: parseFloat(getComputedStyle(button.querySelector('[data-room-state]')!).fontSize),
+      accentFilled: [button, ...button.querySelectorAll('*')].some(el => getComputedStyle(el).backgroundColor === accentFill),
+    }))
+  })
+  for (const row of rows) {
+    expect(row.height).toBeGreaterThanOrEqual(44)
+    expect(row.stateSize).toBeGreaterThanOrEqual(14)
+    expect(row.accentFilled).toBe(false)
+  }
+
+  // Opening a row gives the room the page under one heading, with the way back above it.
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+  const headings = page.getByRole('heading', { level: 1 })
+  await expect(headings).toHaveCount(1)
+  await expect(headings).toHaveText('Encoding')
+  await expect(page.locator('#room-heading')).toBeFocused()
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(trail.getByRole('button', { name: 'All settings' })).toBeVisible()
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Encoding')
+})
+
+test('Encoding and Files & safety are setting rows that light up when changed and can be put back', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/encoding')
+  for (const label of ['Hardware decoding', 'HDR tone-map engine']) {
+    await expect(page.locator(`[data-setting-row="${label}"]`)).toBeVisible()
+  }
+  const toneMap = page.locator('[data-setting-row="HDR tone-map engine"]')
+  await page.locator('#hdr-tone-map-mode').selectOption('Hardware')
+  await expect(toneMap).toHaveAttribute('data-setting-changed', '')
+  await expect(toneMap.getByText('was Software (compatible)')).toBeVisible()
+  await toneMap.getByRole('button', { name: 'put back' }).click()
+  await expect(page.locator('#hdr-tone-map-mode')).toHaveValue('Software')
+  await expect(toneMap).not.toHaveAttribute('data-setting-changed', '')
+
+  await page.goto('/#/settings/files')
+  for (const label of ['Dry-run mode', 'Allow cross-filesystem replacement', 'Minimum free work disk', 'Cleanup retention']) {
+    await expect(page.locator(`[data-setting-row="${label}"]`)).toBeVisible()
+  }
+  await expect(page.locator('.settings-detail .card .card')).toHaveCount(0)
+
+  const crossFs = page.locator('[data-setting-row="Allow cross-filesystem replacement"]')
+  await page.getByRole('checkbox', { name: 'Allow cross-filesystem replacement', exact: true }).check()
+  await expect(crossFs).toHaveAttribute('data-setting-changed', '')
+  await expect(crossFs.getByText('was Off')).toBeVisible()
+  await crossFs.getByRole('button', { name: 'put back' }).click()
+  await expect(page.getByRole('checkbox', { name: 'Allow cross-filesystem replacement', exact: true })).not.toBeChecked()
+
+  const freeDisk = page.locator('[data-setting-row="Minimum free work disk"]')
+  await page.locator('#free-disk').fill('20')
+  await expect(freeDisk).toHaveAttribute('data-setting-changed', '')
+  const actions = page.locator('[data-settings-actions]')
+  await expect(actions).toHaveClass(/\bsticky-actions\b/)
+  await expect(actions).toContainText('1 unsaved change')
+  await actions.getByRole('button', { name: 'Discard' }).click()
+  await expect(page.locator('#free-disk')).toHaveValue('10')
+  await expect(actions).toHaveCount(0)
+})
+
+test('the settings save bar stays in reach, but scrolls with the page on a short viewport', async ({ page }) => {
+  await mockSettings(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/#/settings/encoding')
+  await page.locator('#max-jobs').fill('2')
+  const actions = page.locator('[data-settings-actions]')
+  await expect(actions).toBeVisible()
+  expect(await actions.evaluate(el => getComputedStyle(el).position)).toBe('sticky')
+  await page.setViewportSize({ width: 812, height: 375 })
+  expect(await actions.evaluate(el => getComputedStyle(el).position)).toBe('static')
+})
+
+for (const width of [320, 375, 2560]) {
+  test(`settings rows stay clean and finger-sized at ${width}px`, async ({ page }) => {
+    await mockSettings(page)
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/#/settings')
+    await expect(page.locator('[data-settings-room]')).toHaveCount(7)
+    expect(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+    const rows = await page.locator('[data-settings-room]').evaluateAll(buttons => buttons.map(button => {
+      const box = button.getBoundingClientRect()
+      const group = button.closest('[data-settings-group]')!.getBoundingClientRect()
+      const title = button.querySelector('.font-semibold')!.getBoundingClientRect()
+      const state = button.querySelector('[data-room-state]')!.getBoundingClientRect()
+      return {
+        height: box.height, inside: box.left >= group.left - 1 && box.right <= group.right + 1,
+        overflow: button.scrollWidth > button.clientWidth, titleRight: title.right, titleTop: title.top,
+        stateLeft: state.left, stateTop: state.top, description: button.querySelector('.text-caption')!.getBoundingClientRect().width,
+      }
+    }))
+    for (const row of rows) {
+      expect(row.height).toBeGreaterThanOrEqual(44)
+      expect(row.inside).toBe(true)
+      expect(row.overflow).toBe(false)
+      if (width >= 2560) {
+        // On an ultrawide screen the state sits beside the words, which keep a readable measure.
+        expect(row.stateLeft).toBeGreaterThan(row.titleRight)
+        expect(row.description).toBeLessThanOrEqual(720)
+      } else {
+        expect(row.stateTop).toBeGreaterThan(row.titleTop)
+      }
+    }
+  })
+}
 
 test('sidebar language menu fits its labels in expanded and collapsed rails', async ({ page }) => {
   await mockSettings(page)
@@ -512,7 +644,7 @@ test('settings child pages use the same content width as their overview', async 
     await page.goto(`/#/settings/${room}`)
     await expect(page.locator('.settings-detail-open')).toBeVisible()
     const body = await page.locator('.settings-detail-open').boundingBox()
-    const heading = await page.locator('.settings-room-heading').boundingBox()
+    const heading = await page.locator('.page-header').boundingBox()
     expect(body!.width, room).toBeGreaterThanOrEqual(main - 2)
     expect(Math.abs(body!.x - heading!.x), room).toBeLessThan(1)
     expect(Math.abs(body!.width - heading!.width), room).toBeLessThan(1)
@@ -926,6 +1058,84 @@ test('a manager asked to rescan after changes says so, and the choice can be tur
   await expect.poll(() => saved?.rescanAfterChanges).toBe(false)
 })
 
+test('a connection\'s import webhook shows its URL and a password once, and the last delivery', async ({ page }) => {
+  await mockSettings(page)
+  const sonarr = {
+    id: 4, name: 'Sonarr', type: 'Sonarr', baseUrl: 'http://sonarr:8989', hasApiKey: true, enabled: true, rescanAfterChanges: true,
+    createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z',
+    webhookEnabled: false, webhookPath: '/api/arr-webhooks/4', remotePathPrefix: null, localPathPrefix: null,
+    webhookLastReceivedAt: null, webhookLastOutcome: null, webhookLastDetail: null,
+  }
+  let current = sonarr
+  await page.route('**/api/arr-connections', route => json(route, [current]))
+  let issued = 0
+  await page.route('**/api/arr-connections/4/webhook-password', route => {
+    issued++
+    current = {
+      ...sonarr, webhookEnabled: true, webhookLastReceivedAt: new Date().toISOString(), webhookLastOutcome: 'Queued',
+      webhookLastDetail: 'Queued Show/Season 01/S01E01.mkv.',
+    }
+    return json(route, { username: 'optimisarr', password: 'fabricated-password-0123456789', webhookPath: '/api/arr-webhooks/4' })
+  })
+  await page.goto('/#/settings/download-managers')
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const webhook = page.getByTestId('arr-webhook')
+  await expect(webhook).toContainText('The webhook is off.')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Nothing received yet.')
+
+  await webhook.getByRole('button', { name: 'Create webhook password' }).click()
+
+  await expect.poll(() => issued).toBe(1)
+  const origin = new URL(page.url()).origin
+  await expect(webhook.getByLabel('Webhook URL')).toHaveValue(`${origin}/api/arr-webhooks/4`)
+  await expect(webhook.getByLabel('Username')).toHaveValue('optimisarr')
+  await expect(webhook.getByLabel('Password')).toHaveValue('fabricated-password-0123456789')
+  await expect(webhook).toContainText('it cannot be shown again')
+  await expect(webhook).toContainText('Turn on On File Import and On File Upgrade')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Queued')
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Queued Show/Season 01/S01E01.mkv.')
+  await expect(page.locator('li').filter({ hasText: 'http://sonarr:8989' }).getByText('webhook', { exact: true })).toBeVisible()
+})
+
+test('a saved webhook password is never shown again, and a path mapping is saved with the connection', async ({ page }) => {
+  await mockSettings(page)
+  const radarr = {
+    id: 5, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, rescanAfterChanges: true,
+    createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z',
+    webhookEnabled: true, webhookPath: '/api/arr-webhooks/5', remotePathPrefix: '/movies', localPathPrefix: '/data/movies',
+    webhookLastReceivedAt: '2026-11-07T00:00:00Z', webhookLastOutcome: 'NotInLibrary', webhookLastDetail: '/elsewhere/Film.mkv is not inside any enabled library.',
+  }
+  await page.route('**/api/arr-connections', route => json(route, [radarr]))
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/arr-connections/5', route => {
+    saved = route.request().postDataJSON()
+    return json(route, radarr)
+  })
+  await page.goto('/#/settings/download-managers')
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const webhook = page.getByTestId('arr-webhook')
+  await expect(webhook).toContainText('Set. It cannot be shown again.')
+  await expect(webhook.getByLabel('Password')).toHaveCount(0)
+  await expect(webhook.getByTestId('arr-webhook-last')).toContainText('Not in any enabled library')
+
+  await expect(page.getByLabel('Folder in Radarr')).toHaveValue('/movies')
+  await page.getByLabel('Same folder in Optimisarr').fill('/media/movies')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+
+  await expect.poll(() => saved?.localPathPrefix).toBe('/media/movies')
+  expect(saved?.remotePathPrefix).toBe('/movies')
+})
+
+test('a new connection says to save it before setting up its webhook', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/download-managers')
+
+  await expect(page.getByText('Save this connection first, then edit it to set up its webhook.')).toBeVisible()
+  await expect(page.getByTestId('arr-webhook')).toHaveCount(0)
+})
+
 test('each super-resolution engine can be checked and tested on its own', async ({ page }) => {
   await mockSettings(page)
   const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
@@ -975,4 +1185,110 @@ test('switching engines while a check runs never shows the other engines answer'
 
   await expect(page.getByText('Not installed — the engine executable was not found.')).toBeVisible()
   await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toHaveCount(0)
+})
+
+test('the super-resolution probe shows software Vulkan, driver diagnostics and hardware GPUs', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  await page.route('**/api/system/super-resolution/realcugan/probe', route =>
+    json(route, {
+      success: true,
+      exitCode: 0,
+      error: null,
+      outputTail: 'DRIVER: Searching for driver manifest files\n[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]',
+      deviceUsed: 'auto',
+      detectedDevice: 'llvmpipe (LLVM 20.1.2, 256 bits)',
+      usingSoftwareVulkan: true,
+      warning: "Upscaling ran on software Vulkan (llvmpipe (LLVM 20.1.2, 256 bits)) on the CPU instead of a GPU. Add 'graphics' to NVIDIA_DRIVER_CAPABILITIES.",
+    }))
+  await page.goto('/#/settings/super-resolution')
+
+  await page.getByRole('button', { name: 'Test with a real sample run' }).click()
+  const warnBanner = page.locator('.tone-warn')
+  await expect(warnBanner).toContainText('llvmpipe')
+  await expect(warnBanner).toContainText('NVIDIA_DRIVER_CAPABILITIES')
+  await expect(page.locator('.tone-ok')).toHaveCount(0)
+  const driverTrace = page.getByText('DRIVER: Searching for driver manifest files', { exact: false })
+  await expect(driverTrace).toBeHidden()
+  await page.getByText('Technical details', { exact: true }).click()
+  await expect(driverTrace).toBeVisible()
+
+  await page.route('**/api/system/super-resolution/realcugan/probe', route =>
+    json(route, {
+      success: true,
+      exitCode: 0,
+      error: null,
+      outputTail: '[0 NVIDIA GeForce GTX 1050]  queueC=0[1]',
+      deviceUsed: 'auto',
+      detectedDevice: 'NVIDIA GeForce GTX 1050',
+      usingSoftwareVulkan: false,
+      warning: null,
+    }))
+  await page.getByRole('button', { name: 'Test with a real sample run' }).click()
+  await expect(page.locator('.tone-ok')).toContainText('NVIDIA GeForce GTX 1050')
+})
+
+test('typing the saved free-disk headroom back clears the dirty state, and saved notices do not stay sticky across rooms', async ({ page }) => {
+  await mockSettings(page)
+  await page.route('**/api/settings', async (route) => {
+    if (route.request().method() === 'PUT') return json(route, route.request().postDataJSON())
+    return json(route, settings)
+  })
+  await page.goto('/#/settings/files')
+
+  const freeDisk = page.locator('#free-disk')
+  const freeDiskRow = page.locator('[data-setting-row]', { has: freeDisk })
+  await freeDisk.fill('20')
+  await expect(freeDiskRow).toHaveAttribute('data-setting-changed', '')
+  await expect(page.locator('[data-settings-actions]')).toHaveCSS('position', 'sticky')
+
+  await freeDisk.fill('10')
+  await expect(freeDiskRow).not.toHaveAttribute('data-setting-changed', '')
+  await expect(page.locator('[data-settings-actions]')).toHaveCount(0)
+
+  await freeDisk.fill('25')
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect(page.locator('[data-settings-actions]')).toContainText('Settings saved.')
+  await expect(page.locator('[data-settings-actions]')).toHaveCSS('position', 'static')
+
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await expect(page.locator('[data-settings-actions]')).toHaveCount(0)
+})
+
+test('opening remote workers directly shows its own heading even when workers are switched off', async ({ page }) => {
+  await mockSettings(page)
+  await page.route('**/api/settings', route => json(route, { ...settings, remoteWorkersAvailable: true, remoteWorkersEnabled: false }))
+  await page.goto('/#/settings/workers')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Remote workers')
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Remote workers')
+})
+
+test('a help tip longer than the window can be scrolled to its end', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 260 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.addInitScript(() => localStorage.setItem('optimisarr:locale', 'ru'))
+  await mockSettings(page)
+  await page.goto('/#/settings/encoding')
+  await expect(page.locator('main h1')).toBeVisible()
+  await page.locator('html').evaluate((element) => { element.style.fontSize = '125%' })
+  await page.locator('.workload-details summary').click()
+
+  // Find a tip whose text overflows the room it is given, and scroll it with the wheel.
+  const wrappers = page.locator('main span.group:has([role="tooltip"])')
+  let scrolled = false
+  for (const wrapper of await wrappers.all()) {
+    await wrapper.locator('button').scrollIntoViewIfNeeded()
+    await wrapper.locator('button').hover()
+    const tip = wrapper.locator('[role="tooltip"]')
+    await expect(tip).toBeVisible()
+    const overflows = await tip.evaluate((el) => el.scrollHeight > el.clientHeight + 4)
+    if (!overflows) continue
+    await tip.hover()
+    await page.mouse.wheel(0, 60)
+    await expect.poll(() => tip.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    scrolled = true
+    break
+  }
+  expect(scrolled).toBe(true)
 })

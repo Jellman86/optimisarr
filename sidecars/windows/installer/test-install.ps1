@@ -99,8 +99,14 @@ try {
     }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --verify-popover
     if ($LASTEXITCODE -ne 0) { throw 'Installed popover lost its anchor' }
+    # The work-location override sits beside the pairing so that an upgrade keeps it. Removed
+    # again straight after, so the paired worker below still uses its default folder.
+    $workLocation = Join-Path $pairing 'work-location'
+    Set-Content -LiteralPath $workLocation -Value 'D:\OptimisarrWork' -Encoding utf8
     Invoke-Msi '/i' 'unpaired-upgrade' $upgradePath
     $currentInstaller = $upgradePath
+    if (!(Test-Path -LiteralPath $workLocation) -or (Get-Content -LiteralPath $workLocation -Raw).Trim() -ne 'D:\OptimisarrWork') { throw 'Upgrade lost the work-location override' }
+    Remove-Item -LiteralPath $workLocation
     if ((Get-Service OptimisarrSidecar).Status -ne 'Stopped') { throw 'Unpaired upgrade started the worker' }
 
     # A loopback fixture issues only a disposable credential and always drains the worker.
@@ -143,6 +149,16 @@ try {
     $started = [DateTime]::UtcNow
     Start-Service OptimisarrSidecar
     Wait-ForCheckIn $heartbeats $started
+    # A LocalSystem service creates and deletes files in the work folder, so it must belong to
+    # Administrators (or SYSTEM) and be open to nobody else, with nothing inherited from C:\.
+    $workFolder = Join-Path $env:SystemDrive 'OptimisarrWork'
+    $workAcl = Get-Acl -LiteralPath $workFolder
+    $workOwner = $workAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+    if ($workOwner -notin @('S-1-5-32-544', 'S-1-5-18')) { throw "Work folder is owned by $workOwner, not Administrators or SYSTEM" }
+    if (!$workAcl.AreAccessRulesProtected) { throw 'Work folder still inherits access from its drive' }
+    $workPrincipals = @($workAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+    if (($workPrincipals -join ',') -ne 'S-1-5-18,S-1-5-32-544') { throw "Work folder is open to more than SYSTEM and Administrators: $($workPrincipals -join ', ')" }
+    if (!(Test-Path -LiteralPath (Join-Path $workFolder '.optimisarr-work-folder'))) { throw 'Work folder is missing the file the service holds open in it' }
 
     foreach ($upgrade in @(
         @{ Path = $installerPath; Name = 'paired-upgrade' },

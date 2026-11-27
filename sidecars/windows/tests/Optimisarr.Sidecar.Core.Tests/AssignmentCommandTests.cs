@@ -107,6 +107,47 @@ public sealed class AssignmentCommandTests
         Assert.NotNull(Refuse(["-i", "{{input}}", "-c:a", "aac", token, value, "{{output}}.mkv"]));
     }
 
+    [Theory]
+    [InlineData("libx265")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("av1_qsv")]
+    [InlineData("hevc_amf")]
+    [InlineData("h264_amf")]
+    public void A_server_command_with_a_keyframe_interval_fits_the_advertised_contract(string encoder)
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("{{input}}", "{{output}}.mkv", "hevc", 22, "medium", false)
+            { KeyframeIntervalFrames = 240 };
+        var arguments = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, videoEncoder: encoder);
+
+        Assert.Contains("-g", arguments);
+        Assert.Null(Refuse(arguments));
+        Assert.True(WorkerProtocol.Maximum >= Optimisarr.Core.Workers.WorkerProtocol.MinimumForEncodeCommand(arguments));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("240")]
+    [InlineData("20000")]
+    public void A_gop_length_within_the_server_bounds_is_accepted(string frames)
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:v:0", "libx265", "-g", frames, "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("20001")]
+    [InlineData("0240")]
+    [InlineData("+240")]
+    [InlineData("240.0")]
+    [InlineData("1e3")]
+    [InlineData("240/x")]
+    public void A_gop_length_outside_the_server_bounds_is_refused(string frames)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", "-c:v:0", "libx265", "-g", frames, "{{output}}.mkv"]));
+    }
+
     [Fact]
     public void The_command_the_server_actually_sends_is_accepted()
     {
@@ -171,6 +212,51 @@ public sealed class AssignmentCommandTests
 
         Assert.NotNull(refusal);
         Assert.Contains("-vsync", refusal!.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_AMD_AMF_constant_quality_command_is_accepted()
+    {
+        // AMF exposes its constant-QP control as per-tier QP choices (-qp_i / -qp_p), distinct from
+        // the single -qp / -cq of the other hardware encoders. The server emits them for the AMD
+        // AMF encoder family; the sidecar has to agree before it will run the job.
+        string[] arguments =
+            ["-i", "{{input}}", "-c:v:0", "hevc_amf", "-rc", "cqp", "-qp_i", "24", "-qp_p", "24",
+             "-c:a", "aac", "-c:s", "copy", "{{output}}.mkv"];
+
+        Assert.Null(Refuse(arguments));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("24")]
+    [InlineData("51")]
+    public void An_AMD_AMF_quantiser_within_the_server_bounds_is_accepted(string qp)
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:v:0", "hevc_amf", "-rc", "cqp", "-qp_i", qp, "-qp_p", qp, "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("-qp_i", "52")]
+    [InlineData("-qp_p", "-1")]
+    [InlineData("-qp_i", "024")]
+    [InlineData("-qp_p", "+24")]
+    [InlineData("-qp_i", "24.0")]
+    [InlineData("-qp_p", "24:x")]
+    public void An_AMD_AMF_quantiser_outside_the_server_bounds_is_refused(string option, string qp)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", "-c:v:0", "hevc_amf", "-rc", "cqp", option, qp, "{{output}}.mkv"]));
+    }
+
+    [Fact]
+    public void The_AMD_AMF_command_the_server_builds_fits_the_advertised_contract()
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("{{input}}", "{{output}}.mkv", "hevc", 24, "quality", false);
+        var arguments = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, videoEncoder: "hevc_amf");
+
+        Assert.Contains("-qp_i", arguments);
+        Assert.Null(Refuse(arguments));
+        Assert.True(WorkerProtocol.Maximum >= Optimisarr.Core.Workers.WorkerProtocol.MinimumForEncodeCommand(arguments));
     }
 
     [Fact]

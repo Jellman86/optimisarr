@@ -77,6 +77,39 @@ verification.
 
 [Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
 
+**GPU load** comes from the Windows `GPU Engine` performance counters, the source Task Manager
+uses, so AMD and Intel GPUs report it as well as NVIDIA. The figure is the busiest encode, decode,
+video-processing, 3D, compute or copy engine on any GPU in the machine, including work by other
+programs; it is not split per GPU. It is read in the background every five seconds while the
+worker is checking in or the tray is open, and shows a dash when it cannot be read or is more
+than fifteen seconds old. `nvidia-smi` is used only where
+the counters are unavailable. The figure is for display; it does not decide which jobs a worker
+is offered.
+
+### Running more than one job at a time
+
+The worker takes one job at a time. To let it run up to four together, set the machine-wide
+environment variable `OPTIMISARR_SIDECAR_CONCURRENCY` from an administrator PowerShell window, then
+restart Windows so the service starts with it:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OPTIMISARR_SIDECAR_CONCURRENCY', '2', 'Machine')
+```
+
+A value other than a whole number from 1 to 4 is ignored: the worker keeps taking one job and
+writes a warning to the Event Log. Remove the variable and restart to return to one job.
+
+The worker reports this number to the server as its job slots. It does not assign jobs to a
+particular GPU: two jobs use whichever encoders their libraries chose, so they can share one
+GPU. Allow for each job's CPU, GPU and working space. Older NVIDIA consumer drivers cap how many
+NVENC encodes can run at once, so keep the number within what your driver allows. The worker takes
+at most one new job per check-in (every 30 seconds), so each one is offered against free space that
+already counts the jobs started before it. While more than one job is allowed, each job holds the
+working space the server estimated for it (one and a half times the source) until it finishes;
+quality-first jobs already reserve their own larger workspace. A job that would not fit beside the
+others is handed back to the server without being fetched, and the worker says which: other
+running jobs, too little free space, space that could not be read, or a job of unknown size.
+
 ## Capabilities
 
 Every capability is **proved before it is advertised**, never read from `ffmpeg -encoders`. A build
@@ -135,6 +168,133 @@ The service is a managed assembly launched by the bundled Microsoft-signed `dotn
 tray has its own apphost executable and uses the private desktop runtime. The current MSI and tray
 apphost are unsigned previews; see the installer’s distribution status before sharing them. Do not
 disable Smart App Control or other Windows protections to run a preview.
+
+### Work directory and RAM scratch
+
+Each job downloads its source and writes its candidate into its own folder under the work
+directory, `C:\OptimisarrWork` by default. That sits on the system drive, which is rarely where
+anyone wants tens of gigabytes of scratch. Move it in one of two ways, both read when the service
+starts, with the file taking precedence:
+
+1. **The work-location file**, `%ProgramData%\Optimisarr\Sidecar\work-location`, holding one
+   line: the folder, for example `D:\OptimisarrWork`. Upgrades and uninstalls leave this folder in
+   place, so the setting survives them.
+2. **The machine-wide environment variable** `OPTIMISARR_SIDECAR_WORK`, the setting the Linux
+   worker reads too.
+
+From an administrator PowerShell window, drain the worker and wait for its jobs, then:
+
+```powershell
+$file = "$env:ProgramData\Optimisarr\Sidecar\work-location"
+Set-Content -LiteralPath $file -Value 'D:\OptimisarrWork' -Encoding utf8
+icacls $file /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
+icacls $file /setowner '*S-1-5-32-544'
+Restart-Service OptimisarrSidecar
+```
+
+Restarting hands back any running job, and the next ones use the new folder. The previous folder
+is not moved or emptied. Delete the file, or the variable, to go back to the default. Existing
+installations keep `C:\OptimisarrWork`, or their variable, until one is set.
+
+The folder must be a full path to a folder on a local drive: not a drive root such as `D:\`, not a
+network share, without quotes, no longer than 200 characters, and without a folder named after a
+device (`CON`, `NUL`, `AUX`, `PRN`, `COM1`–`COM9`, `LPT1`–`LPT9`, with or without an extension).
+The service runs as LocalSystem, so it trusts the file only when it is an ordinary file with one
+name, owned by Administrators or SYSTEM, and no other account can do more than read it. The two
+`icacls` lines make that so whichever account wrote the file; without them, a file in a folder made
+by hand rather than by the installer can carry its author's own access and be refused. If it is
+still refused, delete the file and create it again from the administrator window: a file that
+other accounts could once change, or a link or second hard link in its place, is never trusted.
+**A setting that cannot be used stops work rather than falling back to `C:\OptimisarrWork`.** The
+worker stays connected but offers the server no working space and no job slots, so it is offered
+nothing. The Event Log entry written at start names the folder in use and where the setting came
+from, or says what is wrong with it; it is a warning whenever the worker cannot take jobs.
+
+#### Who can use the work folder
+
+The work folder is where a service running as SYSTEM creates and deletes files, so it is for SYSTEM
+and Administrators only. By default Windows lets any signed-in account create folders at the root
+of a drive and change anything beneath them; left like that, any of them could replace the work
+folder, or a job's folder inside it, with a junction, and the service would then write and delete
+wherever it pointed.
+
+- **A new work folder** is created by the service with SYSTEM and Administrators full control,
+  nothing inherited from the drive, and is checked every time the service starts.
+- **An existing folder other accounts can change, holding only the worker's own files** (one an
+  earlier version of the service created, owned by SYSTEM or Administrators and still carrying the
+  drive's access) is rebuilt when the service starts (an empty folder you made in an administrator window counts
+  too): the worker's leftovers in it
+  (`.optimisarr-native`, `job-*` and `native-*`) are deleted without following any link, the folder
+  is deleted, and it is created again locked. The Event Log records that it was. Resetting only the
+  folder's own access would not be enough, because everything already inside keeps the drive's
+  access, and a handle another account opened on the folder before keeps working; deleting it
+  retires both. A locked folder whose worker leftovers other accounts can change is rebuilt the same
+  way. A folder is rebuilt only at start, never under running jobs: one opened up while the service
+  runs stops work until the service is restarted.
+- **A folder that also holds files the worker did not make** is refused and left exactly as it is,
+  and the Event Log entry names them. Move them somewhere else and restart the service, which then
+  rebuilds the folder.
+- **A folder anyone else owns** (one you created by hand without an elevated prompt, for instance)
+  is refused, and the Event Log entry gives the fix. From an administrator window, either delete it
+  and let the service create it, or lock it yourself:
+
+  ```powershell
+  icacls 'D:\OptimisarrWork' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
+  icacls 'D:\OptimisarrWork' /setowner '*S-1-5-32-544'
+  Restart-Service OptimisarrSidecar
+  ```
+
+- **A folder reached through a link** is refused: the work folder or any folder above it that is a
+  junction, symbolic link or a volume mounted into a folder. Use the drive's own letter.
+- **A job's folder** (`job-<id>`) is created only where nothing exists. A plain folder an earlier run
+  left behind is cleared first; a link, a file, or a folder another account made or can change stops
+  that job and hands it back.
+
+While the service runs it holds the work folder and every folder above it open, so none of them can
+be renamed, deleted or replaced, and a RAM drive holding them cannot be unmounted cleanly. Stop the
+service first. It also keeps a file, `.optimisarr-work-folder`, in the work folder and holds it
+open: an empty folder can be turned into a junction in place by anyone allowed to write its
+attributes, so the work folder is never left empty. Each folder on the path is found inside the
+one before it rather than by name, and a job's folder is emptied the same way, so a folder turned
+into a junction part-way through is never followed. It checks the folder again before every check-in and every job, and stops taking work
+the moment the folder fails.
+
+**Drives without access control.** FAT32 and exFAT, which many RAM-drive tools format by default,
+have no owners or permissions, so the folder cannot be protected: any account on the machine could
+change or replace a job's files there, including the VMAF log its quality is judged by. Such a work folder is refused. Format the
+drive as NTFS if the tool allows it. To accept the risk instead, on a machine where every account
+is trusted, set the machine-wide variable and restart the service:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OPTIMISARR_SIDECAR_WORK_ALLOW_UNPROTECTED', '1', 'Machine')
+Restart-Service OptimisarrSidecar
+```
+
+The Event Log then warns at every start that the folder is unprotected. Only `1` counts; remove the
+variable to refuse such drives again. Links are refused even with it set.
+
+**RAM scratch.** Windows has no built-in RAM filesystem like Linux's tmpfs, and this sidecar does
+not create RAM disks the way the Mac sidecar does. To work in memory, mount a RAM drive with a tool
+such as ImDisk, give it a drive letter nothing else uses, and point the work location at a folder on
+it, such as `R:\OptimisarrWork`. Size it so a job's source and candidate fit with room to spare,
+and leave enough memory for FFmpeg and the rest of the machine. The drive's size is the limit:
+the server offers a job only when the worker reports enough free working space for it, as on a Linux
+worker with a sized tmpfs.
+
+- The start-up Event Log entry says whether Windows reports the volume as a RAM disk. Most RAM-drive
+  tools present an ordinary fixed disk, and the worker then treats it as a disk. When Windows does
+  report a RAM disk, the worker also counts working space against free memory, alongside running
+  more than one job and quality-first audio and image work. That can refuse work a pre-allocated
+  RAM drive would have held, but never the reverse.
+- If the RAM drive is missing, for example after a restart before the tool remounts it, the worker
+  reports no free working space and takes nothing. It never writes to another drive instead. Once
+  the drive is back, the next check-in recreates the locked folder and ordinary jobs resume.
+  **Restart the service after remounting** to get quality-first audio and image work back: the
+  worker proves it can do that work in the work folder only when the service starts.
+- Give the RAM drive its own letter. A RAM drive mounted into a folder on another disk is a link,
+  and is refused; while unmounted, the empty folder left behind would be ordinary disk anyway.
+- A RAM drive's contents are lost on restart. That loses only in-flight scratch: the original
+  never leaves the server, and the job runs again once it is handed back or its lease lapses.
 
 ### Worker placement and strict verification
 

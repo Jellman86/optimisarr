@@ -1,3 +1,4 @@
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
@@ -524,6 +525,18 @@ public sealed class VerificationEvaluatorTests
 
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio metadata and artwork"));
     }
+
+    [Fact]
+    public void iTunes_gapless_figures_are_technical_and_may_be_dropped_because_they_describe_the_old_length()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalFormatTags = new Dictionary<string, string> { ["title"] = "Track", ["iTunSMPB"] = " 00000000 00000840 000001C0 0000000000AC4400" },
+            OutputFormatTags = new Dictionary<string, string> { ["title"] = "Track" },
+        };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Audio metadata and artwork"));
+    }
     // A converted output that passes every default gate: decodes cleanly, probes,
     // keeps duration and audio, and is meaningfully smaller than the original.
     // --- Intended resolution ------------------------------------------------------------------
@@ -818,12 +831,83 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Silence trimmed"));
     }
 
+    // --- A trim-only file keeps the source's own audio between its cuts ------------------------
+
+    [Fact]
+    public void A_lossless_trim_passes_only_when_it_decodes_to_exactly_the_kept_source_samples()
+    {
+        var same = Trimmed(Trim.KeptSeconds) with
+        {
+            KeptAudio = new KeptAudioEvidence(AudioTrimOnlyMethod.LosslessReencode, SourceDecodedDigest: "ab", OutputDecodedDigest: "ab"),
+        };
+
+        Assert.True(VerificationEvaluator.Evaluate(same, VerificationPolicy.Default).Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(same, VerificationPolicy.Default), "Kept audio unchanged"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(
+            same with { KeptAudio = same.KeptAudio! with { OutputDecodedDigest = "cd" } }, VerificationPolicy.Default), "Kept audio unchanged"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(
+            same with { KeptAudio = same.KeptAudio! with { SourceDecodedDigest = null } }, VerificationPolicy.Default), "Kept audio unchanged"));
+    }
+
+    [Fact]
+    public void A_copied_trim_passes_only_when_its_packets_are_an_unbroken_run_of_the_source()
+    {
+        var copied = Trimmed(Trim.KeptSeconds) with
+        {
+            KeptAudio = new KeptAudioEvidence(AudioTrimOnlyMethod.StreamCopy,
+                SourcePacketDigests: ["a", "b", "c", "d"], OutputPacketDigests: ["b", "c"]),
+        };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(copied, VerificationPolicy.Default), "Kept audio unchanged"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(
+            copied with { KeptAudio = copied.KeptAudio! with { OutputPacketDigests = ["b", "x"] } }, VerificationPolicy.Default), "Kept audio unchanged"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(
+            copied with { KeptAudio = copied.KeptAudio! with { OutputPacketDigests = null } }, VerificationPolicy.Default), "Kept audio unchanged"));
+    }
+
+    [Fact]
+    public void A_trim_only_file_passes_only_when_its_tags_were_read_and_every_one_is_unchanged()
+    {
+        static MusicTagRead Id3(params MusicTag[] tags) => MusicTagRead.Read(new MusicTagSet(MusicTagLayout.Id3, tags, 3));
+        var kept = Trimmed(Trim.KeptSeconds) with
+        {
+            TagsKept = new TagsKeptEvidence(Id3(new MusicTag("TIT2", ["T"]), new MusicTag("POPM", ["abc"])), Id3(new MusicTag("TIT2", ["T"]), new MusicTag("POPM", ["abc"]))),
+        };
+
+        Assert.True(VerificationEvaluator.Evaluate(kept, VerificationPolicy.Default).Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(kept, VerificationPolicy.Default), VerificationEvaluator.TagsKeptCheckName));
+
+        // The ffprobe view of the tags is unchanged, which is exactly what a lost POPM looks like there.
+        var lost = kept with { TagsKept = kept.TagsKept! with { Output = Id3(new MusicTag("TIT2", ["T"])) } };
+        var lostReport = VerificationEvaluator.Evaluate(lost, VerificationPolicy.Default);
+        Assert.False(lostReport.Passed);
+        Assert.Equal("The tags lost POPM.", lostReport.Checks.Single(c => c.Name == VerificationEvaluator.TagsKeptCheckName).Detail);
+
+        foreach (var unread in new[] { new TagsKeptEvidence(null, null), kept.TagsKept! with { Output = MusicTagRead.Unreadable("an APE tag") } })
+            Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(kept with { TagsKept = unread }, VerificationPolicy.Default),
+                VerificationEvaluator.TagsKeptCheckName));
+    }
+
+    [Fact]
+    public void An_mp3_length_tag_is_technical_and_may_be_cleared_because_it_describes_the_old_length()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalFormatTags = new Dictionary<string, string> { ["title"] = "Track", ["TLEN"] = "183000" },
+            OutputFormatTags = new Dictionary<string, string> { ["title"] = "Track" },
+        };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Audio metadata and artwork"));
+    }
+
     [Fact]
     public void An_untrimmed_file_has_no_trim_check_and_keeps_its_plain_length_check()
     {
         var report = VerificationEvaluator.Evaluate(HealthyAudio(), VerificationPolicy.Default);
 
         Assert.DoesNotContain(report.Checks, c => c.Name == "Silence trimmed");
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Kept audio unchanged");
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.TagsKeptCheckName);
         Assert.StartsWith("Original 3600s", report.Checks.Single(c => c.Name == "Duration").Detail);
     }
 
@@ -2240,6 +2324,107 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio codecs unchanged"));
+    }
+
+    private static readonly DolbyVisionConfiguration ProfileEightOne = new(1, 0, 8, 6,
+        RpuPresent: true, EnhancementLayerPresent: false, BaseLayerPresent: true, BaseLayerCompatibilityId: 1);
+
+    // Track cleanup of a Dolby Vision file: the video is copied, so VMAF does not run.
+    private static VerificationInput CopiedDolbyVision() => Healthy() with
+    {
+        VideoReencoded = false,
+        ExpectedVideoCodec = null,
+        OriginalVideoCodec = "hevc",
+        OriginalVideoProfile = "Main 10",
+        OutputVideoProfile = "Main 10",
+        OriginalPixelFormat = "yuv420p10le",
+        OutputPixelFormat = "yuv420p10le",
+        OriginalBitsPerRawSample = 10,
+        OutputBitsPerRawSample = 10,
+        QualityMeasured = false,
+        QualityScores = null,
+        OriginalIsDolbyVision = true,
+        OriginalDolbyVision = ProfileEightOne,
+        OutputDolbyVision = ProfileEightOne
+    };
+
+    [Fact]
+    public void A_copied_dolby_vision_stream_that_keeps_its_configuration_passes()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision(), VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join("; ", report.Checks.Where(c => c.Outcome == CheckOutcome.Failed).Select(c => c.Detail)));
+        var check = report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+        Assert.Equal("Dolby Vision kept", check.Name);
+        Assert.Contains("Profile 8.1", check.Detail);
+    }
+
+    [Fact]
+    public void A_copied_dolby_vision_stream_that_lost_its_configuration_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OutputDolbyVision = null },
+            VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, VerificationEvaluator.DolbyVisionKeptCheckName));
+    }
+
+    public static TheoryData<DolbyVisionConfiguration> AlteredConfigurations() =>
+    [
+        ProfileEightOne with { VersionMajor = 2 },
+        ProfileEightOne with { VersionMinor = 1 },
+        ProfileEightOne with { Profile = 5 },
+        ProfileEightOne with { Level = 5 },
+        ProfileEightOne with { RpuPresent = false },
+        ProfileEightOne with { EnhancementLayerPresent = true },
+        ProfileEightOne with { BaseLayerPresent = false },
+        ProfileEightOne with { BaseLayerCompatibilityId = 4 },
+    ];
+
+    [Theory]
+    [MemberData(nameof(AlteredConfigurations))]
+    public void A_copied_dolby_vision_stream_whose_configuration_changed_fails(DolbyVisionConfiguration output)
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OutputDolbyVision = output },
+            VerificationPolicy.Default);
+
+        var check = report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+        Assert.Equal(CheckOutcome.Failed, check.Outcome);
+        Assert.Contains(ProfileEightOne.Describe(), check.Detail);
+        Assert.Contains(output.Describe(), check.Detail);
+    }
+
+    [Fact]
+    public void A_dolby_vision_source_whose_configuration_cannot_be_read_fails_closed()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OriginalDolbyVision = null },
+            VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, VerificationEvaluator.DolbyVisionKeptCheckName));
+    }
+
+    [Fact]
+    public void The_dolby_vision_check_is_absent_for_a_source_without_dolby_vision()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with
+        {
+            OriginalIsDolbyVision = false, OriginalDolbyVision = null, OutputDolbyVision = null
+        }, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+    }
+
+    [Fact]
+    public void The_dolby_vision_check_is_absent_when_the_video_was_reencoded()
+    {
+        // A re-encode only reaches a Dolby Vision source when the library opted in to losing the layer.
+        var report = VerificationEvaluator.Evaluate(Healthy() with
+        {
+            OriginalIsDolbyVision = true, OriginalDolbyVision = ProfileEightOne, OutputDolbyVision = null
+        }, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
     }
 
     [Fact]

@@ -114,6 +114,11 @@ test('state colours stay distinguishable for colour-blind readers and legible on
       const ratio = contrast(tokens[state], tokens.panel)
       if (ratio < 4.5) problems.push(`${name}: --${state} on --panel is ${ratio.toFixed(2)}:1`)
     }
+    for (const fill of ['accent-fill', 'accent-fill-hi'] as const) {
+      assert.ok(tokens[fill] && tokens['accent-on'], `${name}: --${fill} and --accent-on must be six-digit hex`)
+      const ratio = contrast(tokens['accent-on'], tokens[fill])
+      if (ratio < 4.5) problems.push(`${name}: --accent-on on --${fill} is ${ratio.toFixed(2)}:1`)
+    }
     for (let i = 0; i < states.length; i++) {
       for (let j = i + 1; j < states.length; j++) {
         const [a, b] = [linear(hex(tokens[states[i]])), linear(hex(tokens[states[j]]))]
@@ -128,3 +133,160 @@ test('state colours stay distinguishable for colour-blind readers and legible on
   }
   assert.deepEqual(problems, [])
 })
+
+// A control that is not text still has to be seen to be used: a field's edge, the track of a
+// switch that is off and the focus ring each clear WCAG 1.4.11's 3:1 against the surfaces they
+// are drawn on. axe does not measure these, so this does. A translucent token is measured as it
+// is painted: laid over the surface it sits on.
+type Rgba = [number, number, number, number]
+
+function rgba(value: string): Rgba {
+  const hexMatch = /^#([0-9a-f]{6})$/i.exec(value)
+  if (hexMatch) return [...hex(value).map((c) => c * 255), 1] as Rgba
+  const fn = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(value)
+  assert.ok(fn, `cannot read the colour ${value}`)
+  return [Number(fn[1]), Number(fn[2]), Number(fn[3]), fn[4] === undefined ? 1 : Number(fn[4])]
+}
+function over(top: string, surface: string): string {
+  const [r, g, b, a] = rgba(top)
+  const base = rgba(surface)
+  assert.equal(base[3], 1, `${surface} must be an opaque surface`)
+  const mix = [r, g, b].map((c, i) => Math.round(c * a + base[i] * (1 - a)))
+  return `#${mix.map((c) => c.toString(16).padStart(2, '0')).join('')}`
+}
+function colours(css: string, selector: RegExp): Record<string, string> {
+  const start = css.search(selector)
+  assert.ok(start >= 0, `no ${selector} block in app.css`)
+  const block = css.slice(start, css.indexOf('\n}', start))
+  return Object.fromEntries([...block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6}|rgba?\([^)]*\))\s*;/gi)].map((m) => [m[1], m[2]]))
+}
+
+test('controls that are not text clear 3:1 on the surfaces they sit on, in both schemes', () => {
+  const css = readFileSync(join(root, 'app.css'), 'utf8')
+  const directFloors: [token: string, surfaces: string[]][] = [
+    ['switch-off', ['panel']],
+    ['focus', ['panel', 'ground']],
+  ]
+  const problems: string[] = []
+  for (const [name, selector] of [['light', /^:root\s*\{/m], ['dark', /^html\.dark\b/m]] as const) {
+    const tokens = colours(css, selector)
+    for (const [token, surfaces] of directFloors) {
+      assert.ok(tokens[token], `${name}: --${token} must be defined`)
+      for (const surface of surfaces) {
+        const ratio = contrast(over(tokens[token], tokens[surface]), tokens[surface])
+        if (ratio < 3) problems.push(`${name}: --${token} on --${surface} is ${ratio.toFixed(2)}:1`)
+      }
+    }
+    // An input edge is an inset shadow painted over --field, viewed adjacent to the surrounding
+    // surface (--panel or --ground). Model both painted layers rather than compositing directly
+    // onto the surrounding surface.
+    assert.ok(tokens.field, `${name}: --field must be defined`)
+    for (const token of ['field-edge', 'field-edge-hover'] as const) {
+      assert.ok(tokens[token], `${name}: --${token} must be defined`)
+      for (const surface of ['panel', 'ground'] as const) {
+        const fieldFill = over(tokens.field, tokens[surface])
+        const paintedEdge = over(tokens[token], fieldFill)
+        const ratio = contrast(paintedEdge, tokens[surface])
+        if (ratio < 3) problems.push(`${name}: --${token} (over --field) against --${surface} is ${ratio.toFixed(2)}:1`)
+      }
+    }
+    // Pointing at a field strengthens its edge; it never fades it.
+    const panelField = over(tokens.field, tokens.panel)
+    const resting = contrast(over(tokens['field-edge'], panelField), tokens.panel)
+    const hovered = contrast(over(tokens['field-edge-hover'], panelField), tokens.panel)
+    if (hovered <= resting) problems.push(`${name}: a hovered field edge (${hovered.toFixed(2)}:1) is no stronger than at rest (${resting.toFixed(2)}:1)`)
+    // The white knob still stands out from an "off" track.
+    const knob = contrast('#ffffff', tokens['switch-off'])
+    if (knob < 3) problems.push(`${name}: the switch knob on --switch-off is ${knob.toFixed(2)}:1`)
+  }
+  assert.deepEqual(problems, [])
+})
+
+// Drift budgets. Each figure is what the components carried when its budget was set: one-off
+// type sizes, stroked containers, per-button height overrides and page-scoped CSS are the ways
+// pages drift from the shared system. A budget only ever comes down. When a change removes
+// some drift, lower the budget to the new count in the same change so it cannot creep back.
+function countArbitraryFontSizes(text: string): number {
+  return text.match(/(?<![\w-])text-\[(?:length:)?\d*\.?\d+(?:px|rem)\]/g)?.length ?? 0
+}
+function countStrokedEdges(text: string): number {
+  return text.match(/(?<![\w-])border-line(?![\w-])/g)?.length ?? 0
+}
+function countMinH11Overrides(text: string): number {
+  return text.match(/(?<![\w-])min-h-11(?![\w.-])/g)?.length ?? 0
+}
+// A duration spelled out by hand (`duration-200`, `transition: opacity 180ms`, `{ duration: 180 }`)
+// keeps its speed when the motion tokens change and keeps moving when reduced motion is asked
+// for. Keyframe loop periods (`animation: … 1.8s infinite`) are not counted: they are the shape
+// of one indicator, and each already stops under reduced motion.
+const cssTime = /(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s(?![\w-])/g
+function countRawDurations(text: string): number {
+  let count = text.match(/(?<![\w-])(?:duration|delay)-(?:\d+|\[)/g)?.length ?? 0
+  for (const match of text.matchAll(/(?<![\w-])transition(?:-duration|-delay)?\s*:([^;}]*)/g)) {
+    count += match[1].match(cssTime)?.filter((time) => parseFloat(time) !== 0).length ?? 0
+  }
+  for (const match of text.matchAll(/(?<![\w-])(?:duration|delay):\s*([^,}]*)/g)) {
+    count += match[1].match(/(?<![\w.])[1-9]\d*(?![\w.])/g)?.length ?? 0
+  }
+  return count
+}
+function countStyleLines(text: string): number {
+  let lines = 0
+  for (const match of text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
+    const body = match[1].replace(/^\r?\n/, '').replace(/\r?\n$/, '')
+    if (body.length > 0) lines += body.split(/\r?\n/).length
+  }
+  return lines
+}
+
+test('drift counters handle typed lengths, fractional heights and one-line style blocks', () => {
+  assert.equal(countArbitraryFontSizes('text-[11px] text-[length:12px] text-[0.75rem] text-[length:0.8rem] text-sm'), 4)
+  assert.equal(countStrokedEdges('border-line border-line-soft my-border-line'), 1)
+  assert.equal(countMinH11Overrides('min-h-11 min-h-11.5 min-h-110 max-min-h-11 sm:min-h-11'), 2)
+  assert.equal(countStyleLines('<style></style><style>\n</style>'), 0)
+  assert.equal(countStyleLines('<style>.a { color: red; }</style>'), 1)
+  assert.equal(countStyleLines('<style>\n  .a {}\n  .b {}\n</style>'), 2)
+  assert.equal(countRawDurations('transition-colors duration-200 duration-(--motion-base) md:duration-150'), 2)
+  assert.equal(countRawDurations('a { transition: opacity 180ms ease, visibility 0s linear .4s; }'), 2)
+  assert.equal(countRawDurations('a { transition: opacity var(--motion-base) var(--motion-ease-standard); }'), 0)
+  assert.equal(countRawDurations('animate:flip={{ duration: reduced ? 0 : 180 }} {{ duration: motionMs(\'base\') }}'), 1)
+  assert.equal(countRawDurations('a { animation: pulse 1.8s ease-in-out infinite; } { durationSeconds: 12 }'), 0)
+})
+
+// Every transition takes its speed from the motion tokens, so the whole app speeds up, slows
+// down or stands still together. app.css is included: it is where the tokens are defined, and
+// its shared primitives are held to them as well.
+test('transitions take their durations from the motion tokens', () => {
+  const files = [...sources(root), join(root, 'app.css')]
+  const offenders = files
+    .map((file) => ({ name: relative(root, file), n: countRawDurations(readFileSync(file, 'utf8')) }))
+    .filter(({ n }) => n > 0)
+    .map(({ name, n }) => `${name}: ${n}`)
+  assert.deepEqual(offenders, [], `raw durations found; use var(--motion-fast|base|slow) or motionMs():\n${offenders.join('\n')}`)
+})
+
+const budgets = {
+  'arbitrary font sizes (text-[…px|rem])': { budget: 0, count: countArbitraryFontSizes },
+  'stroked edges (border-line)': { budget: 0, count: countStrokedEdges },
+  'per-control height overrides (min-h-11)': { budget: 0, count: countMinH11Overrides },
+  'lines of page-scoped CSS (<style>)': { budget: 573, count: countStyleLines },
+}
+
+for (const [drift, { budget, count }] of Object.entries(budgets)) {
+  test(`components stay within the drift budget for ${drift}`, () => {
+    const perFile = sources(root)
+      .map((file) => ({ name: relative(root, file), n: count(readFileSync(file, 'utf8')) }))
+      .filter(({ n }) => n > 0)
+      .sort((a, b) => b.n - a.n)
+    const total = perFile.reduce((sum, { n }) => sum + n, 0)
+    assert.ok(
+      total <= budget,
+      `${drift}: ${total} found, budget ${budget}. Use the shared primitives instead. Largest contributors:\n` +
+        perFile.slice(0, 10).map(({ name, n }) => `  ${name}: ${n}`).join('\n'),
+    )
+    assert.ok(
+      total >= budget,
+      `${drift}: ${total} found, budget ${budget}. Drift went down — lower the budget to ${total} so it stays down.`,
+    )
+  })
+}

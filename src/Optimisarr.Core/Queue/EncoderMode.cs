@@ -6,6 +6,7 @@ public enum EncoderMode
     Cpu,
     NvidiaNvenc,
     IntelQsv,
-    Vaapi
+    Vaapi,
+    AmdAmf
 }
 

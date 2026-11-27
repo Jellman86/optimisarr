@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Unit tests quote class names as test data (a drift counter's `text-[11px]`); they are not UI. */
+@source not "./**/*.test.ts";
 
 /* Class-based dark mode: toggled by adding `dark` to <html>. Almost nothing needs it now —
    colours come from the tokens below, which swap as a set — but it stays for the rare
@@ -45,7 +47,13 @@
   --lit: rgba(60, 60, 67, 0.06);
   --glass: rgba(246, 247, 250, 0.94);
   --field: #ffffff;
-  --field-edge: rgba(60, 60, 67, 0.2);
+  /* A field's edge is the only thing that says "you can type here", so the painted edge over
+     --field clears WCAG 3:1 against both the panel and the ground; hover strengthens it. */
+  --field-edge: rgba(60, 60, 67, 0.64);
+  --field-edge-hover: rgba(60, 60, 67, 0.82);
+  /* An "off" switch track is the control itself, not decoration, so it also clears 3:1.
+     It is its own step rather than --ink-5, which stays a ghost for empty-state glyphs. */
+  --switch-off: #808085;
   /* The selected segment of a segmented control: the one raised part of a recessed track. */
   --control-on: #ffffff;
 
@@ -56,7 +64,9 @@
   --lift-1: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
   --lift-2: 0 0 0 0.5px rgba(0, 0, 0, 0.045), 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 22px -10px rgba(30, 40, 60, 0.2);
   --lift-3: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.05), 0 20px 50px -18px rgba(30, 40, 60, 0.32);
-  --inset-1: inset 0 0 0 1px var(--field-edge);
+  /* A well's hairline. Deliberately the soft divider, not the field edge: a stroke strong
+     enough to mark a field would turn a container into a box. */
+  --inset-1: inset 0 0 0 1px var(--divide);
 
   /* Ink. Five steps: headline, body, caption, hint, ghost. */
   --ink: #1d1d1f;
@@ -73,6 +83,8 @@
   --ok-strong: #004593;
   --ok-soft: rgba(0, 98, 204, 0.1);
   --ok-line: rgba(0, 98, 204, 0.3);
+  /* The check knocked out of a filled ok mark. */
+  --ok-on: #ffffff;
 
   --warn: #946b00;
   --warn-strong: #5c4200;
@@ -99,10 +111,11 @@
   --info-soft: rgba(118, 118, 128, 0.13);
   --info-line: rgba(118, 118, 128, 0.32);
 
-  /* The one focus ring, and the tooltip surface. The tip surface is also the dark slab a
-     busy toolbar sits on, so it carries its own inks: one that reads on it, and one red
-     that still reads as a warning on it. */
-  --focus: rgba(0, 102, 214, 0.6);
+  /* The one focus ring, and the tooltip surface. The ring is opaque so it clears WCAG 3:1
+     on the ground and on a panel alike. The tip surface is also the dark slab a busy toolbar
+     sits on, so it carries its own inks: one that reads on it, and one red that still reads
+     as a warning on it. */
+  --focus: #0066d6;
   --tip: #2c2c2e;
   --tip-ink: #f5f5f7;
   --tip-bad: #ff8fae;
@@ -128,7 +141,9 @@ html.dark,
   --lit: rgba(255, 255, 255, 0.06);
   --glass: rgba(40, 40, 44, 0.94);
   --field: rgba(255, 255, 255, 0.055);
-  --field-edge: rgba(255, 255, 255, 0.12);
+  --field-edge: rgba(255, 255, 255, 0.36);
+  --field-edge-hover: rgba(255, 255, 255, 0.5);
+  --switch-off: #78787f;
   --control-on: #5b5b61;
 
   --divide: rgba(255, 255, 255, 0.1);
@@ -138,7 +153,9 @@ html.dark,
   --lift-1: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
   --lift-2: 0 0 0 0.5px rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.28), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
   --lift-3: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 60px -20px rgba(0, 0, 0, 0.85);
-  --inset-1: inset 0 0 0 1px var(--field-edge);
+  /* A well's hairline. Deliberately the soft divider, not the field edge: a stroke strong
+     enough to mark a field would turn a container into a box. */
+  --inset-1: inset 0 0 0 1px var(--divide);
 
   --ink: #f5f5f7;
   --ink-2: #d4d4d9;
@@ -150,6 +167,7 @@ html.dark,
   --ok-strong: #bcdaff;
   --ok-soft: rgba(78, 161, 255, 0.15);
   --ok-line: rgba(78, 161, 255, 0.35);
+  --ok-on: #161618;
 
   --warn: #f5cc4f;
   --warn-strong: #fde7a2;
@@ -166,7 +184,7 @@ html.dark,
   --accent-soft: rgba(78, 161, 255, 0.17);
   --accent-line: rgba(78, 161, 255, 0.36);
   --accent-fill: #0a6fe0;
-  --accent-fill-hi: #2c84f0;
+  --accent-fill-hi: #0860c4;
   --accent-on: #ffffff;
 
   --info: #b4b4bb;
@@ -174,7 +192,7 @@ html.dark,
   --info-soft: rgba(142, 142, 150, 0.18);
   --info-line: rgba(142, 142, 150, 0.36);
 
-  --focus: rgba(78, 161, 255, 0.75);
+  --focus: #4ea1ff;
   --tip: #3a3a3e;
   --tip-ink: #f5f5f7;
   --tip-bad: #ff8fae;
@@ -226,6 +244,79 @@ html.dark,
   --color-info-strong: var(--info-strong);
   --color-info-soft: var(--info-soft);
   --color-info-line: var(--info-line);
+
+  --default-transition-duration: var(--motion-fast);
+  --default-transition-timing-function: var(--motion-ease-standard);
+}
+
+/* ── Scale: type, radius and control height ─────────────────────────────────
+   Six type roles, every one in rem so the large-display root steps below scale
+   them together. Each role carries its own line height, so `text-body` is the
+   whole decision rather than a size that still needs a leading beside it.
+
+     display  the page's one headline figure or title     28/32
+     title    a panel or dialog heading                   17/24
+     body     running text and table cells                14/20
+     label    a field or group label, a segment           13/18
+     caption  hints, metadata, evidence detail            12/16
+     micro    chips, badges, axes and stage labels only   11/14
+
+   Four radii: a pill (`rounded-full`) for buttons, chips and segments; `field`
+   for inputs; `panel` for cards; `dialog` for modals. */
+@theme {
+  --text-display: 1.75rem;
+  --text-display--line-height: 2rem;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.5rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 0.875rem;
+
+  --radius-field: 0.5rem;
+  --radius-panel: 0.875rem;
+  --radius-dialog: 1.125rem;
+}
+
+/* Three control heights: compact inside a row, default, and prominent in a form or dialog.
+   A coarse pointer or a phone-width screen raises every control to the 44px touch target,
+   so no call site has to remember to. */
+:root {
+  --control-sm: 1.75rem;
+  --control-md: 2.25rem;
+  --control-lg: 2.75rem;
+}
+
+/* Motion: three durations and three curves, and nothing else. Movement here only confirms that
+   something the reader did took effect or that something arrived; it never carries meaning of
+   its own, so asking for less motion collapses every duration to nothing and loses no
+   information. A verification result or a replacement is never animated in or shown before the
+   server has said so.
+
+     fast   feedback: a hover, a lit row, a colour change          120ms
+     base   a control changing state: a switch, a layer, a row     180ms
+     slow   something arriving: artwork, a bar filling             300ms
+
+   `standard` moves something from one resting place to another; `enter` decelerates into view
+   and `exit` accelerates out of it. Plain `transition-*` utilities take fast and standard. */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 300ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0s;
+    --motion-base: 0s;
+    --motion-slow: 0s;
+  }
 }
 
 /* Paint the document background (not just an inner element) so iOS Safari's
@@ -304,6 +395,13 @@ p {
   background: transparent;
 }
 
+/* Something fixed to the bottom of the window clears a phone's home indicator. The page itself
+   needs no such allowance: the shell already stops it above the inset (App.svelte), so a sticky
+   action bar inside it never reaches the indicator either. */
+@utility bottom-safe-4 {
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* One focus ring for everything that can be pressed. An outline rather than a
    box-shadow ring: it follows the corner radius, needs no offset colour to fake
    a gap against whichever surface the control sits on, and never fights a
@@ -312,6 +410,14 @@ p {
   &:focus-visible {
     outline: 3px solid var(--focus);
     outline-offset: 2px;
+  }
+}
+/* The same ring drawn just inside the edge, for a control that fills a clipping container
+   (a menu row, a sidebar header in a scroll area) where an outer ring would be cut off. */
+@utility focus-ring-inset {
+  &:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: -3px;
   }
 }
 
@@ -329,10 +435,31 @@ p {
 
   /* Page furniture: a large title, the way a macOS window names its content. */
   .page-title {
-    @apply text-[1.75rem] leading-tight font-bold tracking-[-0.02em] text-ink;
+    @apply text-display font-bold tracking-[-0.02em] text-ink;
   }
   .page-subtitle {
     @apply mt-1 text-sm text-ink-3;
+  }
+  /* PageHeader: a trail, the title and its sentence, then the page's actions at the far edge.
+     24px to the content below, whatever the page. The text keeps a readable measure on a wide
+     screen; the actions wrap under it on a phone instead of pushing the page sideways. */
+  .page-header {
+    @apply mb-6 min-w-0;
+  }
+  .page-header-eyebrow {
+    @apply mb-4 min-w-0;
+  }
+  .page-header-row {
+    @apply flex flex-wrap items-start justify-between gap-x-6 gap-y-3;
+  }
+  .page-header-row-end {
+    @apply items-end;
+  }
+  .page-header-text {
+    @apply min-w-0 max-w-3xl flex-[1_1_16rem];
+  }
+  .page-header-actions {
+    @apply flex min-w-0 max-w-full flex-wrap items-center gap-2 max-sm:basis-full;
   }
 
   /* A sidebar row. 40px tall so a thumb finds it as well as a pointer. */
@@ -351,7 +478,7 @@ p {
   /* Carried only by the entries that can ask something of you. Tabular so a changing figure
      does not make the row twitch. */
   .nav-badge {
-    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold tabular-nums text-ink-2;
+    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center text-micro font-semibold tabular-nums text-ink-2;
     background: var(--lit);
   }
   .nav-button-inactive {
@@ -361,15 +488,38 @@ p {
     @apply text-ink;
     background: var(--lit);
   }
-  .nav-button-disabled {
-    @apply cursor-not-allowed text-ink-4;
-  }
 
   /* The card: a grouped surface. A solid fill and a soft shadow; no outline. */
   .card {
-    @apply min-w-0 max-w-full rounded-[14px];
+    @apply min-w-0 max-w-full rounded-panel;
     background: var(--panel);
     box-shadow: var(--lift-2);
+  }
+  /* An action bar that stays in reach while the evidence above it scrolls by. It is the last
+     thing on its page, so at the end it settles into its own place rather than over content.
+     A short viewport, such as a phone on its side, lets it scroll with the page instead of
+     covering half of it. */
+  .sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    padding-bottom: 1rem;
+    box-shadow: var(--lift-3);
+  }
+  /* In dark mode, lift sticky bars off scrolling cards with a lighter fill and crisp top edge. */
+  html.dark .sticky-actions {
+    background: var(--raised);
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+  }
+  @media (max-height: 30rem) {
+    .sticky-actions {
+      position: static;
+    }
+    .sticky-rail {
+      position: static;
+      max-height: none;
+      overflow: visible;
+    }
   }
   /* The sidebar floats on the ground as a pane of tinted glass. It is tinted almost to
      opaque, so its labels never depend on whatever is behind it (the phone drawer slides over
@@ -378,19 +528,6 @@ p {
   .app-rail {
     background: var(--glass);
     box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
-  }
-
-  /* A card you can open. The lift on hover is the whole affordance. */
-  .card-interactive {
-    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
-  }
-  .card-interactive:hover {
-    box-shadow: var(--lift-3);
-    transform: translateY(-1px);
-  }
-  .card-interactive:active {
-    transform: translateY(0);
-    box-shadow: var(--lift-1);
   }
 
   /* A recessed well, for content that sits *in* a surface rather than on it. */
@@ -405,6 +542,14 @@ p {
   }
   .hairline-b {
     box-shadow: inset 0 -1px 0 var(--divide-soft);
+  }
+
+  /* A key to press, drawn as a small raised cap. Its edge is an inset hairline, like every
+     other divider, so a row of keys never adds to the line box it sits in. */
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 font-mono text-micro font-semibold text-ink-2;
+    background: var(--raised);
+    box-shadow: inset 0 0 0 1px var(--divide), inset 0 -1px 0 var(--divide);
   }
 
   /* Tones: what a state means, as a tinted fill and an ink to read on it. One
@@ -489,7 +634,7 @@ p {
   /* A selectable card — a processing mode, a quality strategy, a codec chip. Choosing
      one tints its fill rather than drawing a coloured outline round it. */
   .choice {
-    @apply cursor-pointer transition-[background,box-shadow] duration-150 focus-ring;
+    @apply cursor-pointer transition-[background,box-shadow] focus-ring;
     background: var(--panel);
     box-shadow: var(--lift-1);
   }
@@ -511,7 +656,7 @@ p {
      that does the thing. Colours change at once, never by fading: a button that becomes
      available mid-fade reads as neither enabled nor disabled. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full border-0 px-3.5 py-2 text-sm font-medium text-ink transition-[box-shadow,filter] focus-ring active:brightness-95 disabled:pointer-events-none disabled:opacity-45;
+    @apply inline-flex min-h-(--control-md) items-center justify-center gap-2 rounded-full border-0 px-3.5 py-2 text-body font-medium text-ink transition-[box-shadow,filter] focus-ring active:brightness-95 disabled:pointer-events-none disabled:opacity-45;
     background: var(--raised);
     box-shadow: var(--lift-1);
   }
@@ -553,6 +698,31 @@ p {
     @apply text-ink;
     background: var(--lit);
   }
+  /* Sizes. Compact sits inside a table row or beside a line of text; large is the action a
+     form or dialog exists for. An icon-only button is as wide as it is tall. */
+  .btn-sm {
+    @apply min-h-(--control-sm) gap-1.5 px-2.5 py-1 text-caption;
+  }
+  .btn-lg {
+    @apply min-h-(--control-lg) px-5 py-2.5;
+  }
+  .btn-icon {
+    @apply min-w-(--control-md) px-0;
+  }
+  .btn-sm.btn-icon {
+    @apply min-w-(--control-sm);
+  }
+  .btn-lg.btn-icon {
+    @apply min-w-(--control-lg);
+  }
+  /* A control drawn as text — an inline link, a "More about this" disclosure, a checkbox's
+     whole label, a menu row — still needs a full-size target, though nothing outlines it. */
+  .hit-target {
+    @apply inline-flex min-h-(--control-lg) items-center;
+  }
+  .hit-target-square {
+    @apply inline-flex min-h-(--control-lg) min-w-(--control-lg) items-center justify-center;
+  }
 
   /* A segmented control, as macOS draws one: a recessed capsule track with the chosen
      segment raised out of it. Used for switching between views of the same page. */
@@ -561,7 +731,7 @@ p {
     background: var(--lit);
   }
   .segment {
-    @apply min-h-9 rounded-full px-3.5 text-[13px] font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring;
+    @apply inline-flex min-h-(--control-md) items-center justify-center rounded-full px-3.5 text-label font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring disabled:pointer-events-none disabled:opacity-45;
   }
   .segment:hover {
     @apply text-ink;
@@ -574,23 +744,63 @@ p {
     box-shadow: var(--lift-1);
   }
 
-  /* Fields are a solid fill with a hairline edge; focus adds the accent halo. */
+  /* A row of filters over a list. Resting pills are quiet text; the chosen one is a lit fill
+     with its label in ink, as a sidebar marks the row you are on. Never the accent fill, which
+     belongs to the one action that advances the work. */
+  .filter-bar {
+    @apply flex flex-wrap items-center gap-1;
+  }
+  .filter-pill {
+    @apply inline-flex min-h-(--control-md) items-center rounded-full px-3 text-label font-medium whitespace-nowrap text-ink-3 transition-colors focus-ring;
+  }
+  .filter-pill:hover {
+    @apply text-ink;
+    background: var(--lit);
+  }
+  .filter-pill-on,
+  .filter-pill-on:hover {
+    @apply font-semibold text-ink;
+    background: var(--accent-soft);
+  }
+  /* An on/off filter that narrows whichever pill is chosen, such as "Interlaced". It is a raised
+     key rather than quiet text, and while on it is the segmented control's raised fill with a
+     check, never the chosen pill's tint, so turning it on never reads as a second chosen pill. */
+  .filter-toggle {
+    @apply inline-flex min-h-(--control-md) items-center gap-1.5 rounded-full px-3 text-label font-medium whitespace-nowrap text-ink-2 transition-shadow focus-ring;
+    background: var(--raised);
+    box-shadow: var(--lift-1);
+  }
+  .filter-toggle:hover {
+    @apply text-ink;
+    background: linear-gradient(var(--lit), var(--lit)), var(--raised);
+  }
+  .filter-toggle[aria-pressed='true'],
+  .filter-toggle[aria-pressed='true']:hover {
+    @apply font-semibold text-ink;
+    background: var(--control-on);
+    box-shadow: var(--lift-2);
+  }
+
+  /* Fields are a solid fill with a hairline edge; focus adds the accent halo. One height
+     everywhere: a field is where a form is filled in, so it is always the form size. */
   .input {
-    @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply min-h-(--control-lg) w-full min-w-0 max-w-full rounded-field border-0 px-3 py-2 text-body text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
     background: var(--field);
-    box-shadow: var(--inset-1);
+    box-shadow: inset 0 0 0 1px var(--field-edge);
   }
   .input:hover {
-    box-shadow: inset 0 0 0 1px var(--divide);
+    box-shadow: inset 0 0 0 1px var(--field-edge-hover);
   }
+  /* Focus straddles the edge with a solid line in the focus colour, so it reads at 3:1 and is
+     never fainter than the resting edge; the soft halo only rounds it off. */
   .input:focus {
-    box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 0 3.5px var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft);
   }
   .input[aria-invalid='true'] {
-    box-shadow: inset 0 0 0 1px var(--bad-line);
+    box-shadow: inset 0 0 0 1px var(--bad);
   }
   .input[aria-invalid='true']:focus {
-    box-shadow: inset 0 0 0 1px var(--bad-line), 0 0 0 3.5px var(--bad-soft);
+    box-shadow: inset 0 0 0 1px var(--bad), 0 0 0 1px var(--bad), 0 0 0 4px var(--bad-soft);
   }
 
   /* Native selects: strip the OS widget and draw our own chevron. */
@@ -610,11 +820,11 @@ p {
   /* A switch, drawn as the macOS one: a grey capsule that fills with the accent, and a
      white knob. Both are driven by the real checkbox that sits over them. */
   .switch-track {
-    @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-200;
-    background: var(--ink-5);
+    @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-(--motion-base);
+    background: var(--switch-off);
   }
   .switch-knob {
-    @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200;
+    @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-(--motion-base);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   }
   .peer:checked ~ .switch-track {
@@ -628,22 +838,444 @@ p {
     outline-offset: 2px;
   }
 
+  /* Passed, verified, healthy, saved: ink text beside this filled mark. Blue text alone means
+     "you can press this", so a verdict is never told by the colour of its words. */
+  .ok-mark {
+    @apply inline-block h-3.5 w-3.5 flex-none;
+    color: var(--ok);
+  }
+  .ok-mark path {
+    stroke: var(--ok-on);
+  }
+
+  /* The stages of one job: done is a filled ok mark and calm ink, the stage running now is a
+     live accent dot and the headline ink, and what is still to come is quiet. Shared by the
+     app's job views and the worker sidecar so a stage reads the same on both. */
+  .job-stages {
+    @apply grid grid-cols-4 gap-2 max-[420px]:grid-cols-2 max-[420px]:gap-3;
+  }
+  .job-stages > li {
+    @apply flex min-w-0 items-center gap-1.5 pt-2.5 text-micro text-ink-4;
+    border-top: 2px solid var(--divide);
+    overflow-wrap: anywhere;
+  }
+  .job-stages > li.stage-done {
+    @apply text-ink-2;
+    border-color: var(--ok);
+  }
+  .job-stages > li.stage-current {
+    @apply font-semibold text-ink;
+    border-color: var(--accent);
+  }
+  .job-stages > li > .ok-mark,
+  .stage-live,
+  .stage-pending {
+    @apply h-3 w-3 flex-none;
+  }
+  /* The current stage is a solid accent dot whose halo breathes while work is actively running;
+     waiting or paused stages keep the solid dot still (.stage-live-still), and reduced motion
+     freezes the halo so the dot never loses contrast. */
+  .stage-live {
+    @apply rounded-full;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+    animation: stage-halo-pulse 1.8s ease-in-out infinite;
+  }
+  .stage-live-still {
+    animation: none;
+  }
+  .stage-pending {
+    @apply rounded-full;
+    box-shadow: inset 0 0 0 1.5px var(--divide);
+  }
+
+  /* The live readout across the top of a page: the state over its reason, then the few figures
+     that explain it, then any action at the far edge. Shared by the app's StatusStrip and the
+     worker sidecar so the answer to "is it working?" reads the same on both. The reason wraps
+     rather than clips, so it is complete on screen. */
+  .status-strip {
+    @apply flex flex-wrap items-center gap-x-6 gap-y-1;
+    padding: 0.55rem 1rem;
+  }
+  .status-strip:has(.status-strip-action) {
+    padding-right: 0.6rem;
+  }
+  .status-strip-state {
+    @apply flex min-w-0 items-center gap-3;
+    flex: 1 1 16rem;
+  }
+  .status-strip-text {
+    @apply flex min-w-0 flex-col gap-0.5;
+  }
+  .status-strip-label,
+  .status-strip-reason {
+    @apply min-w-0;
+    overflow-wrap: anywhere;
+  }
+  .status-strip-reason {
+    color: var(--ink-2);
+  }
+  /* A link that reads as text until it is hovered or focused, like the rest of the strip. */
+  .status-strip-playback {
+    text-decoration: none;
+    text-underline-offset: 0.2em;
+  }
+  .status-strip-playback:hover,
+  .status-strip-playback:focus-visible {
+    text-decoration: underline;
+    color: var(--ink);
+  }
+  .status-strip-fact,
+  .status-strip-action {
+    @apply flex min-w-0 max-w-full flex-wrap items-center;
+  }
+  .status-strip-fact {
+    @apply gap-2.5;
+    overflow-wrap: anywhere;
+  }
+  .status-strip-action {
+    @apply ml-auto gap-4;
+  }
+  .status-strip-action button {
+    @apply min-w-0 max-w-full;
+    overflow-wrap: anywhere;
+  }
+  /* A thumb-sized target that still reads as wrapped text: the height grows the box, not the
+     gap between its lines. */
+  @media (pointer: coarse), (max-width: 639px) {
+    .status-strip-playback {
+      @apply inline-flex items-center;
+      min-height: var(--control-lg);
+    }
+  }
+  @media (max-width: 639px) {
+    .status-strip-optional {
+      display: none;
+    }
+  }
+  /* Only the app's own strip opens and closes; the worker sidecar's always shows everything. */
+  .status-strip-toggle {
+    display: none;
+    color: var(--ink-2);
+  }
+  .status-strip-open .status-strip-toggle {
+    background: var(--lit);
+    color: var(--ink);
+  }
+  .status-strip-open .status-strip-toggle svg {
+    transform: rotate(180deg);
+  }
+  /* On a phone the app's strip is one line of a fixed height, so a reason that changes with each
+     poll never moves the page under a thumb: the state, as much of its reason as fits, and the
+     pause control by its symbol. The figures and the rest of the reason are one tap away, and stay
+     in the page for a screen reader. */
+  @media (max-width: 639px) {
+    .status-strip-collapsible {
+      @apply relative;
+    }
+    .status-strip-collapsible .status-strip-toggle {
+      display: inline-flex;
+    }
+    .status-strip-open .status-strip-optional {
+      display: flex;
+    }
+    /* Open, the figures and the action get room to breathe under the first line; the top padding
+       stays, so the toggle does not move. */
+    .status-strip-collapsible.status-strip-open {
+      row-gap: 0.625rem;
+      padding-bottom: 0.75rem;
+    }
+    /* Open, the state keeps the first line with its toggle, so the toggle stays where it was. */
+    .status-strip-open .status-strip-state {
+      flex-basis: calc(100% - var(--control-lg) - 1.5rem);
+    }
+    .status-strip-collapsible:not(.status-strip-open) {
+      flex-wrap: nowrap;
+      gap: 0.25rem;
+      min-height: calc(var(--control-lg) + 1.1rem);
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-state {
+      flex: 1 1 auto;
+    }
+    /* Playback artwork keeps to the line's height, so the strip is as tall with it as without.
+       Caps rather than sizes, which the artwork's own size utilities would outrank. */
+    .status-strip-collapsible:not(.status-strip-open) [data-thumbnail] {
+      max-height: var(--control-lg);
+    }
+    .status-strip-collapsible:not(.status-strip-open) [data-thumbnail][data-shape='portrait'] {
+      max-width: calc(var(--control-lg) * 2 / 3);
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-text {
+      @apply flex-row items-center gap-2;
+    }
+    .status-strip-collapsible:not(.status-strip-open) :is(.status-strip-label, .status-strip-reason) {
+      display: block;
+      min-height: 0;
+      overflow: hidden;
+      overflow-wrap: normal;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-label {
+      flex: 0 1 auto;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-reason {
+      flex: 1 1 0;
+    }
+    /* The touch target keeps its height as one line of the row. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-playback {
+      line-height: var(--control-lg);
+    }
+    /* A failed pause opens the strip; closed again, its alert stays for a reader but leaves the line. */
+    .status-strip-collapsible:not(.status-strip-open) :is(.status-strip-fact, .status-strip-action-label, .status-strip-error) {
+      @apply sr-only;
+    }
+    /* Closed, the pause control keeps its symbol alone; its explanation waits in the open strip and
+       still describes the control for a screen reader. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action-help {
+      display: none;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action {
+      @apply ml-0 flex-none;
+    }
+    /* Last on the line, the same corner it keeps once the strip is open, set apart from the pause
+       control by a hairline so the two symbols do not read as one pair of buttons. */
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-toggle {
+      order: 1;
+      position: relative;
+      margin-inline-start: 0.5rem;
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-toggle::before {
+      content: '';
+      position: absolute;
+      inset-block: 25%;
+      left: calc(-0.375rem - 0.5px);
+      width: 1px;
+      background: var(--divide-soft);
+    }
+    .status-strip-collapsible:not(.status-strip-open) .status-strip-action button {
+      width: var(--control-lg);
+      padding-inline: 0;
+    }
+  }
+
   /* A field or section label. Sentence case and a little bolder, the way macOS labels
      a group, rather than tracked capitals. */
   .label {
-    @apply mb-1 block text-xs font-semibold text-ink-3;
+    @apply mb-1 block text-label font-semibold text-ink-2;
   }
 
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
   }
+  /* A fact rather than a verdict: an encoder, a language, where a job runs. A fill, never an
+     outline; the tone class gives its colour. */
+  .chip {
+    @apply inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-micro font-medium;
+  }
+  .chip-mono {
+    @apply font-mono;
+  }
 
   /* The header row of a table inside a card: it sticks, it sits on the panel, and it is
      divided from the rows by a hairline. */
   .table-head {
-    @apply sticky top-0 z-10 text-left text-xs font-semibold text-ink-3;
+    @apply sticky z-10 text-left text-caption font-semibold text-ink-3;
+    /* A page with its own sticky bar over the list sets the offset so the header stacks under it. */
+    top: var(--data-table-sticky-top, 0px);
     background: var(--panel);
     box-shadow: inset 0 -1px 0 var(--divide);
+  }
+
+  /* The operational list (DataTable.svelte). Rows are divided by hairlines, never strokes; the
+     row under the pointer and the open row share the lit fill. The surface clips rather than
+     scrolls by default, so the header sticks to the page as a long list goes by. */
+  .data-table-frame {
+    @apply min-w-0;
+  }
+  .data-table-surface {
+    overflow: clip;
+  }
+  .data-table-scroll-inline {
+    overflow-x: auto;
+  }
+  .data-table-scroll-contained {
+    overflow: auto;
+    max-height: var(--data-table-max-height, 65vh);
+  }
+  /* A phone has no room for a scroller inside the page's own: the list scrolls with the page, and
+     its header sticks to the page as it does in the other lists. */
+  @media (max-width: 639px) {
+    .data-table-scroll-contained {
+      overflow: clip;
+      max-height: none;
+    }
+  }
+  .data-table {
+    @apply w-full text-left text-body text-ink-2;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .data-table-fixed {
+    table-layout: fixed;
+  }
+  /* The cells carry the header's fill and hairline too: a table section does not paint a shadow
+     of its own in every engine. */
+  .data-table th {
+    @apply px-4 py-3 align-bottom font-semibold;
+    background: var(--panel);
+    box-shadow: inset 0 -1px 0 var(--divide);
+  }
+  .data-table td {
+    @apply px-4 py-3.5 align-middle;
+    border-top: 1px solid var(--divide-soft);
+    overflow-wrap: anywhere;
+    transition: background-color var(--motion-fast) var(--motion-ease-standard);
+  }
+  .data-table tbody tr:first-child td {
+    border-top: 0;
+  }
+  .data-table tbody tr:hover td,
+  .data-table tbody tr.selected-row td {
+    background: var(--lit);
+  }
+  .data-table-compact th,
+  .data-table-compact td {
+    @apply py-2;
+  }
+  /* The pick-a-row checkbox sits in the same narrow column, at the same inset, in every list. */
+  .data-table .selection-column {
+    @apply w-12 pr-1 pl-3;
+  }
+  .data-table .selection-column .checkbox {
+    @apply block;
+  }
+  /* A sortable header is a button inside a `th[aria-sort]`; the arrow follows the attribute. A
+     header breaks between its words only, so a long translation widens its column rather than
+     standing letter over letter. */
+  .table-sort {
+    @apply -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 text-left font-semibold [overflow-wrap:break-word] focus-ring;
+    color: inherit;
+  }
+  .table-sort:hover {
+    @apply text-ink;
+  }
+  .table-sort::after {
+    content: '↕' / '';
+    @apply text-ink-4;
+  }
+  th[aria-sort='ascending'] .table-sort::after {
+    content: '↑' / '';
+    @apply text-ink-2;
+  }
+  th[aria-sort='descending'] .table-sort::after {
+    content: '↓' / '';
+    @apply text-ink-2;
+  }
+  /* Loading, empty and error read the same in every list: one calm, centred line. */
+  .data-table-state {
+    @apply grid justify-items-center gap-4 px-6 py-12 text-center text-body text-ink-3;
+  }
+  .data-table-skeleton-row {
+    @apply flex min-h-16 items-center justify-between gap-3 px-4;
+    border-bottom: 1px solid var(--divide-soft);
+  }
+  .data-table-compact .data-table-skeleton-row { min-height: 3.25rem; }
+  .data-table-skeleton-row:last-child { border-bottom: 0; }
+  .data-table-footer {
+    @apply mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-caption text-ink-3;
+  }
+  .data-table-pages {
+    @apply flex items-center gap-2;
+  }
+  /* On a phone a row reads as two lines instead of a squeezed grid: the cell the page marks
+     `.data-table-primary` (the title or file) takes the first line whatever its column, and the
+     other cells the page leaves visible follow on the second, in column order. The pick-a-row
+     checkbox keeps its own column beside both lines. The header row stays a row of labels and
+     sort buttons. It stays a table underneath, so rows, cells and `aria-sort` read the same. */
+  @media (max-width: 639px) {
+    .data-table,
+    .data-table > thead,
+    .data-table > tbody {
+      display: block;
+    }
+    .data-table tr {
+      --row-start: 0.75rem;
+      @apply relative flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5;
+      padding-inline-start: calc(var(--row-start) + var(--row-thumb-inset, 0px));
+    }
+    .data-table thead tr {
+      @apply py-0;
+      min-height: 2.5rem;
+    }
+    .data-table tr:has(> .selection-column) {
+      --row-start: 2.75rem;
+    }
+    .data-table thead tr:has(> .selection-column) {
+      min-height: var(--control-lg);
+    }
+    /* The second line starts where the title does rather than under its artwork, so the row reads
+       as one block beside the picture. The inset is the artwork's width and the gap after it. */
+    .data-table tbody tr:has(.data-table-primary [data-thumbnail]) {
+      --row-thumb-inset: 2.75rem;
+    }
+    .data-table tbody tr:has(.data-table-primary [data-thumbnail][data-size='xs']) {
+      --row-thumb-inset: 2.375rem;
+    }
+    .data-table :is(th, td) {
+      flex: 0 1 max-content;
+      @apply min-w-0 max-w-full p-0;
+    }
+    .data-table th {
+      background: none;
+      box-shadow: none;
+    }
+    /* A header sized to its button: the negative inset that aligns the label with a column's
+       text would make the button wider than the cell it is measured from, and wrap it. */
+    .data-table th .table-sort {
+      margin-inline: 0;
+    }
+    /* A header of plain labels has nothing to press, and labels run together without the columns
+       under them, so it steps aside on screen. A header that selects or sorts keeps those controls
+       and hides only its plain labels. Either way the labels still name the columns to a reader. */
+    .data-table > thead:not(:has(.selection-column, .table-sort)),
+    .data-table > thead th:not(.selection-column, :has(.table-sort)) {
+      @apply sr-only;
+      /* A column's width utility would otherwise outrank the 1px of `sr-only`. */
+      max-width: 1px;
+    }
+    .data-table .data-table-primary {
+      order: -1;
+    }
+    .data-table tbody .data-table-primary {
+      flex: 1 1 100%;
+      max-width: none;
+      flex-basis: calc(100% + var(--row-thumb-inset, 0px));
+      margin-inline-start: calc(-1 * var(--row-thumb-inset, 0px));
+    }
+    /* The checkbox in the middle of a thumb-sized target (SelectionCheckbox's label). */
+    .data-table .selection-column {
+      @apply absolute top-0 left-0 flex w-11 items-center justify-center p-0;
+      height: 100%;
+    }
+    /* Beside the first line rather than centred on both, so it sits level with the title. */
+    .data-table tbody .selection-column {
+      top: 0.625rem;
+      height: var(--control-lg);
+    }
+    .data-table td,
+    .data-table tbody tr:first-child td {
+      border-top: 0;
+    }
+    .data-table tbody tr + tr {
+      border-top: 1px solid var(--divide-soft);
+    }
+    .data-table tbody tr:is(:hover, .selected-row) td {
+      background: none;
+    }
+    .data-table tbody tr:is(:hover, .selected-row) {
+      background: var(--lit);
+    }
   }
 
   /* A tooltip is the one surface drawn in the opposite value to the page, so it
@@ -662,7 +1294,7 @@ p {
     background: var(--lit);
   }
   .progress-fill {
-    @apply h-full rounded-full transition-[width] duration-300 ease-out;
+    @apply h-full rounded-full transition-[width] duration-(--motion-slow) ease-(--motion-ease-standard);
     background: var(--accent-fill);
   }
   /* Verifying is checking work that is already done, so it fills in the "ok" colour. */
@@ -675,26 +1307,62 @@ p {
     opacity: 0.7;
     animation: progress-sweep 1.2s ease-in-out infinite;
   }
+
+  /* The room a page takes while its code arrives: tall enough that the page landing in it does
+     not drag the scroll position or the strip above it about, and silent until the wait is long
+     enough to notice, so a quick navigation never flashes a word. */
+  .page-pending {
+    @apply flex min-h-[60dvh] flex-col items-center justify-center gap-4 text-center;
+  }
+  .page-pending-label {
+    visibility: hidden;
+    animation: page-pending-reveal 0s 400ms forwards;
+  }
+
+  /* A finger needs 44px whatever the control's desktop size. Phone width counts as well as a
+     coarse pointer: a narrow window is held, not pointed at. */
+  @media (pointer: coarse), (max-width: 639px) {
+    .btn,
+    .segment,
+    .filter-pill,
+    .filter-toggle,
+    .table-sort {
+      min-height: var(--control-lg);
+    }
+    .btn-icon,
+    .btn-sm.btn-icon {
+      min-width: var(--control-lg);
+    }
+  }
 }
 
 /* Anyone who has asked for less motion gets the lift without the movement, and
-   the state without the throb. */
+   the state without the throb. Transitions already collapse with the motion tokens. */
 @media (prefers-reduced-motion: reduce) {
-  .choice,
-  .card-interactive,
-  .switch-track,
-  .switch-knob {
-    transition: none;
-  }
   .choice:hover,
-  .card-interactive:hover,
-  .choice:active,
-  .card-interactive:active {
+  .choice:active {
     transform: none;
   }
   .animate-pulse,
+  .stage-live,
   .progress-indeterminate {
     animation: none;
+  }
+}
+
+@keyframes stage-halo-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--accent-soft);
+  }
+}
+
+@keyframes page-pending-reveal {
+  to {
+    visibility: visible;
   }
 }
 
@@ -704,6 +1372,22 @@ p {
   }
   100% {
     left: 100%;
+  }
+}
+
+/* Focus moving down a page with a sticky action bar lands above the bar, not behind it.
+   Unlayered so it outranks the page's own scroll-padding utility. */
+main:has(.sticky-actions) {
+  scroll-padding-bottom: 9rem;
+}
+@media (max-width: 64rem) {
+  main:has(.sticky-actions) {
+    scroll-padding-bottom: 15rem;
+  }
+}
+@media (max-height: 30rem) {
+  main:has(.sticky-actions) {
+    scroll-padding-bottom: revert-layer;
   }
 }
 
@@ -724,7 +1408,7 @@ p {
   max-width: calc(100vw - 2rem);
   max-height: calc(100dvh - 2rem);
   border: 0;
-  border-radius: 1.125rem;
+  border-radius: var(--radius-dialog);
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--lift-3);
@@ -732,3 +1416,16 @@ p {
 }
 .app-modal[open] { display: grid; }
 .app-modal::backdrop { background: rgb(0 0 0 / .32); backdrop-filter: blur(3px); }
+
+/* The keyboard sheet lists its groups in two columns; each line is divided from the one above
+   by a hairline rather than a stroke. */
+.shortcut-row + .shortcut-row { box-shadow: inset 0 1px 0 var(--divide-soft); }
+
+/* Quick Jump hangs from near the top rather than centring, so the field stays still while the
+   list under it grows and shrinks with what is typed. */
+.quick-jump-dialog {
+  width: 36rem;
+  margin-top: min(12vh, 6rem);
+  max-height: min(34rem, calc(100dvh - 2rem - min(12vh, 6rem)));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}

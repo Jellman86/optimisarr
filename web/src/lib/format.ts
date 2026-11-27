@@ -1,4 +1,6 @@
-export function formatSize(bytes: number): string {
+// `roundDown` is for a figure that falls short of a limit, so rounding never prints it as reaching
+// the limit it fails.
+export function formatSize(bytes: number, roundDown = false): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = bytes
   let unit = 0
@@ -6,7 +8,15 @@ export function formatSize(bytes: number): string {
     value /= 1024
     unit++
   }
-  return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`
+  const decimals = value < 10 && unit > 0 ? 1 : 0
+  return `${(roundDown ? floorTo(value, decimals) : value).toFixed(decimals)} ${units[unit]}`
+}
+
+/** `value` cut to `decimals` places, never up. A binary fraction just under a round number (0.29
+ * held as 0.28999…) is first settled to 15 digits so it is not shown a step lower than it is. */
+export function floorTo(value: number, decimals: number): number {
+  const scale = 10 ** decimals
+  return Math.floor(Number((value * scale).toPrecision(15))) / scale
 }
 
 export function formatDuration(seconds: number | null): string {
@@ -27,6 +37,34 @@ export function formatRelative(value: string | Date, now: Date = new Date(), loc
   if (elapsed < 45 * 60) return format.format(Math.round(seconds / 60), 'minute')
   if (elapsed < 22 * 3600) return format.format(Math.round(seconds / 3600), 'hour')
   return format.format(Math.round(seconds / 86400), 'day')
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// A date and time to the minute in the reader's language ("26 Nov 2026, 14:05"). Seconds are
+// noise to a person scanning a list, so they are never shown. An unreadable date is a dash.
+export function formatAbsoluteDateTime(value: string | Date, locale?: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+// The one way the app writes a moment: relative while it is within a day of now ("5 minutes
+// ago", "in 2 hours", "23 hours ago"), because that is how a person thinks about something that
+// just happened, and the absolute date to the minute after that, when "3 days ago" would make
+// them count. Keeping hour precision between 22 and 24 hours prevents a same-day event from
+// falsely reading as "yesterday" or "tomorrow".
+export function formatDateTime(value: string | Date, now: Date = new Date(), locale?: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  const diffMs = date.getTime() - now.getTime()
+  if (Math.abs(diffMs) >= DAY_MS) return formatAbsoluteDateTime(date, locale)
+  const seconds = diffMs / 1000
+  if (Math.abs(seconds) >= 22 * 3600) {
+    const hours = Math.min(23, Math.round(Math.abs(seconds) / 3600)) * Math.sign(seconds)
+    return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(hours, 'hour')
+  }
+  return formatRelative(date, now, locale)
 }
 
 export type SizeChangeStatus = 'saved' | 'unchanged' | 'grew'
@@ -147,4 +185,15 @@ export function languageList(languages: string, unknown: string): string {
     .filter(Boolean)
     .map((language) => (language.toLowerCase() === 'und' ? unknown : language))
     .join(', ')
+}
+
+// ffprobe's "tt" and "bb" plainly mean top or bottom field first. "tb" and "bt" are documented as
+// coded one way and shown the other, but FFmpeg itself tags many top-field-first encodes "tb"
+// (see VideoFieldOrder), so for those the code is reported without words that could be wrong.
+// Progressive, "unknown" and a file probed before field order was recorded are not reported as
+// interlaced, which matches the server's own test (VideoFieldOrder.IsInterlaced).
+const FIELD_SHOWN_FIRST = new Map<string, 'top' | 'bottom' | 'unstated'>([['tt', 'top'], ['bb', 'bottom'], ['tb', 'unstated'], ['bt', 'unstated']])
+
+export function interlacedFieldOrder(fieldOrder: string | null | undefined): 'top' | 'bottom' | 'unstated' | null {
+  return (fieldOrder && FIELD_SHOWN_FIRST.get(fieldOrder)) || null
 }

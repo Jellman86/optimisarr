@@ -25,6 +25,11 @@ web UI and on API calls. Health probes remain unauthenticated:
 - `GET /api/ready`
 - `GET /api/auth/status`
 
+Sonarr and Radarr import webhooks (`/api/arr-webhooks/<id>`) do not use the admin
+token either. Each connection's webhook has its own password, sent with HTTP basic
+authentication. If your proxy adds its own sign-in, exempt `/api/arr-webhooks/`
+from it. See [Import webhook](../integrations/media-servers.md#import-webhook).
+
 API clients should send:
 
 ```bash

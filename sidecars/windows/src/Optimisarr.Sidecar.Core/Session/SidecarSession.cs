@@ -204,26 +204,26 @@ public sealed class SidecarSession(
                 // Asking is free and almost always answered with "nothing". Draining is the server
                 // saying it wants this machine to stop taking work, so it is not even asked.
                 //
-                // Filled up to capacity rather than one at a time, and — the part that matters —
-                // the jobs run *beside* this loop rather than inside it. Awaiting one here stopped
+                // The jobs run *beside* this loop rather than inside it. Awaiting one here stopped
                 // the check-ins for as long as it took, so any job over two minutes made a machine
                 // that was busily encoding look offline to the server, and an offline worker is not
                 // one the queue holds work for. It also meant a second job could never be started
                 // however much the machine had spare.
-                while (runJob is not null
+                //
+                // One claim per check-in, so free slots fill one check-in at a time. The server
+                // judges every claim in a round against the free space this machine last reported,
+                // so a second one straight away would be offered as if the first had charged
+                // nothing, refused here, and handed back into a ten-minute cooldown. The next
+                // check-in reports space net of the job just started.
+                if (runJob is not null
                     && !beat.Draining
                     && !IsPaused
                     && !ShutdownArmed
                     && !ClaimsHeldForCapacity
                     && Running < capabilities.MaxConcurrency
-                    && !cancellationToken.IsCancellationRequested)
+                    && !cancellationToken.IsCancellationRequested
+                    && await client.ClaimAsync(pairing, cancellationToken) is { } assignment)
                 {
-                    var assignment = await client.ClaimAsync(pairing, cancellationToken);
-                    if (assignment is null)
-                    {
-                        break;
-                    }
-
                     // A pause can arrive while the claim request is in flight.
                     if (IsPaused || ShutdownArmed)
                     {
@@ -239,9 +239,11 @@ public sealed class SidecarSession(
                             Set(SidecarState.Faulted,
                                 $"Job {assignment.JobId}: hand-back was not acknowledged: {error.Message}");
                         }
-                        break;
                     }
-                    Start(runJob, pairing, assignment, cancellationToken);
+                    else
+                    {
+                        Start(runJob, pairing, assignment, cancellationToken);
+                    }
                 }
             }
             catch (SidecarException exception) when (!exception.Recoverable)

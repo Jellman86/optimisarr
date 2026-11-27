@@ -43,7 +43,9 @@ Common status codes:
 ## Authentication
 
 `GET /api/health`, `GET /api/ready`, and `GET /api/auth/status` are always open
-so health checks and clients can detect whether a token is required.
+so health checks and clients can detect whether a token is required. Worker routes
+and the Sonarr/Radarr import webhook carry their own credentials instead of the
+admin token.
 
 ```bash
 curl -fsS http://localhost:8787/api/auth/status
@@ -353,7 +355,7 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `POST` | `/api/media/batch/probe` | Start a batch that probes several media files in the background; the batch is watched through `GET /api/media/batch/probe/{id}`. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
-| `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. Each row has `retryJobId` when an earlier failure is what holds the file back. |
+| `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed; `interlaced=true` keeps only files whose field order is interlaced), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts, including `interlaced` for the library and search scope. Each file carries ffprobe's `fieldOrder` (null before it was recorded). Each row has `retryJobId` when an earlier failure is what holds the file back. |
 | `GET` | `/api/libraries/{id}/duplicates` | Latest durable exact-copy report owned by this starting library (development). Optional zero-based `page`, 20 groups per page. Includes selected `libraries`, physical copies with aliases, review keys/preferences, original read dates, pagination and staleness. Only complete, current groups have `canDecide=true`. |
 | `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Optional repeated `libraryIds=1&libraryIds=2` selects 1–16 unique existing libraries, including `{id}`; omission uses `{id}` only. Optional `forceRefresh=true` rereads every candidate. Returns `202`, `400` for invalid scope, or `409` if busy or over 50,000 total candidates. |
 | `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
@@ -874,6 +876,9 @@ When updating, send an empty `apiToken` to keep the stored token.
 | `POST` | `/api/arr-connections` | Create connection. |
 | `PUT` | `/api/arr-connections/{id}` | Update connection. |
 | `DELETE` | `/api/arr-connections/{id}` | Delete connection. |
+| `POST` | `/api/arr-connections/{id}/webhook-password` | Create or replace the connection's import-webhook password. Returns `username`, `password` and `webhookPath` once; only a fingerprint is stored, and the previous password stops working. |
+| `DELETE` | `/api/arr-connections/{id}/webhook-password` | Turn the import webhook off by removing its password. |
+| `POST`, `PUT` | `/api/arr-webhooks/{id}` | Receives a Sonarr/Radarr webhook delivery. Open route; authenticated by the connection's webhook password as HTTP basic auth, not the admin token. `401` for a missing or wrong password, an unknown connection, or a connection without a password. `400` for a malformed body, `413` over 1 MiB, `503` when earlier deliveries keep it busy for over a minute. Anything else, including events it does not use, is `200` with the outcome. See [Import webhook](integrations/media-servers.md#import-webhook). |
 
 Body:
 
@@ -883,11 +888,17 @@ Body:
   "type": "Sonarr",
   "baseUrl": "http://sonarr:8989",
   "apiKey": "key",
-  "enabled": true
+  "enabled": true,
+  "remotePathPrefix": "/tv",
+  "localPathPrefix": "/data/tv"
 }
 ```
 
-When updating, send an empty `apiKey` to keep the stored key.
+When updating, send an empty `apiKey` to keep the stored key. Leave out both
+path prefixes to keep the saved mapping, or send both empty to remove it. The
+list reports `webhookEnabled`, `webhookPath` and the last delivery's
+`webhookLastReceivedAt`, `webhookLastOutcome` and `webhookLastDetail`; it never
+returns the API key or the webhook password.
 
 ### Notifications
 

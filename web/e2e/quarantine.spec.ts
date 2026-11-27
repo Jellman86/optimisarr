@@ -209,14 +209,15 @@ test('long names and verification evidence reflow with enlarged translated text'
   }
 })
 
-test('the decision sits beside the sizes, above the comparison, and the players show the title', async ({ page }) => {
+test('the decision is in view on arrival, before the comparison is scrolled, and the players show the title', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
   await mockQuarantine(page)
   await page.goto('/#/quarantine/1')
-  const decision = page.getByRole('heading', { name: 'Review decision', level: 2 })
-  const compare = page.getByRole('heading', { name: 'Compare files', level: 2 })
-  await expect(decision).toBeVisible()
-  const [decisionTop, compareTop] = await Promise.all([decision, compare].map(heading => heading.evaluate(element => element.getBoundingClientRect().top)))
-  expect(decisionTop).toBeLessThan(compareTop)
+  const decision = page.getByRole('region', { name: 'Review decision' })
+  await expect(page.getByRole('heading', { name: 'Compare files', level: 2 })).toBeVisible()
+  await expect(decision).toBeInViewport({ ratio: 1 })
+  await expect(decision.getByRole('button', { name: 'Approve & free space' })).toBeInViewport({ ratio: 1 })
+  await expect(decision).toContainText('Approve deletes the quarantined original now; rolling back is then no longer possible.')
   // The backdrop belongs to this replacement's job; a missing one leaves the player plain.
   await expect(page.locator('video').first()).toHaveAttribute('poster', '/api/jobs/10/artwork')
 })
@@ -340,3 +341,96 @@ test('a delete that stopped part-way explains itself and can be retried', async 
   await expect(row.getByRole('button', { name: 'Restore copy' })).toHaveCount(0)
 })
 
+
+// Enough evidence that the review is several screens long.
+async function mockLongReview(page: Page) {
+  await mockQuarantine(page)
+  const checks = Array.from({ length: 40 }, (_, index) => ({ name: `Check ${index + 1}`, outcome: 'Passed', detail: `Evidence line ${index + 1}.` }))
+  await page.route('**/api/replacements/1', route => json(route, { ...detail, verificationReportJson: JSON.stringify({ checks }) }))
+}
+
+test('the decision bar stays in view while the comparison and checks scroll by, and settles clear of the end', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await mockLongReview(page)
+  await page.goto('/#/quarantine/1')
+  const bar = page.locator('[data-decision-bar]')
+  await expect(page.getByText('Evidence line 40.')).toBeAttached()
+  await expect(bar).toBeInViewport({ ratio: 1 })
+
+  for (const target of [page.getByRole('heading', { name: 'Compare files', level: 2 }), page.getByRole('heading', { name: 'Verification', level: 2 }), page.getByText('Evidence line 20.')]) {
+    await target.scrollIntoViewIfNeeded()
+    await expect(bar).toBeInViewport({ ratio: 1 })
+    await expect(bar.getByRole('button', { name: 'Approve & free space' })).toBeInViewport({ ratio: 1 })
+    await expect(bar.getByRole('button', { name: 'Reject (roll back)' })).toBeInViewport({ ratio: 1 })
+  }
+
+  // At the end of the page the bar sits in its own place: the last check and the way back are not under it.
+  await page.locator('main').evaluate(main => main.scrollTo({ top: main.scrollHeight }))
+  const barBox = (await bar.boundingBox())!
+  const lastCheck = (await page.getByText('Evidence line 40.').boundingBox())!
+  const back = (await page.locator('[data-quarantine-review] > a.btn').boundingBox())!
+  expect(lastCheck.y + lastCheck.height).toBeLessThanOrEqual(barBox.y)
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(back.y)
+  await expect(page.locator('[data-quarantine-review] > a.btn')).toBeInViewport({ ratio: 1 })
+})
+
+for (const width of [320, 375]) {
+  test(`the decision bar wraps inside a ${width}px phone without taking over the screen`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 667 })
+    await mockLongReview(page)
+    await page.goto('/#/quarantine/1')
+    const bar = page.locator('[data-decision-bar]')
+    await expect(bar).toBeInViewport({ ratio: 1 })
+    await page.getByText('Evidence line 20.').scrollIntoViewIfNeeded()
+    await expect(bar).toBeInViewport({ ratio: 1 })
+    const box = (await bar.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    expect(box.height).toBeLessThanOrEqual(667 * 0.45)
+    for (const button of await bar.getByRole('button').all()) {
+      const bounds = (await button.boundingBox())!
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(box.x + box.width)
+      expect(bounds.height).toBeGreaterThanOrEqual(44)
+      // A label squeezed onto several lines would mean the buttons shrank instead of wrapping.
+      expect(bounds.height).toBeLessThanOrEqual(52)
+    }
+    expect(await bar.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+  })
+}
+
+test('on a short landscape screen the decision bar scrolls with the page instead of covering it', async ({ page }) => {
+  await page.setViewportSize({ width: 740, height: 360 })
+  await mockLongReview(page)
+  await page.goto('/#/quarantine/1')
+  const bar = page.locator('[data-decision-bar]')
+  await expect(bar).toBeAttached()
+  expect(await bar.evaluate(element => getComputedStyle(element).position)).toBe('static')
+  await expect(bar).not.toBeInViewport()
+})
+
+test('recent replacements read relative and older ones as a date to the minute', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const recent = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+  const older = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+  // Minutes pinned away from 47, so ":47" can only come from the seconds, whatever the clock says.
+  older.setUTCMinutes(12, 47)
+  await mockQuarantine(page, [
+    { ...replacement, id: 1, finalPath: '/media/Recent.mp4', replacedAt: recent },
+    { ...replacement, id: 2, finalPath: '/media/Older.mp4', replacedAt: older.toISOString() },
+  ])
+  await page.goto('/#/quarantine')
+  const recentRow = page.getByRole('row').filter({ hasText: 'Recent.mp4' })
+  const olderRow = page.getByRole('row').filter({ hasText: 'Older.mp4' })
+  await expect(recentRow.locator('time')).toHaveText('2 hours ago')
+  await expect(recentRow.locator('time')).toHaveAttribute('datetime', recent)
+  const olderTime = olderRow.locator('time')
+  await expect(olderTime).toContainText(String(older.getFullYear()))
+  await expect(olderTime).not.toContainText(':47')
+  await expect(olderTime).not.toContainText('ago')
+
+  await page.goto('/#/quarantine/2')
+  const reviewTime = page.locator('[data-quarantine-review] header time')
+  await expect(reviewTime).toHaveAttribute('datetime', older.toISOString())
+  await expect(reviewTime).not.toContainText(':47')
+})

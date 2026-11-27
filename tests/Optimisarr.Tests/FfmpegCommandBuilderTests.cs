@@ -151,11 +151,15 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_aac_audio_job_maps_metadata_and_timed_lyrics_but_not_unsafe_artwork()
+    public void An_aac_audio_job_maps_metadata_timed_lyrics_and_cover_art_after_the_audio()
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        Assert.DoesNotContain("0:v?", args);
+        // The cover art is copied as it is, so its bytes reach the M4A's covr atom unchanged.
+        Assert.Contains(("-map", "0:v?"), MapPairs(args));
+        Assert.Equal("copy", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v") + 1]);
+        Assert.True(IndexOf(args, "0:a") < IndexOf(args, "0:v?"));
         Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
@@ -193,7 +197,8 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void An_audio_job_still_stamps_the_optimisation_marker()
     {
-        var args = FfmpegCommandBuilder.Build(AudioReencode(), optimisedMarker: "0.4.2");
+        var args = FfmpegCommandBuilder.Build(AudioReencode() with { OutputPath = "/work/Track.mp3", AudioEncoder = "libmp3lame" },
+            optimisedMarker: "0.4.2");
 
         var metaIndex = IndexOf(args, "-metadata");
         Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
@@ -626,6 +631,36 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("CQP", args[IndexOf(args, "-rc_mode") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-qp") + 1]);
         Assert.DoesNotContain("-preset", args);
+    }
+
+    [Fact]
+    public void Amf_decodes_in_software_even_when_hardware_decoding_is_on()
+    {
+        // AMF takes system-memory frames; a decoder that left them on another GPU API would not feed it.
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: "hevc_amf", hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-hwaccel_output_format", args);
+    }
+
+    [Fact]
+    public void Amf_uses_cqp_quality_without_a_device_init_or_hwupload()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { Preset = null }, videoEncoder: "hevc_amf");
+
+        // AMF on Windows initialises its device implicitly from the first AMD adapter ffmpeg finds,
+        // so there is no -init_hw_device and the encoder consumes system-memory frames directly.
+        Assert.DoesNotContain("-init_hw_device", args);
+        Assert.DoesNotContain("-vaapi_device", args);
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-filter:v:0", args);
+
+        // Constant quantisation: the same QP on I and P frames, never -crf.
+        Assert.DoesNotContain("-crf", args);
+        Assert.Equal("cqp", args[IndexOf(args, "-rc") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-qp_i") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-qp_p") + 1]);
+        Assert.Equal("hevc_amf", args[IndexOf(args, "-c:v:0") + 1]);
     }
 
     [Fact]
@@ -1313,18 +1348,19 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
     }
 
+    // With use_metadata_tags FFmpeg writes every tag of an M4A as QuickTime keys, which most music
+    // software cannot read, and drops its cover art; Optimisarr writes the marker after the encode (#593).
     [Theory]
     [InlineData(".m4a")]
     [InlineData(".m4b")]
-    public void Adds_the_mp4_flag_so_custom_tags_round_trip_for_mp4_audio_outputs(string extension)
+    public void Leaves_the_tags_of_mp4_audio_outputs_as_the_itunes_atoms_ffmpeg_writes(string extension)
     {
         var spec = AudioReencode() with { OutputPath = $"/work/Track{extension}" };
 
         var args = FfmpegCommandBuilder.Build(spec, optimisedMarker: "0.4.2");
 
-        var flagsIndex = IndexOf(args, "-movflags");
-        Assert.True(flagsIndex >= 0);
-        Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
+        Assert.DoesNotContain("-movflags", args);
+        Assert.DoesNotContain("optimisarr=0.4.2", args);
     }
 
     [Fact]
@@ -1616,4 +1652,50 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void Without_the_choice_no_deinterlace_filter_is_added() =>
         Assert.DoesNotContain(FfmpegCommandBuilder.Build(Reencode(crf: 24)), argument => argument.Contains("bwdif"));
+
+    // --- Keyframe interval ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("libx264")]
+    [InlineData("libx265")]
+    [InlineData("libsvtav1")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("av1_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("av1_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("hevc_videotoolbox")]
+    [InlineData("hevc_amf")]
+    [InlineData("h264_amf")]
+    public void A_keyframe_interval_reaches_every_encoder_family_as_its_gop_length(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { KeyframeIntervalFrames = 240 }, videoEncoder: encoder).ToList();
+
+        Assert.Equal("240", args[args.IndexOf("-g") + 1]);
+        Assert.Single(args, argument => argument == "-g");
+        Assert.True(args.IndexOf("-g") > args.IndexOf("-c:v:0"), "an output option of the re-encoded stream");
+    }
+
+    [Fact]
+    public void The_encoder_default_sends_no_gop_length_and_no_minimum()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24));
+
+        Assert.DoesNotContain("-g", args);
+        Assert.DoesNotContain("-keyint_min", args);
+    }
+
+    [Fact]
+    public void A_keyframe_interval_never_sets_a_minimum_or_touches_scene_cut_detection()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc", crf: 24) with { KeyframeIntervalFrames = 240 });
+
+        Assert.DoesNotContain("-keyint_min", args);
+        Assert.DoesNotContain("-sc_threshold", args);
+        Assert.DoesNotContain(args, argument => argument.Contains("keyint", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_remux_has_no_encoder_to_give_a_keyframe_interval() =>
+        Assert.DoesNotContain("-g", FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { KeyframeIntervalFrames = 240 }));
 }

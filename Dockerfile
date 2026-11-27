@@ -54,7 +54,7 @@ RUN dotnet publish sidecars/linux/src/Optimisarr.Sidecar.Linux --configuration R
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS audio-quality-build
 WORKDIR /src
-RUN apt-get update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
+RUN apt-get -o Acquire::Retries=5 update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY tools/audio-quality-native/ tools/audio-quality-native/
 COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh
@@ -62,7 +62,7 @@ RUN bash scripts/build_audio_quality.sh /audio-build /audio-install
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS image-quality-build
 WORKDIR /src
-RUN apt-get update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
+RUN apt-get -o Acquire::Retries=5 update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY tools/image-quality-native/ tools/image-quality-native/
 COPY scripts/build_image_quality.sh scripts/build_image_quality.sh
@@ -77,9 +77,9 @@ ARG REALCUGAN_VERSION=20220728
 ARG REALCUGAN_SHA256=d745174bd04c0232c89d935b74799311008fda06bea4195f61be5f0f3cc087cb
 RUN mkdir -p /opt/realcugan /licenses \
     && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
-        apt-get update \
+        apt-get -o Acquire::Retries=5 update \
         && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-        && curl -fsSL -o /tmp/realcugan.zip \
+        && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o /tmp/realcugan.zip \
             "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/${REALCUGAN_VERSION}/realcugan-ncnn-vulkan-${REALCUGAN_VERSION}-ubuntu.zip" \
         && echo "${REALCUGAN_SHA256}  /tmp/realcugan.zip" | sha256sum -c - \
         && unzip -q /tmp/realcugan.zip -d /tmp/realcugan \
@@ -99,9 +99,9 @@ ARG REALESRGAN_BUILD=20220424
 ARG REALESRGAN_SHA256=e5aa6eb131234b87c0c51f82b89390f5e3e642b7b70f2b9bbe95b6a285a40c96
 RUN mkdir -p /opt/realesrgan \
     && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
-        apt-get update \
+        apt-get -o Acquire::Retries=5 update \
         && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-        && curl -fsSL -o /tmp/realesrgan.zip \
+        && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o /tmp/realesrgan.zip \
             "https://github.com/xinntao/Real-ESRGAN/releases/download/${REALESRGAN_RELEASE}/realesrgan-ncnn-vulkan-${REALESRGAN_BUILD}-ubuntu.zip" \
         && echo "${REALESRGAN_SHA256}  /tmp/realesrgan.zip" | sha256sum -c - \
         && unzip -q /tmp/realesrgan.zip -d /tmp/realesrgan \
@@ -117,7 +117,7 @@ WORKDIR /app
 # Intel iHD driver + oneVPL runtime for QSV/VA-API on iGPUs like the N100, but its Debian build does
 # not include libvmaf. Quality measurement therefore uses the dedicated static binary copied below;
 # loudness and image SSIM share it so every optional measurement uses one known toolchain.
-RUN apt-get update \
+RUN apt-get -o Acquire::Retries=5 update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
@@ -130,13 +130,15 @@ RUN apt-get update \
         tzdata \
     && perl -MCompress::Zlib -e 'exit 0' \
     && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
-        | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \
+    && curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o /tmp/jellyfin_team.gpg.key \
+        https://repo.jellyfin.org/jellyfin_team.gpg.key \
+    && gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg /tmp/jellyfin_team.gpg.key \
+    && rm /tmp/jellyfin_team.gpg.key \
     && . /etc/os-release \
     && printf 'Types: deb\nURIs: https://repo.jellyfin.org/%s\nSuites: %s\nComponents: main\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/jellyfin.gpg\n' \
         "$ID" "$VERSION_CODENAME" "$(dpkg --print-architecture)" \
         > /etc/apt/sources.list.d/jellyfin.sources \
-    && apt-get update \
+    && apt-get -o Acquire::Retries=5 --error-on=any update \
     && apt-get install -y --no-install-recommends jellyfin-ffmpeg7 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -169,9 +171,11 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Keep the server as the default target for existing builds.
 FROM media-runtime AS runtime
 # Super-resolution runs on the server only. The engine needs the Vulkan loader and OpenMP; Mesa's
-# drivers cover Intel and AMD GPUs. NVIDIA needs its driver injected by the container runtime.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libvulkan1 libgomp1 mesa-vulkan-drivers \
+# drivers cover Intel and AMD GPUs. NVIDIA injects its Vulkan ICD (libGLX_nvidia.so.0) through the
+# container runtime, which also requires libEGL.so.1 (libegl1) in the container to expose
+# vkCreateInstance instead of falling back to CPU llvmpipe.
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get install -y --no-install-recommends libegl1 libvulkan1 libgomp1 mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=realcugan-fetch /opt/realcugan/ /opt/realcugan/
 COPY --from=realcugan-fetch /licenses/ /app/licenses/realcugan/

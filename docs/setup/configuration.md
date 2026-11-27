@@ -142,7 +142,7 @@ the former global policy into each existing library so behaviour does not change
 
 | Control | Behaviour |
 |---|---|
-| Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. |
+| Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. A Sonarr or Radarr [import webhook](../integrations/media-servers.md#import-webhook) picks up an imported file straight away instead. |
 | Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
@@ -333,6 +333,43 @@ For explicitly re-encoded video audio, configure the separate soundtrack report 
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
 
+### Tags and cover art in converted files
+
+A converted file keeps the source's tags and embedded cover art. Verification's **Audio metadata and
+artwork** check refuses a file that loses or changes a tag, or loses a picture.
+
+AAC files (`.m4a`) store their tags as iTunes atoms, the layout Apple Music, TagLib-based servers
+such as Navidrome, and taggers such as Picard read:
+
+- Title, artist, album, album artist, composer, date, genre, comments, lyrics, compilation, and
+  the track and disc numbers with their totals use the standard atoms (`©nam`, `©ART`, `trkn`, and
+  so on). Sort names use the sort atoms (`soaa`, `soar`, and so on).
+- MusicBrainz and AcoustID identifiers use the names Picard gives them, such as
+  `----:com.apple.iTunes:MusicBrainz Album Id`, and the language tag (a FLAC `LANGUAGE` comment or an
+  MP3 `TLAN` frame) becomes Picard's `----:com.apple.iTunes:LANGUAGE`. Any other tag, such as
+  ReplayGain or BPM, keeps its own name as a `----:com.apple.iTunes:` item.
+- A track or disc "number" the number atoms can't hold, such as `A1` or `0`, is kept as text under
+  its own name instead of the number FFmpeg would read from it.
+- Cover art goes into the `covr` atom unchanged. M4A holds JPEG, PNG and BMP pictures, so a file
+  with GIF or WebP cover art fails with that reason. Choose MP3 for such a library, or replace the
+  art first.
+- An ALAC `.m4a` converted to AAC keeps every one of its own atoms byte for byte. Only the encoder
+  name (`©too`), the gapless figures (`iTunSMPB`) and the encoder settings are written again. The
+  check reads both files' atoms and refuses any other difference.
+
+FFmpeg writes the standard atoms and the cover art. Optimisarr then adds the other tags and its
+marker (`----:com.optimisarr:optimisarr`) to the file's tag list before verification. Because that
+step runs on this server, AAC music is always converted here, never on a remote worker.
+
+Opus files cannot keep cover art, so a file that has some is left alone in an Opus library.
+
+**Files converted to AAC before this was fixed** ([#593](https://github.com/Jellman86/optimisarr/issues/593)) stored their tags as
+QuickTime keys. FFmpeg reads those, but most music software shows the files as untagged, and their
+cover art was not kept. Optimisarr still recognises these files as optimised and leaves them alone.
+To fix one, tag it again with your tagger, for example with Picard's lookup. Alternatively, copy it
+with FFmpeg, which writes the standard tags back as iTunes atoms but drops MusicBrainz IDs, the
+track and disc totals and any other tags: `ffmpeg -i old.m4a -map 0 -c copy -map_metadata 0 new.m4a`.
+
 ### Trim silence at the start and end
 
 In a music library, **Configure → Audio → Trim silence at the start and end** cuts silence from the
@@ -350,7 +387,8 @@ What it does and does not cut:
   clipped.
 - Silence inside a track is never cut, and nor is a hidden track after a long gap, because that gap
   does not reach the end of the file.
-- A file is only trimmed when it is converted anyway. It does not make a file eligible on its own.
+- A file is trimmed when it is converted. A file the library would leave alone is only trimmed with
+  **Also trim files that aren't converted** (below).
 - A file with more than one audio stream is left alone, because one window would apply to all of
   them.
 - A file with synchronised lyrics, a cue sheet, chapters (`.m4b`) or a sidecar `.lrc` file only
@@ -367,6 +405,83 @@ its quarter second of silence, give or take 0.1 seconds. Too much means the cut 
 little means it reached into the music. This cannot yet be combined with **Audio
 quality**, which compares two files of the same length, so saving refuses that combination. Trimmed
 files are encoded on this server, never on a remote worker.
+
+#### Also trim files that aren't converted
+
+While trimming is on, **Also trim files that aren't converted** trims the files the library would
+otherwise leave alone: lossy files at or below the target bitrate, files already in the target
+codec, files too small for a conversion to save space, and lossless files a conversion cannot carry
+(for example FLAC with cover art in an Opus library). It is off by default. Each file keeps its
+format, name, bitrate, tags and cover art:
+
+| Format | How it is trimmed |
+| --- | --- |
+| FLAC (`.flac`), PCM WAV (`.wav`) | Decoded, cut to the exact sample, and written again with the same lossless codec, bit depth and sample rate. FLAC uses FFmpeg's strongest setting. |
+| MP3 (`.mp3`) | The audio frames are copied without re-encoding. The cut falls on a frame, starting up to 50 ms before the planned start, and FFmpeg writes the new file's own encoder delay in a fresh LAME header. The tags are written in the source's ID3 version (2.3 stays 2.3), with an ID3v1 tag again when the source has one. The iTunes `iTunSMPB` gapless figures and the `TLEN` length are removed, because they describe the original length. |
+| Opus (`.opus`, `.ogg`) | The audio frames are copied without re-encoding. Ogg cannot carry an embedded picture through FFmpeg, so an Opus file with cover art is left alone. |
+
+Everything else is left alone, with the reason in Candidates: M4A (AAC or ALAC), Vorbis, WMA, APE,
+AIFF, raw ADTS `.aac` (which records no encoder delay and only estimates its length), Opus and WAV
+with embedded cover art, and any codec in a container it is not normally found in. M4A is left alone
+because it has not yet been proved that its audio and its tags come through a trim unchanged.
+
+**Tags must survive unchanged.** FFmpeg reads a file's tags into its own list and writes them again,
+and some do not come back the same. Optimisarr reads every tag itself, byte for byte, when it probes a
+file and again just before a job starts, and leaves alone, naming the tags in Candidates, any file
+that has one FFmpeg is known to lose or change:
+
+- MP3: comments (`COMM`), unsynchronised and synchronised lyrics (`USLT`, `SYLT`), ratings and play
+  counts (`POPM`, `PCNT`), MusicBrainz and other unique IDs (`UFID`), URL frames, chapters
+  (`CHAP`, `CTOC`), and any other frame outside the plain text frames, `TXXX`, `APIC` and `PRIV`. Also
+  a text frame with more than one value, a genre that starts with a number or a bracket such as
+  `(17)` or `80s Rock`, an ID3v2.3 `TCMP` or `TSOP`, an ID3v2.4 `TDRL`, a frame that appears twice
+  (or two `TXXX` descriptions that differ only in case), a picture whose MIME type FFmpeg respells
+  (`image/jpg` becomes `image/jpeg`), a second ID3v2 tag straight after the first, an APE, Lyrics3 or
+  enhanced ID3v1 (`TAG+`) tag, an ID3v1 genre number FFmpeg has no name for (192 to 254, written
+  back as "none"), and a compressed or encrypted frame.
+- An MP3 with both an ID3v2 and an ID3v1 tag: FFmpeg ignores the source's ID3v1 tag and writes a new
+  one from the ID3v2 frames, so fields only the ID3v1 tag held would be lost.
+- MP3 text in a legacy character set: ID3 text marked as ISO-8859-1 but holding non-ASCII bytes, in a
+  frame, a description or the ID3v1 tag. Old taggers often wrote CP1251, GBK or Shift-JIS that way,
+  and FFmpeg would write it again as Unicode that says something else. Genuine Latin-1 accents
+  written that way are left alone too, because the two cannot be told apart.
+- FLAC and Opus: a field with more than one value (FFmpeg joins two `ARTIST` fields into one
+  `A;B`), `COMMENT` (written back as `DESCRIPTION`), chapter fields, FLAC `APPLICATION` and
+  `CUESHEET` blocks, a picture whose MIME type FFmpeg respells, any tag after a FLAC stream, and a
+  chained Opus file (a second stream after the first, each with its own tags).
+- WAV: any chunk other than the format, the samples and `LIST INFO`, such as `bext`, `iXML` or an
+  `id3` chunk, and an `ITRK` entry (written back as `IPRT`).
+
+A tag Optimisarr cannot read in full counts as one it cannot keep. Each trimmed file then gets one
+more check, **Tags kept unchanged**: the output's tags are read the same way and must hold every one
+of the source's, with the same values, as many times, and no tag the source lacks. An MP3 must keep
+its ID3v2 version and its ID3v1 tag. Only the encoder name, Optimisarr's marker and the length tags
+above may differ, FLAC's padding and seek table are written again, and an MP3 with only an ID3v1 tag
+gains the same fields as ID3v2 frames. Anything else lost, changed or added fails the job and the
+original is not replaced.
+
+A lossy file is never re-encoded to trim it: that would lose quality to save nothing. A copy can
+only start on an audio frame (about 26 ms for MP3 and 20 ms for Opus), and a decoder starting
+mid-file needs a frame or two to settle. Both happen inside the quarter second of silence that is
+kept, so the music is untouched.
+
+Each trimmed file also gets the usual checks, including **Silence trimmed as planned**, and
+**Kept audio matches the original**. A lossless file must decode to exactly the source's samples
+between the cuts. A copied file must contain the source's own audio frames, every one, in order and
+unchanged. A lossless file written again must still be smaller than the original, so a file the
+source encoder compressed harder than FFmpeg can fails the size check and is not replaced.
+
+When the job measures the file and finds no silence to trim, it stops without writing anything, and
+the file is not offered again until it changes or the library's silence threshold or shortest
+silence changes. A job that could not measure the file, such as one with more than one audio stream
+or whose decoded length disagrees with its container, stops with that reason and does not hold the
+file back. ReplayGain and R128 tags are kept as they are: loudness measurement ignores silence, so
+removing it leaves them correct (on test signals the change was 0.0 dB for ReplayGain and at most
+0.1 LU for EBU R128). A preview of such a file shows the conversion, not the trim.
+
+Chapters in a converted file other than an `.m4b` are a known limit: they are kept with their
+original times, so after a trim they start up to the trimmed silence early. A file that is not
+converted and has chapters is left alone (see the tags above).
 
 ![Library Audio & subtitles page with the soundtrack codec, bitrate, surround, languages to keep and soundtrack quality](../images/optimisarr-library-audio-dark.png)
 
@@ -422,6 +537,33 @@ Audio assessment accepts finite decoded samples up to an absolute magnitude of 4
 +12 dBFS, to accommodate lossy decoder overs. Larger or non-finite samples remain invalid. This does
 not relax a configured clipping gate.
 
+### Dolby Vision
+
+A library that re-encodes video **skips Dolby Vision files as a whole by default**, whatever its HDR
+setting, and the inventory says why. A re-encode cannot carry the Dolby Vision layer: the file
+becomes HDR10 or SDR at best, and a Profile 5 file comes out green and pink. Because the whole file
+is skipped, a re-encode library that also removes tracks by language leaves the tracks of a Dolby
+Vision file alone too. **Video → Picture → Dolby Vision files → Re-encode and lose Dolby Vision**
+opts a library in.
+
+A **Track cleanup** library processes Dolby Vision files without that setting, because it copies the
+video stream unchanged. So does a remux clean-up, which copies the video too, unless its
+**HDR files** setting skips them. To clean the tracks of Dolby Vision files that a re-encode library
+skips, put them in a Track cleanup library.
+
+When the video is copied, verification adds a **Dolby Vision kept** check for a Dolby Vision
+original. The Dolby Vision information a player relies on is the stream's configuration record,
+which the container carries beside the video. The check compares the original's record with the
+output's: version, profile, level, the RPU, base-layer and enhancement-layer flags, and the
+base-layer compatibility. If the output has no record, any of them differs, or the original's record
+cannot be read, the check fails and the original is kept.
+
+FFmpeg keeps the record when it copies into Matroska (`.mkv`). As Optimisarr runs it, FFmpeg writes
+no record into MP4 or MOV, so a copy that would produce an `.mp4`, `.m4v` or `.mov` file is not
+started: the file is skipped with *Dolby Vision — copying it into an MP4 file would drop its Dolby
+Vision information*. This covers Track cleanup of an MP4 file and a remux into MP4. A remux into
+Matroska is still offered.
+
 ### Interlaced video
 
 A source that ffprobe reports as interlaced is **left untouched by default**, and the inventory says
@@ -429,6 +571,11 @@ why. Re-encoding it normally keeps its woven pictures but marks them progressive
 deinterlacing and it plays combed, and verification cannot see that. Track cleanup still applies,
 because it copies the video. A source reporting an unknown field order is treated as progressive,
 because modern codecs commonly report that.
+
+To see which files are interlaced, press **Interlaced** beside the filters on the Inventory page. It
+lists only interlaced files and works with the library, search and verdict filters. A file's details
+show an **Interlaced** tag, and its information button gives the field order (top or bottom field
+first). A file probed before Optimisarr recorded field order shows neither until you **Re-probe** it.
 
 **Video → Picture → Interlaced video → Deinterlace, then encode** lets a library process these files. Frames flagged interlaced have
 their fields combined with `bwdif` at the same frame rate before any crop or scale, progressive
@@ -469,6 +616,32 @@ these files usually come out smaller.
   its start point, so the first frame or two can score slightly lower than in the full encode.
 - With super-resolution, noise is reduced before the engine sees the picture. Real-CUGAN's own noise
   level then applies on top.
+
+### Keyframe interval
+
+**Keyframe interval** sets the longest gap between keyframes when a library re-encodes video. A
+keyframe is a point a player can seek or resume from. Find it under **Configure → Video →
+Encoder**. It is blank, the **Encoder default**, unless you set it, and the encoder then keeps its
+own interval, as every library did before.
+
+Set a whole number of seconds from 1 to 20. A longer interval makes the file slightly smaller, but
+seeking and resuming are slower, and a media server that cuts streams at keyframes makes longer
+segments. Seconds, rather than frames, mean the same thing at any frame rate. Each job counts the
+interval in frames from the file's own frame rate, read just before it encodes, so 10 seconds is 240
+frames at 24 fps (23.976 fps included). With a frame-rate cap it is counted at the reduced rate.
+A variable-frame-rate file is counted at its average rate, so its keyframes are about that far
+apart. If a file's frame rate can't be read, that job keeps the encoder default.
+
+- The interval is a maximum. Scene cuts still add keyframes, and Optimisarr sets no minimum and
+  leaves scene-cut detection as it is.
+- Every supported encoder takes it as its GOP length (FFmpeg's `-g`): x264, x265, SVT-AV1, NVIDIA
+  NVENC, Intel Quick Sync, VA-API and Apple VideoToolbox.
+- It applies only when the library re-encodes video. Remux and track cleanup copy the video, so its
+  keyframes stay where they are.
+- Every result goes through the same checks. The keyframe spacing is not itself checked.
+- **Optimise this file…** and the library's overview say when it is set, and backups carry it.
+- Remote workers need protocol 15 for these jobs. An older worker is not offered them, and says it
+  needs an update; a library set to **Only on workers** waits for an updated worker.
 
 ### Assess re-encoded video soundtracks
 
@@ -718,7 +891,47 @@ file is skipped with a clear reason. Removing a track always rewrites the file �
 FFmpeg stream-copies every kept stream bit-identically into a new file, which then
 passes the usual verify-and-replace gates (including container, retained-language,
 and retained-audio-codec checks)
-before the original is touched.
+before the original is touched. Dolby Vision files are included without the re-encode library's
+Dolby Vision setting, because the video is copied unchanged, and the **Dolby Vision kept** check
+proves the copy still carries its Dolby Vision information. An `.mp4`, `.m4v` or `.mov` Dolby Vision
+file is skipped, because FFmpeg would drop that information there (see [Dolby Vision](#dolby-vision)).
+
+Because removing even a small track rewrites the whole file, a library can set a
+**Minimum saving** under **Libraries → Configure → Which files** (track cleanup and
+remux clean-up libraries only). Enter a share of the file in percent, a size in GB,
+or both. A file is rewritten only when the tracks it would lose add up to at least
+that much; with both set, it must meet both, so neither a small share of a huge
+file nor a large share of a tiny one is rewritten. Below the minimum, the file is
+skipped with the reason, for example *Removing these tracks would save about 120 MB
+(0.19%), below this library's minimum of 5%*. A saving below the minimum is rounded
+down, so it never reads as reaching the minimum it fails. Both fields are blank by default, which
+cleans up every file as before.
+
+- **Where it applies.** Every track cleanup job, and a remux clean-up of a file that
+  is already in the target container and copies its audio. A remux that changes the
+  container, and every re-encode, is worth its rewrite for other reasons and ignores
+  the minimum.
+- **Where the sizes come from.** Matroska files written by mkvmerge record each
+  track's size (the `NUMBER_OF_BYTES` statistics tag). Otherwise the size is
+  estimated from the track's bitrate and length. FFmpeg copies those tags into
+  the files it writes without recounting them, so a file FFmpeg last wrote
+  (Optimisarr's own output included) is estimated instead unless mkvpropedit
+  recounted its statistics afterwards, and tags that add up to more than the whole
+  file are ignored whoever wrote them. Each file's track sizes are
+  recorded when it is probed; files probed before this version need **Re-probe**
+  before the minimum can be checked.
+- **When the size is unknown.** If a track to be removed reports neither a size nor
+  a bitrate, or the tracks to remove would add up to the whole file or more, the
+  saving cannot be worked out. While a minimum is set, that file is
+  skipped with that reason rather than rewritten on a guess.
+- **When the job starts.** The fresh probe every track-removal job takes before
+  FFmpeg runs is checked against the minimum again, so a file that changed since it
+  was queued is cancelled rather than rewritten for too little.
+- **What it does not change.** The checks on the new file are the same: with
+  **Require output to be smaller than the original** on, it must still come out smaller before it replaces the
+  original. The minimum decides only whether the rewrite is worth starting.
+  **Optimise this file…** shows the estimated saving and whether it meets the
+  minimum.
 
 ## Per-library automation
 

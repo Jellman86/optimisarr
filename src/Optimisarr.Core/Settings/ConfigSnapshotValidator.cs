@@ -92,6 +92,11 @@ public static class ConfigSnapshotValidator
             if (library.AudioSilenceThresholdDb is { } silenceDb && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidThreshold(silenceDb)
                 || library.AudioSilenceMinimumSeconds is { } silenceSeconds && !Optimisarr.Core.Queue.SilenceTrimSettings.ValidMinimum(silenceSeconds))
                 errors.Add($"{where} silence trimming: {Optimisarr.Core.Queue.SilenceTrimSettings.RangeError}");
+            if (library.KeyframeIntervalSeconds is { } keyframeSeconds && !Optimisarr.Core.Queue.KeyframeInterval.IsValidSeconds(keyframeSeconds))
+                errors.Add($"{where} keyframe interval must be between {Optimisarr.Core.Queue.KeyframeInterval.MinimumSeconds} and {Optimisarr.Core.Queue.KeyframeInterval.MaximumSeconds} seconds.");
+            if (library.MinimumTrackRemovalSavingPercent is { } trackSavingPercent && !TrackSavingMinimum.ValidPercent(trackSavingPercent)
+                || library.MinimumTrackRemovalSavingBytes is { } trackSavingBytes && !TrackSavingMinimum.ValidBytes(trackSavingBytes))
+                errors.Add($"{where}: {TrackSavingMinimum.RangeError}");
             if (library.TrimAudioSilence == true
                 && (library.AudioQualityReportingEnabled == true || library.AudioQualityGateEnabled == true || library.AdaptiveAudioQuality == true))
                 errors.Add($"{where} trims silence, which cannot be combined with audio quality measurement yet.");
@@ -236,6 +241,10 @@ public static class ConfigSnapshotValidator
             RequireText(connection.Name, $"{where} name", errors);
             RequireText(connection.BaseUrl, $"{where} base URL", errors);
             RequireEnum<ArrConnectionType>(connection.Type, $"{where} type", errors);
+            if (!Activity.ArrPathMappingRules.TryParse(connection.RemotePathPrefix, connection.LocalPathPrefix, out _))
+            {
+                errors.Add($"{where} path mapping: {Activity.ArrPathMappingRules.Error}");
+            }
         }
 
         return errors.Count == 0 ? ConfigValidationResult.Valid : new ConfigValidationResult(false, errors);

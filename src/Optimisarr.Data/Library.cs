@@ -99,6 +99,12 @@ public sealed class Library
     /// <summary>How strongly video re-encodes reduce noise. Off by default.</summary>
     public NoiseReduction NoiseReduction { get; set; }
 
+    /// <summary>
+    /// The longest gap between keyframes in a video re-encode, in whole seconds, or null for the
+    /// encoder's own default. Null on upgrade, so existing libraries encode exactly as before.
+    /// </summary>
+    public int? KeyframeIntervalSeconds { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 
@@ -240,6 +246,13 @@ public sealed class Library
     public double AudioSilenceMinimumSeconds { get; set; } = 2;
 
     /// <summary>
+    /// When true as well as <see cref="TrimAudioSilence"/>, a music file that is not converted is
+    /// still trimmed, keeping its format: lossless audio is encoded again losslessly and MP3, AAC
+    /// and Opus are cut by copying their frames. Off by default.
+    /// </summary>
+    public bool TrimSilenceWithoutConverting { get; set; }
+
+    /// <summary>
     /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
     /// tracks in any other language are removed from the output. Null (the default) keeps every
     /// track. Tracks with an unknown language are always kept, and when no track matches a kept
@@ -254,6 +267,19 @@ public sealed class Library
     /// is no keep-at-least-one guard, so a file may end with zero subtitles.
     /// </summary>
     public string? KeepSubtitleLanguages { get; set; }
+
+    /// <summary>
+    /// The smallest saving, as a percentage of the file, for which a job that only removes tracks
+    /// rewrites the file. Null (the default) sets no minimum. See
+    /// <c>RuleSettings.MinimumTrackRemovalSavingPercent</c>.
+    /// </summary>
+    public double? MinimumTrackRemovalSavingPercent { get; set; }
+
+    /// <summary>
+    /// The smallest saving in bytes for which a job that only removes tracks rewrites the file.
+    /// When both minimums are set a file must meet both. Null (the default) sets no minimum.
+    /// </summary>
+    public long? MinimumTrackRemovalSavingBytes { get; set; }
 
     /// <summary>
     /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but

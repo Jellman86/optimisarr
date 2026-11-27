@@ -42,4 +42,17 @@ public sealed record MediaProperties(
 {
     /// <summary>All inventory audio codec names; this summary does not prove per-track identity.</summary>
     public string? AudioCodecSummary { get; init; }
+
+    /// <summary>Why the file's tags would not survive a trim without converting it; see <see cref="Queue.TrimOnlyTags"/>.</summary>
+    public string? TrimOnlyTagRefusal { get; init; }
+
+    /// <summary>
+    /// Each audio track's size in bytes, in the same order as <see cref="AudioLanguages"/>; an entry
+    /// is null when the track reports neither a size nor a bitrate. Null when the probe predates
+    /// track sizes. See <see cref="TrackRemovalSaving"/>.
+    /// </summary>
+    public IReadOnlyList<long?>? AudioTrackBytes { get; init; }
+
+    /// <summary>Each subtitle track's size in bytes, as <see cref="AudioTrackBytes"/>.</summary>
+    public IReadOnlyList<long?>? SubtitleTrackBytes { get; init; }
 }

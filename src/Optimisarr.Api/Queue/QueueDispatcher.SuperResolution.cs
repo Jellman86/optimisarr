@@ -161,6 +161,7 @@ public sealed partial class QueueDispatcher
             "Job {JobId}: super-resolution — {Frames} pictures per batch, {Run}, noise {Noise}, device {Device}",
             jobId, frames, options.RunDescription, options.NoiseLevel, options.Device);
 
+        var expectedFrames = SuperResolutionBatchPlan.EstimateExpectedFrames(work.FrameCount, work.DurationSeconds, frameRate);
         using var outputDirectory = WorkPaths.PrepareOutputDirectory(work.Spec.OutputPath, ReserveWorkDirectory);
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
@@ -170,7 +171,7 @@ public sealed partial class QueueDispatcher
             (input, output) => options.Engine.BuildArguments(input, output, detection.ModelsRoot, options),
             workspace,
             upscaled,
-            work.FrameCount,
+            expectedFrames,
             frames,
             frames * SuperResolutionBatchPlan.WorstCaseBytesPerFrame(sourcePicture, options.Scale),
             queue.MinFreeDiskBytes,
@@ -186,7 +187,39 @@ public sealed partial class QueueDispatcher
             () => pauseManager.IsPaused,
             processId => TrackProcess(processId, hardwareEncoder: false),
             fraction => UpdateProgressAsync(jobId, fraction),
-            TrackEncoder: processId => TrackProcess(processId, IsHardwareEncoder(work.VideoEncoder)));
+            TrackEncoder: processId => TrackProcess(processId, IsHardwareEncoder(work.VideoEncoder)),
+            TryReportEngineOutput: log =>
+            {
+                var devices = SuperResolutionVulkanDevice.ParseDevices(log);
+                var selected = SuperResolutionVulkanDevice.ResolveSelectedDevice(devices, options);
+                if (selected is null)
+                {
+                    return false;
+                }
+                if (SuperResolutionVulkanDevice.SoftwareFallbackWarning(selected, options) is { } warning)
+                {
+                    logger.LogWarning("Job {JobId}: {Warning}", jobId, warning);
+                }
+                else
+                {
+                    logger.LogInformation("Job {JobId}: super-resolution using Vulkan device [{Index}] {DeviceName}",
+                        jobId, selected.Index, selected.Name);
+                }
+                return true;
+            },
+            ReportBatchCompleted: (batch, written, expected) =>
+            {
+                if (expected is > 0)
+                {
+                    logger.LogInformation("Job {JobId}: super-resolution batch {Batch} complete ({Written}/{Expected} pictures)",
+                        jobId, batch, written, expected);
+                }
+                else
+                {
+                    logger.LogInformation("Job {JobId}: super-resolution batch {Batch} complete ({Written} pictures)",
+                        jobId, batch, written);
+                }
+            });
         var run = await SuperResolutionPipeline.RunAsync(request, hooks, cancellationToken);
         if (run.ExitCode != 0 || source.AttachmentCount == 0 || IsMp4Family(work.Spec.OutputPath))
         {

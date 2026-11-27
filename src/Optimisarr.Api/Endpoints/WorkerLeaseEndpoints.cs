@@ -288,6 +288,7 @@ internal static class WorkerLeaseEndpoints
                 .Select(job => job.Id).ToList();
             var skipped = 0;
             string? lastReason = null;
+            var keyframeRefusalRecorded = false;
             foreach (var batch in ordered.Chunk(25))
             {
                 var shortlist = batch.ToList();
@@ -347,6 +348,24 @@ internal static class WorkerLeaseEndpoints
                     {
                         skipped++;
                         lastReason = LibraryPathSafety.Refusal;
+                        continue;
+                    }
+
+                    // An older sidecar refuses -g, so a library with a keyframe interval is out of its
+                    // reach. Said here, before preparation probes every such job on every poll.
+                    if (job.MediaFile.MediaKind == MediaKind.Video
+                        && job.MediaFile.Library?.KeyframeIntervalSeconds is not null
+                        && capabilities.ProtocolVersion < WorkerProtocol.KeyframeIntervalVersion)
+                    {
+                        skipped++;
+                        lastReason = "This library's keyframe interval requires an updated sidecar (protocol 15).";
+                        // Recorded once per poll, not once per job, so a long queue costs one write.
+                        if (!keyframeRefusalRecorded)
+                        {
+                            WorkerProblems.Record(worker, lastReason, now);
+                            await db.SaveChangesAsync(cancellationToken);
+                            keyframeRefusalRecorded = true;
+                        }
                         continue;
                     }
 
@@ -429,7 +448,11 @@ internal static class WorkerLeaseEndpoints
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
+                        lastReason = requiredProtocol == WorkerProtocol.AmfConstantQualityVersion
+                            ? "AMD AMF encoding requires an updated sidecar (protocol 16)."
+                            : requiredProtocol == WorkerProtocol.KeyframeIntervalVersion
+                            ? "This library's keyframe interval requires an updated sidecar (protocol 15)."
+                            : requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
                             ? "Soundtrack quality requires an updated sidecar with exact duration and decoder pre-roll preparation (protocol 14)."
                             : requiredProtocol == WorkerProtocol.TrackBitrateVersion
                             ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."
@@ -1456,7 +1479,8 @@ internal static class WorkerLeaseEndpoints
                 || SuperResolutionRouting.Applies(superResolutionEngineEnabled, library.SuperResolutionEnabled,
                     media.MediaKind, replaceBound: job.Type == JobType.Normal)
                 || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, media.FieldOrder)
-                || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, media.MediaKind)))
+                || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, media.MediaKind)
+                || AudioTarget.KeepsOnServer(library.AudioTargetCodec, media.MediaKind)))
         {
             return false;
         }
@@ -1483,6 +1507,7 @@ internal static class WorkerLeaseEndpoints
                 targetCodec,
                 encoderMode,
                 capabilities.VideoEncoders,
+                capabilities.ProtocolVersion,
                 avoidIntelQsv: job.AvoidIntelQsv).Succeeded;
     }
 

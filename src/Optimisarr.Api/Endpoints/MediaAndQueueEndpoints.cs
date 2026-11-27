@@ -176,7 +176,8 @@ internal static class MediaAndQueueEndpoints
                 file.SubtitleTrackCount,
                 file.ProbedAt,
                 file.ProbeError,
-                file.OptimisedMarker));
+                file.OptimisedMarker,
+                file.FieldOrder));
         })
         .WithName("ProbeMedia");
 
@@ -204,12 +205,16 @@ internal static class MediaAndQueueEndpoints
         .WithName("CandidateSummary");
 
         // The Inventory view: discovered files paired with their rule verdict, filtered, counted, and paged
-        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring. The
-        // response carries the page, the filtered total, and the per-filter tallies for the UI chips.
+        // on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring;
+        // `interlaced=true` keeps only files whose field order says they are interlaced; `sort` is
+        // name/size/verdict with an _asc/_desc suffix (blank keeps path order). The response carries the
+        // page, the filtered total, and the per-filter tallies for the UI chips.
         app.MapGet("/api/inventory", async (
             int? libraryId,
             string? show,
             string? search,
+            bool? interlaced,
+            string? sort,
             int? page,
             int? pageSize,
             InventoryQueries inventory,
@@ -222,9 +227,15 @@ internal static class MediaAndQueueEndpoints
                     $"Unknown inventory filter '{show}'. Valid values: {string.Join(", ", Enum.GetNames<InventoryFilter>())}.",
                     new { value = show });
             }
+            if (!InventoryQueries.TryParseSort(sort, out var order))
+            {
+                return ApiErrors.BadRequest("inventory.sort.invalid",
+                    $"Unknown inventory sort '{sort}'. Valid values: {string.Join(", ", InventoryQueries.SortValues.Keys)}.",
+                    new { value = sort });
+            }
 
             return Results.Ok(await inventory.QueryAsync(
-                libraryId, filter, search, page ?? 1, pageSize ?? 0, cancellationToken));
+                libraryId, filter, search, page ?? 1, pageSize ?? 0, order, interlaced ?? false, cancellationToken));
         })
         .WithName("GetInventory");
 
@@ -756,7 +767,8 @@ internal sealed record MediaPlanDto(
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
     PlannedFile File,
     MediaPlanImageDto? Image,
-    int? RetryJobId)
+    int? RetryJobId,
+    PlannedTrackSaving? TrackSaving)
 {
     public static MediaPlanDto From(MediaFile file, Candidate? candidate, OptimisationPlan plan) => new(
         file.Id,
@@ -772,7 +784,8 @@ internal sealed record MediaPlanDto(
         plan.Picture is { } picture
             ? new MediaPlanPictureDto(
                 picture.Codec, picture.Crf, picture.Width, picture.Height, picture.ShrinkToHeight, picture.FrameRateCap,
-                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales)
+                picture.TonemapToSdr, picture.Deinterlace, picture.CropBlackBars, picture.NoiseReduction.ToString(), picture.Upscales,
+                picture.KeyframeIntervalSeconds)
             : null,
         plan.Sound,
         plan.AudioTracks,
@@ -781,7 +794,8 @@ internal sealed record MediaPlanDto(
         plan.Image is { } image
             ? new MediaPlanImageDto(image.Format, image.Quality, image.ResizeMode.ToString(), image.ResizeValue, image.RecompressesLossy)
             : null,
-        candidate?.RetryJobId);
+        candidate?.RetryJobId,
+        plan.TrackSaving);
 }
 
 /// <summary>The file as it is now: the "before" side of the plan, from what the last probe recorded.</summary>
@@ -812,7 +826,8 @@ internal sealed record MediaPlanPictureDto(
     bool Deinterlace,
     bool CropBlackBars,
     string NoiseReduction,
-    bool Upscales);
+    bool Upscales,
+    int? KeyframeIntervalSeconds);
 
 /// <summary>Enums are sent as their names, as the rest of the API sends them.</summary>
 internal sealed record MediaPlanImageDto(string Format, int Quality, string ResizeMode, int ResizeValue, bool RecompressesLossy);

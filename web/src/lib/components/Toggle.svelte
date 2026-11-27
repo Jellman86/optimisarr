@@ -25,7 +25,7 @@
 </script>
 
 <label
-  class="flex items-center gap-4 {bare ? 'min-h-11 justify-end' : 'justify-between'} {disabled
+  class="flex items-center gap-4 {bare ? 'hit-target justify-end' : 'justify-between'} {disabled
  ? 'cursor-not-allowed opacity-60'
  : 'cursor-pointer'}"
 >

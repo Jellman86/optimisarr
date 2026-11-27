@@ -54,7 +54,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
                     [new(0, 1000 + step.Value * 10, sourceHash, candidate, Image: Image(candidate, step.Value >= 60 ? 90 : 70))], EncoderSha256: tool);
             var audio = new AudioQualityAssessmentResult(true, null, new(8, 2, 48000, "stereo"), new(8, 2, 48000, "stereo"),
                 new('d', 64), candidate, tool, tool, tool, [new(new(0, 8), new(384000, [0.001, step.Value >= 96 ? 0.01 : 0.04]))], 1);
-            return new(step.Contract.Id, "aac", step.Value, sourceHash, new(Audio: step.Contract.SourceAudio),
+            return new(step.Contract.Id, "libopus", step.Value, sourceHash, new(Audio: step.Contract.SourceAudio),
                 [new(0, 1000 + step.Value * 10, new('d', 64), candidate, Audio: RemoteAudioQualityEvidence.From(audio))], EncoderSha256: tool);
         }
         public async Task<ImagePreparationResult> PrepareImageAsync(string source, string candidate, string? marker, CancellationToken token)
@@ -79,7 +79,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
                     Image: new(Image(sourceHash, 100), Image(candidateHash, 90), SourceMetadata: ImageMetadataResult.Ok(new(false, false)),
                         CandidateMetadata: ImageMetadataResult.Ok(new(false, false)), EncoderSha256: tool, ProbeSha256: tool, MetadataToolSha256: tool));
             }
-            const string audioProbe = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8"}}""";
+            const string audioProbe = """{"streams":[{"codec_type":"audio","codec_name":"opus","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8"}}""";
             return new(contract.Id, sourceHash, candidateHash, audioProbe, audioProbe, DecodeHealthResult.Ok,
                 SourceAudio: new(true, 0, null, 8), CandidateAudio: new(true, 0, null, 8),
                 AudioQuality: RemoteAudioQualityEvidence.From(new(true, null, new(8, 2, 48000, "stereo"), new(8, 2, 48000, "stereo"),

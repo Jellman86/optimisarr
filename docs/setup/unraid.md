@@ -75,7 +75,9 @@ these variables (Add another Variable):
 - `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`
 
 `video` is required for hardware encoding and decoding — without it NVENC fails with *"Cannot load
-libnvidia-encode.so.1"* even though `nvidia-smi` works, and NVDEC is unavailable.
+libnvidia-encode.so.1"* even though `nvidia-smi` works, and NVDEC is unavailable. If you also use
+experimental AI super-resolution, add `graphics` (`compute,video,utility,graphics`) so Vulkan uses
+the NVIDIA GPU instead of falling back to software rendering on the CPU (`llvmpipe`).
 
 Optimisarr confirms each encoder with a tiny real test encode at startup, so a present-but-broken
 driver reads as unavailable rather than failing jobs later.

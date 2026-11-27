@@ -89,6 +89,9 @@ public sealed class SuperResolutionPipelineTests : IDisposable
             time.sleep(600)
         if mode == 'fail':
             sys.stderr.write('vkCreateInstance failed\n'); sys.exit(3)
+        if mode == 'llvmpipe':
+            sys.stderr.write('[0 llvmpipe (LLVM 20.1.2, 256 bits)]  queueC=0[1]  queueG=0[1]  queueT=0[1]\n')
+            sys.stderr.flush()
         workspace = os.path.dirname(src)
         files = sum(len(fs) for _, _, fs in os.walk(workspace))
         with open(os.path.join(os.path.dirname(workspace), 'highwater'), 'a') as f:
@@ -411,5 +414,34 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         var run = await SuperResolutionPipeline.RunAsync(request, Hooks(free: () => ++calls == 1 ? 15_000 : 12_000), CancellationToken.None);
         Assert.Equal(0, run.ExitCode);
         Assert.Equal("6", await File.ReadAllTextAsync(output));
+    }
+
+    [PosixFact]
+    public async Task Engine_device_output_and_completed_batches_are_reported_during_the_run()
+    {
+        var (request, _) = Request(FakeFfmpeg(10), FakeEngine("llvmpipe"), batch: 4);
+        request = request with { ExpectedFrames = 10 };
+        var reportedLogs = new List<string>();
+        var batches = new List<(int Batch, int Written, int? Expected)>();
+        var hooks = Hooks() with
+        {
+            TryReportEngineOutput = log =>
+            {
+                if (!log.Contains("llvmpipe"))
+                {
+                    return false;
+                }
+                reportedLogs.Add(log);
+                return true;
+            },
+            ReportBatchCompleted = (batch, written, expected) => batches.Add((batch, written, expected)),
+        };
+
+        var run = await SuperResolutionPipeline.RunAsync(request, hooks, CancellationToken.None);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Single(reportedLogs);
+        Assert.Contains("llvmpipe", reportedLogs[0]);
+        Assert.Equal([(1, 4, 10), (2, 8, 10), (3, 10, 10)], batches);
     }
 }

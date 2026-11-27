@@ -1,6 +1,7 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Verification;
 
@@ -12,6 +13,7 @@ namespace Optimisarr.Core.Verification;
 public static class VerificationEvaluator
 {
     public const string SourceVideoTimelineCheckName = "Source video timeline";
+    public const string DolbyVisionKeptCheckName = "Dolby Vision kept";
     // Half a percent covers the rounding between a planned rate (59.94 / 2) and ffprobe's rational
     // for the same cadence (30000/1001), while staying far under the factor of two a missed
     // decimation would show.
@@ -36,6 +38,8 @@ public static class VerificationEvaluator
         {
             checks.Add(DurationWithinTolerance(input, policy));
             if (input.SilenceTrim is { } trim) checks.Add(SilenceTrimmedAsPlanned(input, trim));
+            if (input.KeptAudio is { } kept) checks.Add(KeptAudioUnchanged(kept));
+            if (input.TagsKept is { } tags) checks.Add(TagsKeptUnchanged(tags));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
 
@@ -128,6 +132,14 @@ public static class VerificationEvaluator
         if (isVideo && input.OriginalIsHdr)
         {
             checks.Add(HdrPreserved(input));
+        }
+
+        // A stream copy keeps the Dolby Vision RPU in the video packets, but the configuration record
+        // that tells a player to use it lives in the container, and a muxer can leave it out without
+        // an error. A re-encode reaches Dolby Vision only when the library opted in to losing the layer.
+        if (isVideo && !input.VideoReencoded && (input.OriginalIsDolbyVision || input.OriginalDolbyVision is not null))
+        {
+            checks.Add(DolbyVisionKept(input));
         }
 
         // Audio fidelity (no silent downmix or sample-rate drop) is checked when audio
@@ -232,58 +244,90 @@ public static class VerificationEvaluator
                 $"Embedded artwork dropped from {input.OriginalAttachedPictureCount} to {input.OutputAttachedPictureCount} picture(s).");
         }
 
-        var original = NormaliseAudioTags(input.OriginalFormatTags);
-        var output = NormaliseAudioTags(input.OutputFormatTags);
-        foreach (var (key, value) in original)
+        if (input.Mp4Tags is { } mp4 && Mp4TagProblem(mp4) is { } problem)
         {
-            if (!output.TryGetValue(key, out var outputValue))
+            return Fail(name, problem);
+        }
+
+        // One name per tag, so a FLAC's MUSICBRAINZ_ALBUMID and the M4A item it becomes compare as one.
+        var original = AudioFormatTags.Normalise(input.OriginalFormatTags);
+        var output = AudioFormatTags.Normalise(input.OutputFormatTags);
+        foreach (var (key, tag) in original)
+        {
+            if (!output.TryGetValue(key, out var kept))
             {
-                return Fail(name, $"Audio metadata tag '{key}' was lost.");
+                return Fail(name, $"Audio metadata tag '{tag.Name}' was lost.");
             }
 
-            if (!string.Equals(value, outputValue, StringComparison.Ordinal))
+            if (!string.Equals(tag.Value, kept.Value, StringComparison.Ordinal))
             {
-                return Fail(name, $"Audio metadata tag '{key}' changed during conversion.");
+                return Fail(name, $"Audio metadata tag '{tag.Name}' changed during conversion.");
             }
         }
 
         return Pass(name,
-            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s).");
+            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s)"
+            + (input.Mp4Tags is null ? "." : ", stored as iTunes tags."));
     }
 
-    private static IReadOnlyDictionary<string, string> NormaliseAudioTags(
-        IReadOnlyDictionary<string, string>? tags)
+    /// <summary>
+    /// Why an M4A's tags fail, or null. ffprobe reads QuickTime keys as readily as iTunes atoms, so
+    /// the file's own atoms are read: they must be iTunes atoms, and an M4A source's items must all be
+    /// there unchanged, apart from those written again for the new file.
+    /// </summary>
+    private static string? Mp4TagProblem(Mp4TagEvidence evidence)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (tags is null)
+        if (evidence.Output?.Tags is not { } output)
+            return $"The new file's tags could not be read: {evidence.Output?.Problem ?? "not measured"}.";
+        if (output.Layout == Mp4TagLayout.QuickTimeKeys)
+            return "The new file's tags are stored as QuickTime keys, which many music players can't read, instead of iTunes tags.";
+        if (evidence.Source is not { } sourceRead) return LanguageProblem(output, evidence.SourceLanguage);
+        if (sourceRead.Tags is not { } source)
+            return $"The original's tags could not be read: {sourceRead.Problem}.";
+        if (source.Layout != Mp4TagLayout.Itunes) return LanguageProblem(output, evidence.SourceLanguage);
+
+        var sourceItems = source.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
+        var outputItems = output.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
+        var sourceKeys = sourceItems.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var outputKeys = outputItems.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var lost = sourceKeys.Where(key => !outputKeys.Contains(key)).ToList();
+        var gained = outputKeys.Where(key => !sourceKeys.Contains(key)).ToList();
+        var changed = sourceKeys.Where(key => outputKeys.Contains(key)
+            && !SameItems(sourceItems.Where(item => item.Key == key), outputItems.Where(item => item.Key == key))).ToList();
+        if (lost.Count == 0 && gained.Count == 0 && changed.Count == 0) return null;
+        var parts = new List<string>();
+        if (lost.Count > 0) parts.Add($"lost {Names(lost)}");
+        if (changed.Count > 0) parts.Add($"changed {Names(changed)}");
+        if (gained.Count > 0) parts.Add($"gained {Names(gained)}");
+        return $"The iTunes tags {string.Join(" and ", parts)}.";
+
+        static string Names(List<string> keys) =>
+            string.Join(", ", keys.Take(8).Select(key => key.Length > 40 ? key[..40] + "…" : key)) + (keys.Count > 8 ? $" and {keys.Count - 8} more" : "");
+    }
+
+    /// <summary>
+    /// Why a converted M4A does not hold the language its source's tags state, or null. ffprobe
+    /// shows every M4A's audio track as language "und", and the comparison of ffprobe's tags leaves
+    /// language out, so the iTunes item itself is compared. An M4A source's items are compared whole.
+    /// </summary>
+    private static string? LanguageProblem(Mp4Tags output, string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLanguage)) return null;
+        var languages = output.Items.Where(item => item.Key == Mp4TagCarryOver.LanguageKey).ToList();
+        if (languages.Count == 0) return "Audio metadata tag 'LANGUAGE' was lost.";
+        return languages is [var language] && Mp4TagCarryOver.HoldsText(language, sourceLanguage.Trim())
+            ? null
+            : "Audio metadata tag 'LANGUAGE' changed during conversion.";
+    }
+
+    private static bool SameItems(IEnumerable<Mp4TagItem> source, IEnumerable<Mp4TagItem> output)
+    {
+        var remaining = output.ToList();
+        foreach (var item in source)
         {
-            return result;
+            if (!remaining.Remove(item)) return false;
         }
-
-        foreach (var (rawKey, rawValue) in tags)
-        {
-            var key = rawKey.Trim().ToLowerInvariant() switch
-            {
-                "albumartist" => "album_artist",
-                "year" => "date",
-                var other => other
-            };
-
-            // Technical container fields are regenerated legitimately and are not music tags.
-            if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
-                or "compatible_brands" or "handler_name" or "duration" or "language"
-                or "optimisarr")
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(rawValue))
-            {
-                result[key] = rawValue.Trim();
-            }
-        }
-
-        return result;
+        return remaining.Count == 0;
     }
 
     private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)
@@ -573,6 +617,26 @@ public static class VerificationEvaluator
         return input.OutputIsHdr
             ? Pass("HDR signal", "HDR signal preserved in the output.")
             : Fail("HDR signal", "Original is HDR but the output lost its HDR signal.");
+    }
+
+    private static VerificationCheck DolbyVisionKept(VerificationInput input)
+    {
+        if (input.OriginalDolbyVision is not { } source)
+        {
+            return Fail(DolbyVisionKeptCheckName,
+                "The original is recorded as Dolby Vision, but no Dolby Vision configuration could be read from it, so the output cannot be shown to keep it. If the file was replaced since the last scan, scan the library again.");
+        }
+
+        if (input.OutputDolbyVision is not { } output)
+        {
+            return Fail(DolbyVisionKeptCheckName,
+                $"The original is Dolby Vision ({source.Describe()}), but the output has no Dolby Vision configuration, so players would not show it as Dolby Vision.");
+        }
+
+        return source == output
+            ? Pass(DolbyVisionKeptCheckName, $"The output keeps the original's Dolby Vision configuration ({source.Describe()}).")
+            : Fail(DolbyVisionKeptCheckName,
+                $"The output's Dolby Vision configuration ({output.Describe()}) differs from the original's ({source.Describe()}).");
     }
 
     private static VerificationCheck PerceptualQuality(VerificationInput input, VerificationPolicy policy)
@@ -937,6 +1001,49 @@ public static class VerificationEvaluator
             return Fail(name, detail + string.Format(CultureInfo.InvariantCulture,
                 " A trimmed edge kept less than {0:0.##}s of silence, so the cut reached into the music.", least));
         return Pass(name, detail);
+    }
+
+    /// <summary>
+    /// A trim-only file changes nothing but its length. A lossless one must decode to the source's
+    /// exact samples over the kept window; a copied one must hold the source's own encoded packets,
+    /// every one, in order, with none changed or missing. Unmeasured evidence fails.
+    /// </summary>
+    private static VerificationCheck KeptAudioUnchanged(KeptAudioEvidence kept)
+    {
+        const string name = KeptAudioCheckName;
+        if (kept.Method == Optimisarr.Core.Queue.AudioTrimOnlyMethod.LosslessReencode)
+        {
+            if (kept.SourceDecodedDigest is null || kept.OutputDecodedDigest is null)
+                return Fail(name, "The decoded audio could not be compared with the source's.");
+            return string.Equals(kept.SourceDecodedDigest, kept.OutputDecodedDigest, StringComparison.OrdinalIgnoreCase)
+                ? Pass(name, "Every sample between the cuts is identical to the source's.")
+                : Fail(name, "The decoded audio between the cuts differs from the source's.");
+        }
+
+        if (kept.SourcePacketDigests is null || kept.OutputPacketDigests is null)
+            return Fail(name, "The audio frames could not be compared with the source's.");
+        return PacketRun.IsContiguousRunOf(kept.OutputPacketDigests, kept.SourcePacketDigests)
+            ? Pass(name, string.Format(CultureInfo.InvariantCulture,
+                "All {0} audio frames are unchanged copies of consecutive frames of the source's {1}.",
+                kept.OutputPacketDigests.Count, kept.SourcePacketDigests.Count))
+            : Fail(name, "The audio frames are not an unbroken, unchanged run of the source's frames.");
+    }
+
+    public const string KeptAudioCheckName = "Kept audio unchanged";
+    public const string TagsKeptCheckName = "Tags kept unchanged";
+
+    /// <summary>
+    /// A trim-only file keeps every tag the source has, frame for frame and value for value, apart
+    /// from those written again for the new length. Tags that could not be read fail.
+    /// </summary>
+    private static VerificationCheck TagsKeptUnchanged(TagsKeptEvidence evidence)
+    {
+        if (evidence.Source?.Tags is not { } source)
+            return Fail(TagsKeptCheckName, $"The original's tags could not be read: {evidence.Source?.Problem ?? "not measured"}.");
+        if (evidence.Output?.Tags is not { } output)
+            return Fail(TagsKeptCheckName, $"The new file's tags could not be read: {evidence.Output?.Problem ?? "not measured"}.");
+        var comparison = TrimOnlyTags.Compare(source, output);
+        return comparison.Kept ? Pass(TagsKeptCheckName, comparison.Detail) : Fail(TagsKeptCheckName, comparison.Detail);
     }
 
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)

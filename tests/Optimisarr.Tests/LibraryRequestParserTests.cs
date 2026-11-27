@@ -6,6 +6,27 @@ namespace Optimisarr.Tests;
 public sealed class LibraryRequestParserTests
 {
     [Fact]
+    public void A_keyframe_interval_is_saved_and_defaults_to_the_encoder_default()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var plain, out _));
+        Assert.Null(plain.KeyframeIntervalSeconds);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with { KeyframeIntervalSeconds = 10 }, out var parsed, out _));
+        Assert.Equal(10, parsed.KeyframeIntervalSeconds);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-2)]
+    [InlineData(21)]
+    [InlineData(240)]
+    public void A_keyframe_interval_out_of_range_is_refused(int seconds)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with { KeyframeIntervalSeconds = seconds }, out _, out var error));
+        Assert.Contains("Keyframe interval must be between 1 and 20 seconds", error);
+    }
+
+    [Fact]
     public void Audio_quality_search_requires_an_enabled_explicit_target()
     {
         var request = Request() with { MediaType = "Music", AdaptiveAudioQuality = true };
@@ -30,6 +51,37 @@ public sealed class LibraryRequestParserTests
         Assert.True(parsed.TrimAudioSilence);
         Assert.Equal(-50, parsed.AudioSilenceThresholdDb);
         Assert.Equal(1.5, parsed.AudioSilenceMinimumSeconds);
+    }
+
+    [Fact]
+    public void A_minimum_track_removal_saving_is_saved_and_defaults_to_none()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var plain, out _));
+        Assert.Null(plain.MinimumTrackRemovalSavingPercent);
+        Assert.Null(plain.MinimumTrackRemovalSavingBytes);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with
+        {
+            MinimumTrackRemovalSavingPercent = 5, MinimumTrackRemovalSavingBytes = 1_073_741_824,
+        }, out var parsed, out _));
+        Assert.Equal(5, parsed.MinimumTrackRemovalSavingPercent);
+        Assert.Equal(1_073_741_824, parsed.MinimumTrackRemovalSavingBytes);
+    }
+
+    [Theory]
+    [InlineData(0d, null)]
+    [InlineData(-1d, null)]
+    [InlineData(100d, null)]
+    [InlineData(double.NaN, null)]
+    [InlineData(null, 0L)]
+    [InlineData(null, -5L)]
+    public void A_minimum_track_removal_saving_out_of_range_is_refused(double? percent, long? bytes)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with
+        {
+            MinimumTrackRemovalSavingPercent = percent, MinimumTrackRemovalSavingBytes = bytes,
+        }, out _, out var error));
+        Assert.Contains("minimum track-removal saving", error);
     }
 
     [Theory]

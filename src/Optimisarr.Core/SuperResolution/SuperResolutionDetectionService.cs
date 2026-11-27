@@ -38,7 +38,10 @@ public sealed record SuperResolutionProbeResult(
     int? ExitCode,
     string? Error,
     string? OutputTail,
-    string? DeviceUsed);
+    string? DeviceUsed,
+    string? DetectedDevice = null,
+    bool UsingSoftwareVulkan = false,
+    string? Warning = null);
 
 /// <summary>
 /// Checks the configured super-resolution engine's availability on this machine. The static check resolves the
@@ -225,7 +228,7 @@ public sealed class SuperResolutionDetectionService(SuperResolutionOptions optio
             }
 
             var arguments = options.Engine.BuildArguments(input, output, detection.ModelsRoot!, options);
-            var run = await Tools.BoundedToolProcess.RunAsync(
+            var run = await Tools.BoundedToolProcess.RunWithStandardErrorAsync(
                 detection.BinaryPath!, arguments, cancellationToken,
                 timeout: TimeSpan.FromMinutes(5));
             var tail = string.Join("\n", new[] { run.Output, run.Error }.Where(text => !string.IsNullOrEmpty(text)));
@@ -243,7 +246,19 @@ public sealed class SuperResolutionDetectionService(SuperResolutionOptions optio
                     $"The engine exited cleanly but did not produce a {expected.Width}x{expected.Height} picture.", tail, options.Device);
             }
 
-            return new SuperResolutionProbeResult(true, run.ExitCode, null, tail, options.Device);
+            var devices = SuperResolutionVulkanDevice.ParseDevices(tail);
+            var selected = SuperResolutionVulkanDevice.ResolveSelectedDevice(devices, options);
+            var warning = SuperResolutionVulkanDevice.SoftwareFallbackWarning(selected, options);
+
+            return new SuperResolutionProbeResult(
+                true,
+                run.ExitCode,
+                null,
+                tail,
+                options.Device,
+                DetectedDevice: selected?.Name,
+                UsingSoftwareVulkan: selected?.IsSoftware == true,
+                Warning: warning);
         }
         finally
         {

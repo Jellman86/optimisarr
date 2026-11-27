@@ -69,6 +69,7 @@ internal static class LibraryRuleResolution
             OptimiseDolbyVision = library.OptimiseDolbyVision,
             DeinterlaceVideo = library.DeinterlaceVideo,
             NoiseReduction = library.NoiseReduction,
+            KeyframeIntervalSeconds = library.KeyframeIntervalSeconds,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
             ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
             SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),
@@ -86,12 +87,15 @@ internal static class LibraryRuleResolution
             TrimAudioSilence = library.TrimAudioSilence,
             AudioSilenceThresholdDb = library.AudioSilenceThresholdDb,
             AudioSilenceMinimumSeconds = library.AudioSilenceMinimumSeconds,
+            TrimSilenceWithoutConverting = library.TrimSilenceWithoutConverting,
             KeepAudioLanguages = string.IsNullOrWhiteSpace(library.KeepAudioLanguages)
                 ? null
                 : TrackLanguages.ParseLanguageList(library.KeepAudioLanguages),
             KeepSubtitleLanguages = string.IsNullOrWhiteSpace(library.KeepSubtitleLanguages)
                 ? null
                 : TrackLanguages.ParseLanguageList(library.KeepSubtitleLanguages),
+            MinimumTrackRemovalSavingPercent = library.MinimumTrackRemovalSavingPercent,
+            MinimumTrackRemovalSavingBytes = library.MinimumTrackRemovalSavingBytes,
             ReencodeLossyAudio = library.ReencodeLossyAudio,
             TargetImageFormat = library.TargetImageFormat,
             ImageQuality = library.ImageQuality,

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { en, type Messages } from './en'
 
 // Re-exported so components can import the contract type from the i18n entry point.
@@ -36,6 +37,19 @@ export const AVAILABLE_LOCALES: ReadonlyArray<{ code: LocaleCode; name: string }
 ]
 
 const STORAGE_KEY = 'optimisarr:locale'
+
+// Development builds only: English stretched by 40% (see pseudo-locale.ts), chosen by storing this
+// code under STORAGE_KEY. It is never offered as a language, and the guard on import.meta.env.DEV
+// lets a production build drop it entirely.
+export const PSEUDO_LOCALE = 'en-XA'
+
+function wantsPseudoLocale(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === PSEUDO_LOCALE
+  } catch {
+    return false
+  }
+}
 
 function isLocale(code: string): code is LocaleCode {
   return code in LOADERS
@@ -78,7 +92,13 @@ function createI18n() {
 
   const initial = detectInitial()
   setDocumentLanguage(initial)
-  if (initial !== 'en') void apply(initial, false)
+  if (import.meta.env.DEV && wantsPseudoLocale()) {
+    void import('./pseudo-locale').then(({ pseudoLocalise }) => {
+      if (loadSequence !== 0) return
+      messages = pseudoLocalise(en)
+      if (typeof document !== 'undefined') document.documentElement.lang = PSEUDO_LOCALE
+    })
+  } else if (initial !== 'en') void apply(initial, false)
 
   return {
     get locale() {

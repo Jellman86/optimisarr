@@ -38,8 +38,9 @@ public static class TranscodeSpecResolver
         // The black-bar crop already decided for this title, if the library asked for one and
         // detection found bars. Null means encode the full frame.
         CropRect? detectedCrop = null,
-        // The probed average frame rate, needed only to plan a frame-rate cap. Null when unknown,
-        // in which case the cap is not applied: guessing a rate would decimate the wrong frames.
+        // The probed average frame rate, needed to plan a frame-rate cap and to count a keyframe
+        // interval in frames. Null when unknown, in which case neither is applied: a guessed rate
+        // would decimate the wrong frames, and the encoder default interval is the one always used.
         double? sourceFrameRate = null,
         IReadOnlyList<string?>? sourceSubtitleCodecs = null,
         IReadOnlyList<string>? sourceAudioCodecs = null,
@@ -48,7 +49,9 @@ public static class TranscodeSpecResolver
         bool adaptiveImageQuality = false,
         // The channel layout the source's audio tracks declare, or null when it was not probed.
         // An Opus re-encode maps the side-surround variant onto the standard one.
-        string? sourceAudioChannelLayout = null)
+        string? sourceAudioChannelLayout = null,
+        // A music file that is not converted, only trimmed of silence; see AudioTrimOnly.
+        AudioTrimOnlyPlan? audioTrimOnly = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -68,6 +71,21 @@ public static class TranscodeSpecResolver
                     && !adaptiveImageQuality
                     && sourceImageCodec is not null
                     && ImageTarget.IsLossless(sourceImageCodec));
+        }
+
+        if (kind == MediaKind.Audio && audioTrimOnly is not null)
+        {
+            // The same name, codec and channels: only the silence changes.
+            return new TranscodeSpec(
+                inputPath,
+                BuildOutputPath(workRoot, relativePath, Path.GetExtension(relativePath)),
+                VideoCodec: null,
+                Crf: null,
+                Preset: null,
+                TonemapToSdr: false,
+                Kind: MediaKind.Audio,
+                AudioEncoder: audioTrimOnly.Encoder)
+            { AudioTrimOnly = audioTrimOnly };
         }
 
         if (kind == MediaKind.Audio)
@@ -123,6 +141,11 @@ public static class TranscodeSpecResolver
             ? AudioTarget.Resolve(videoAudioCodec).Encoder
             : null;
 
+        // A copied stream keeps its cadence too; only a re-encode can drop frames.
+        var frameRate = rules.TargetVideoCodec is null
+            ? null
+            : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate);
+
         var removedSubtitles = sourceSubtitleLanguages is null
             ? Array.Empty<int>()
             : SubtitleTrackSelection.SelectRemovals(sourceSubtitleLanguages, rules.KeepSubtitleLanguages);
@@ -156,13 +179,16 @@ public static class TranscodeSpecResolver
                     detectedCrop?.Height ?? sourceHeight,
                     rules.VideoDownscaleHeight),
             CropTo: rules.TargetVideoCodec is null ? null : detectedCrop,
-            // A copied stream keeps its cadence too; only a re-encode can drop frames.
-            FrameRate: rules.TargetVideoCodec is null
-                ? null
-                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate),
+            FrameRate: frameRate,
             SourceAudioChannelLayout: sourceAudioChannelLayout,
             NormalizeOpusChannelLayout: rules.NormalizeOpusChannelLayout)
-        { SourceSubtitleCodecs = sourceSubtitleCodecs };
+        {
+            SourceSubtitleCodecs = sourceSubtitleCodecs,
+            // Counted in the frames the encode produces, so a capped encode keeps the same seconds.
+            KeyframeIntervalFrames = rules.TargetVideoCodec is null
+                ? null
+                : KeyframeInterval.Frames(rules.KeyframeIntervalSeconds, frameRate?.TargetFps ?? sourceFrameRate),
+        };
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

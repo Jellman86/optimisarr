@@ -11,7 +11,7 @@ internal static class DiagnosticSafeFields
     {
         "A/V sync", "Audio clipping (true peak)", "Audio codecs unchanged", "Audio fidelity",
         "Audio languages", "Audio loudness (EBU R128)", "Audio metadata and artwork",
-        "Audio tracks", "Colour metadata", "Container unchanged", "Decode health", "Dimensions",
+        "Audio tracks", "Colour metadata", "Container unchanged", "Decode health", "Dimensions", "Dolby Vision kept",
         "Duration", "File identity", "HDR signal", "Image metadata (EXIF/ICC)", "Image quality (SSIM)",
         "Output readable", "Perceptual quality (VMAF)", "Picture", "Picture retention", "Picture shape", "Size saving", "Compression ceiling",
         "Source video timeline", "Subtitle languages", "Subtitle tracks", "Tail integrity",
@@ -22,6 +22,7 @@ internal static class DiagnosticSafeFields
     {
         "libx264", "libx265", "libsvtav1", "h264_nvenc", "hevc_nvenc", "av1_nvenc",
         "h264_qsv", "hevc_qsv", "av1_qsv", "h264_vaapi", "hevc_vaapi", "av1_vaapi",
+        "h264_amf", "hevc_amf", "av1_amf",
         "h264_videotoolbox", "hevc_videotoolbox"
     };
 

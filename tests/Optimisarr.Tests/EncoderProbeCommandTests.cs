@@ -31,6 +31,19 @@ public sealed class EncoderProbeCommandTests
     }
 
     [Fact]
+    public void Amf_probe_encodes_system_memory_frames_with_no_device_arguments()
+    {
+        // As FfmpegCommandBuilder runs AMF: the encoder opens its own device (Vulkan on Linux, DX11
+        // on Windows), so the probe proves the AMF runtime itself loads, not only that it is listed.
+        var args = EncoderProbeCommand.Build("hevc_amf");
+
+        Assert.DoesNotContain("-init_hw_device", args);
+        Assert.DoesNotContain("-vaapi_device", args);
+        Assert.DoesNotContain("-vf", args);
+        Assert.Equal("hevc_amf", args[args.ToList().IndexOf("-c:v") + 1]);
+    }
+
+    [Fact]
     public void Vaapi_probe_inits_the_device_before_input_and_uploads_frames()
     {
         var args = EncoderProbeCommand.Build("hevc_vaapi");

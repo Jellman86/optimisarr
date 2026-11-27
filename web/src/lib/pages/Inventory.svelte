@@ -1,13 +1,17 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile, type MediaProbeBatch } from '../api'
+  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type InventorySort, type Library, type MediaFile, type MediaProbeBatch } from '../api'
   import { formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
   import BatchResult from '../components/BatchResult.svelte'
   import ConfirmDialog from '../components/ConfirmDialog.svelte'
+  import DataTable, { type SortState } from '../components/DataTable.svelte'
+  import FilterBar, { type FilterItem } from '../components/FilterBar.svelte'
   import Icon from '../components/Icon.svelte'
   import InventoryDetail from '../components/InventoryDetail.svelte'
+  import OkMark from '../components/OkMark.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
   import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
   import SelectionToolbar from '../components/SelectionToolbar.svelte'
@@ -17,9 +21,18 @@
   let libraries = $state<Library[]>([])
   let rows = $state<InventoryRow[]>([])
   let total = $state(0)
-  let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0 })
+  let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0, interlaced: 0 })
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<InventoryFilter>('all')
+  // A fact about the video, not a verdict, so it narrows whichever verdict filter is chosen.
+  let interlaced = $state(false)
+  // What is typed shows at once; the search it asks for waits for a pause in typing, so each
+  // keystroke does not refetch the library.
+  let searchText = $state('')
+  let search = $state('')
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  let searchField: HTMLInputElement | undefined = $state()
+  let sort = $state<InventorySort | null>(null)
   let page = $state(1)
   const pageSize = 50
   let selected = $state<InventoryRow | null>(null)
@@ -50,21 +63,23 @@
   let bulkOutcomeTitle = $derived(bulkOutcomeKind === 'exclude' ? i18n.m.shared.batch_exclude : i18n.m.inventory.batch_reprobe_result)
 
   $effect(() => { void loadLibraries() })
-  $effect(() => { void loadInventory(selectedLibrary, show, page) })
-  onDestroy(() => { disposed = true; requestId++ })
+  $effect(() => { void loadInventory(selectedLibrary, show, page, search, interlaced, sort) })
+  onDestroy(() => { disposed = true; requestId++; clearTimeout(searchTimer) })
+
+  function reload() { return loadInventory(selectedLibrary, show, page, search, interlaced, sort) }
 
   async function loadLibraries() {
     try { libraries = await api.libraries() }
     catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
-  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number, query: string, interlacedOnly: boolean, order: InventorySort | null) {
     // A slow response from a previous filter must never replace the current selection.
     const request = ++requestId
     loading = true
     error = null
     try {
-      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, page: pageNumber, pageSize })
+      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, search: query || undefined, interlaced: interlacedOnly, sort: order ?? undefined, page: pageNumber, pageSize })
       if (request !== requestId || disposed) return
       const lastPage = Math.max(1, Math.ceil(result.total / pageSize))
       if (pageNumber > lastPage) { page = lastPage; return }
@@ -89,7 +104,7 @@
       const updated = await api.probe(file.id)
       if (selected?.file.id === file.id) selected = { ...selected, file: updated }
       if (disposed) return
-      await loadInventory(selectedLibrary, show, page)
+      await reload()
       if (!disposed) {
         if (error) probeError = error
         else probeMessage = i18n.m.inventory.probe_complete
@@ -132,7 +147,7 @@
       selection.remove([...excluded])
       bulkOutcomeKind = 'exclude'
       bulkOutcome = { succeeded: result.succeeded.length, skipped: 0, failures: result.failures }
-      await loadInventory(selectedLibrary, show, page)
+      await reload()
     } catch (err) {
       if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
     } finally {
@@ -194,7 +209,7 @@
     bulkOutcome = batch.completed > 0 ? { succeeded: batch.succeeded, skipped: batch.skipped, failures } : null
     selection.remove(batch.items.filter(item => item.outcome === 'Succeeded').map(item => item.mediaFileId))
     if (batch.state === 'Failed') probeError = i18n.m.inventory.batch_reprobe_failed
-    await loadInventory(selectedLibrary, show, page)
+    await reload()
     if (batch.state === 'Cancelled' && !disposed) probeMessage = i18n.m.inventory.batch_reprobe_cancelled
   }
 
@@ -227,6 +242,53 @@
     selection.clear()
   }
   function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null; selection.clear() }
+
+  // A new search or order shows a different set of rows, so it starts from the first page and
+  // drops the picks made among the old rows.
+  function startOver() { page = 1; selected = null; selection.clear() }
+  function toggleInterlaced() { interlaced = !interlaced; startOver() }
+  function applySearch(value: string) {
+    clearTimeout(searchTimer)
+    const query = value.trim()
+    if (query === search) return
+    search = query
+    startOver()
+  }
+  function typeSearch(event: Event) {
+    searchText = (event.currentTarget as HTMLInputElement).value
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => applySearch(searchText), 250)
+  }
+  function submitSearch(event: SubmitEvent) {
+    event.preventDefault()
+    applySearch(searchText)
+  }
+  function clearSearch() {
+    searchText = ''
+    applySearch('')
+    searchField?.focus()
+  }
+  function searchKey(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || searchText === '') return
+    event.preventDefault()
+    clearSearch()
+  }
+
+  type SortColumn = 'name' | 'size' | 'verdict'
+  function sortState(column: SortColumn): SortState {
+    if (!sort?.startsWith(`${column}_`)) return 'none'
+    return sort.endsWith('_asc') ? 'ascending' : 'descending'
+  }
+  // Size starts with the largest file, the one most worth a look; names and verdicts start from
+  // the top of their order. A third click returns to the plain path order.
+  function cycleSort(column: SortColumn) {
+    const first = column === 'size' ? 'desc' : 'asc'
+    const second = first === 'asc' ? 'desc' : 'asc'
+    const current = sort?.startsWith(`${column}_`) ? sort.slice(column.length + 1) : null
+    const next = current === null ? first : current === first ? second : null
+    sort = next ? (`${column}_${next}` as InventorySort) : null
+    startOver()
+  }
   function selectRow(row: InventoryRow) { selected = row; retriedFileId = null; probeError = null; probeMessage = null }
   async function closeDetails() {
     const id = selected?.file.id
@@ -249,26 +311,39 @@
   function goToPage(next: number) { page = Math.max(1, Math.min(next, pageCount)); selected = null; selection.clear() }
   let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)))
   let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
-  let filters = $derived([
-    { key: 'all' as InventoryFilter, label: t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() }) },
-    { key: 'eligible' as InventoryFilter, label: t(i18n.m.inventory.filter_eligible, { count: counts.eligible.toLocaleString() }) },
-    { key: 'skipped' as InventoryFilter, label: t(i18n.m.inventory.filter_skipped, { count: counts.skipped.toLocaleString() }) },
-    { key: 'unprobed' as InventoryFilter, label: t(i18n.m.inventory.filter_unprobed, { count: counts.unprobed.toLocaleString() }) },
+  let filters: FilterItem<InventoryFilter>[] = $derived([
+    { value: 'all', label: t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() }) },
+    { value: 'eligible', label: t(i18n.m.inventory.filter_eligible, { count: counts.eligible.toLocaleString() }) },
+    { value: 'skipped', label: t(i18n.m.inventory.filter_skipped, { count: counts.skipped.toLocaleString() }) },
+    { value: 'unprobed', label: t(i18n.m.inventory.filter_unprobed, { count: counts.unprobed.toLocaleString() }) },
   ])
 </script>
 
-<div class="inventory-layout">
-  <header class="inventory-heading">
-    <div><h1 class="page-title">{i18n.m.nav.inventory}</h1><p class="page-subtitle">{i18n.m.inventory.subtitle}</p></div>
-    <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
-  </header>
+<!-- A container, so the table drops its Format column by the room it has rather than by the
+     window: beside an open sidebar a tablet leaves it phone-width. -->
+<div class="@container inventory-layout">
+  <PageHeader title={i18n.m.nav.inventory} subtitle={i18n.m.inventory.subtitle} actionsAlign="end">
+    {#snippet actions()}
+      <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
+    {/snippet}
+  </PageHeader>
   {#if libraryError}<Banner kind="error" class="mb-4">{libraryError}</Banner>{/if}
-  {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => loadInventory(selectedLibrary, show, page)}>{i18n.m.setup.retry}</button></Banner>{/if}
+  {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={reload}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
-    <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
-    <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
+    <div class="flex min-w-0 flex-wrap items-center gap-1">
+      <FilterBar label={i18n.m.inventory.filter_label} items={filters} value={show} onselect={selectFilter} />
+      <span class="mx-1 hidden h-5 w-px self-center bg-(--divide-soft) sm:block" aria-hidden="true"></span>
+      <button type="button" class="filter-toggle" aria-pressed={interlaced} onclick={toggleInterlaced} data-inventory-interlaced>{#if interlaced}<Icon name="check" class="-ml-0.5 h-3.5 w-3.5" />{/if}{t(i18n.m.inventory.filter_interlaced, { count: counts.interlaced.toLocaleString() })}</button>
+    </div>
+    <form role="search" class="relative w-full min-w-0 sm:w-72" onsubmit={submitSearch}>
+      <label class="sr-only" for="inventory-search">{i18n.m.inventory.search_label}</label>
+      <Icon name="search" class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink-4" />
+      <input id="inventory-search" bind:this={searchField} type="search" class={['input pl-9 [&::-webkit-search-cancel-button]:appearance-none', searchText && 'pr-12']} placeholder={i18n.m.inventory.search_placeholder} value={searchText} oninput={typeSearch} onkeydown={searchKey} autocomplete="off" spellcheck="false" />
+      {#if searchText}<button type="button" class="btn btn-ghost btn-icon btn-sm absolute top-1/2 right-1 -translate-y-1/2" aria-label={i18n.m.inventory.clear_search} onclick={clearSearch}><Icon name="x" class="h-4 w-4" /></button>{/if}
+    </form>
+    <div class={['flex flex-wrap items-center', loading && rows.length > 0 && 'gap-3']}><span class="inventory-loading" role="status">{loading && rows.length > 0 ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
   {#if bulkOutcome}
     <BatchResult
@@ -294,38 +369,53 @@
       {#if !bulkBusy}<button type="button" class="btn ml-2" onclick={resumeProbeBatch}>{i18n.m.setup.retry}</button>{/if}
     </p>
   {/if}
-  <div class="inventory-surface" aria-busy={loading}>
-    {#if rows.length}
-      <table class="inventory-table">
-        <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th><th scope="col">{i18n.m.inventory.col_file}</th><th scope="col" class="size-column">{i18n.m.inventory.col_size}</th><th scope="col" class="format-column">{i18n.m.inventory.col_format}</th><th scope="col">{i18n.m.inventory.rule_verdict}</th></tr></thead>
-        <tbody>{#each rows as row (row.file.id)}{@const file = row.file}
-          <tr class:selected-row={selected?.file.id === file.id}>
-            <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
-            <td><button id={`inventory-file-${file.id}`} class="inventory-file focus-ring" onclick={() => selectRow(row)}>
-              <Thumbnail mediaFileId={file.id} />
-              <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
-            </button></td>
-            <td class="size-column inventory-size">{formatSize(file.sizeBytes)}</td>
-            <td class="format-column"><span class="inventory-codec">{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="inventory-resolution">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
-            <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span>{#if row.eligible === false && row.reason}<span class="inventory-reason" title={row.reason}>{row.reason}</span>{/if}</td>
-          </tr>
-        {/each}</tbody>
-      </table>
-    {:else if !loading && !error}
-      <div class="inventory-empty"><Icon name="film" class="h-7 w-7 text-ink-4" /><p>{counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p></div>
-    {:else}<div class="inventory-empty">{loading ? i18n.m.common.loading_short : i18n.m.inventory.error_load}</div>{/if}
-  </div>
-  {#if total > 0}
-    <footer class="inventory-pagination">
-      <span>{t(i18n.m.inventory.range, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + pageSize, total).toLocaleString(), total: total.toLocaleString() })}</span>
-      <div><button class="btn btn-ghost" onclick={() => goToPage(page - 1)} disabled={page <= 1 || loading} aria-label={i18n.m.inventory.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span><button class="btn btn-ghost" onclick={() => goToPage(page + 1)} disabled={page >= pageCount || loading} aria-label={i18n.m.inventory.next_page}><Icon name="arrow-right" /></button></div>
-    </footer>
-  {/if}
+  <DataTable data-keyboard-list density="compact" rowCount={rows.length} {loading} {error} label={i18n.m.nav.inventory} footer={total > 0 ? pagination : undefined}>
+    {#snippet head()}
+      <tr>
+        <th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th>
+        <th scope="col" class="data-table-primary" aria-sort={sortState('name')}><button type="button" class="table-sort" onclick={() => cycleSort('name')}>{i18n.m.inventory.col_file}</button></th>
+        <th scope="col" aria-sort={sortState('size')} class="w-[13%] sm:w-[max(13%,7.25rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('size')}>{i18n.m.inventory.col_size}</button></th>
+        <th scope="col" class="hidden w-[21%] sm:@min-[36rem]:table-cell">{i18n.m.inventory.col_format}</th>
+        <th scope="col" aria-sort={sortState('verdict')} class="w-[28%] sm:w-[max(19%,8.25rem)]"><button type="button" class="table-sort" onclick={() => cycleSort('verdict')}>{i18n.m.inventory.rule_verdict}</button></th>
+      </tr>
+    {/snippet}
+    {#each rows as row (row.file.id)}{@const file = row.file}
+      <tr class:selected-row={selected?.file.id === file.id}>
+        <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
+        <td class="data-table-primary"><button id={`inventory-file-${file.id}`} data-row-primary class="group flex w-full min-w-0 items-center gap-2.5 rounded-md text-left focus-ring max-sm:min-h-(--control-lg) sm:gap-3.5" onclick={() => selectRow(row)}>
+          <Thumbnail mediaFileId={file.id} size="xs" />
+          <span class="min-w-0"><span class="line-clamp-2 text-label font-medium text-ink group-hover:text-accent sm:line-clamp-1">{fileName(file.relativePath)}</span><span class="mt-1 block text-micro text-ink-3">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}</span></span>
+        </button></td>
+        <td class="whitespace-nowrap tabular-nums max-sm:text-caption">{formatSize(file.sizeBytes)}</td>
+        <td class="hidden sm:@min-[36rem]:table-cell"><span>{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="mt-1 block text-micro text-ink-3">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
+        <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{#if row.eligible === true}<OkMark class="h-3 w-3" />{/if}<span class="min-w-0">{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span></span>{#if row.eligible === false && row.reason}<span class="mt-1 line-clamp-2 text-micro text-ink-4 sm:line-clamp-1" title={row.reason}>{row.reason}</span>{/if}</td>
+      </tr>
+    {/each}
+    {#snippet empty()}
+      <Icon name="film" class="h-7 w-7 text-ink-4" />
+      {#if interlaced}
+        <p>{i18n.m.inventory.empty_interlaced}</p><p class="text-caption text-ink-3">{i18n.m.inventory.empty_interlaced_hint}</p>
+      {:else}
+        <p>{search ? t(i18n.m.inventory.empty_search, { query: search }) : counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p>
+      {/if}
+      {#if interlaced || search}
+        <div class="flex flex-wrap justify-center gap-2">
+          {#if interlaced}<button type="button" class="btn" onclick={toggleInterlaced}>{i18n.m.inventory.clear_interlaced}</button>{/if}
+          {#if search}<button type="button" class="btn" onclick={clearSearch}>{i18n.m.inventory.clear_search}</button>{/if}
+        </div>
+      {/if}
+    {/snippet}
+  </DataTable>
 </div>
+
+{#snippet pagination()}
+  <span>{t(i18n.m.inventory.range, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + pageSize, total).toLocaleString(), total: total.toLocaleString() })}</span>
+  <div class="data-table-pages"><button class="btn btn-ghost btn-icon" onclick={() => goToPage(page - 1)} disabled={page <= 1 || loading} aria-label={i18n.m.inventory.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span><button class="btn btn-ghost btn-icon" onclick={() => goToPage(page + 1)} disabled={page >= pageCount || loading} aria-label={i18n.m.inventory.next_page}><Icon name="arrow-right" /></button></div>
+{/snippet}
 
 {#if selected}
   {#key selected.file.id}
-    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => { retriedFileId = selected?.file.id ?? null; void loadInventory(selectedLibrary, show, page) }} />
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} onretried={() => { retriedFileId = selected?.file.id ?? null; void reload() }} />
   {/key}
 {/if}
 {#if previewing}
@@ -362,12 +452,8 @@
 </ConfirmDialog>
 
 <style>
-
-  .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
-  .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }.inventory-library .label { text-transform: none; letter-spacing: 0; font-size: .75rem; }
-  .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-filters { display: flex; flex-wrap: wrap; gap: .375rem; }.inventory-filters button { padding: .625rem .875rem; border-radius: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-filters button:hover { color: var(--ink); background: var(--lit); }.inventory-filters button.filter-active { color: var(--ink); background: var(--raised); box-shadow: var(--lift-1); }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
-  .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 2.75rem; }.inventory-table th:nth-child(2) { width: 44%; }.inventory-table th:nth-child(3) { width: 13%; }.inventory-table th:nth-child(4) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
-  .inventory-table .selection-column { padding-left: .75rem; padding-right: .25rem; }.inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ok); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }.inventory-reason { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .25rem; color: var(--ink-4); font-size: .6875rem; line-height: 1.4; }
-  .inventory-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-3); font-size: .875rem; display: grid; justify-items: center; gap: 1rem; }.inventory-pagination { margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--ink-3); font-size: .75rem; }.inventory-pagination > div { display: flex; align-items: center; gap: .625rem; }.inventory-pagination .btn { min-width: 2.5rem; min-height: 2.5rem; }
-  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-filters { gap: .125rem; }.inventory-filters button { padding: .75rem .625rem; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 2.5rem; }.inventory-table th:nth-child(2) { width: 70%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
+  .inventory-library { min-width: 12rem; }
+  .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
+  .inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; min-width: 0; max-width: 100%; overflow-wrap: break-word; }.inventory-verdict:not(.verdict-eligible)::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ink-2); }.verdict-unprobed { color: var(--warn); }
+  @media (max-width: 639px) { .inventory-library { width: 100%; }.inventory-verdict { gap: .375rem; } }
 </style>

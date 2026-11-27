@@ -626,4 +626,49 @@ public sealed class TranscodeSpecResolverTests
 
         Assert.Null(spec.TargetFrameRate);
     }
+
+    // --- Keyframe interval ---------------------------------------------------------------------
+
+    [Fact]
+    public void A_keyframe_interval_is_counted_in_frames_of_the_source_rate()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc with { KeyframeIntervalSeconds = 10 }, inputPath: "/data/films/Film.mkv", relativePath: "Film.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 24000.0 / 1001);
+
+        Assert.Equal(240, spec.KeyframeIntervalFrames);
+    }
+
+    [Fact]
+    public void A_capped_encode_counts_its_keyframe_interval_in_the_frames_it_keeps()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc with { KeyframeIntervalSeconds = 2, MaxFrameRate = 30 }, inputPath: "/data/films/Clip.mkv", relativePath: "Clip.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 60);
+
+        Assert.Equal(60, spec.KeyframeIntervalFrames);
+    }
+
+    [Fact]
+    public void An_unknown_source_rate_keeps_the_encoder_default_keyframe_interval()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc with { KeyframeIntervalSeconds = 10 }, inputPath: "/data/films/Film.mkv", relativePath: "Film.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+
+        Assert.Null(spec.KeyframeIntervalFrames);
+    }
+
+    [Fact]
+    public void A_remux_never_carries_a_keyframe_interval()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc with { TargetVideoCodec = null, KeyframeIntervalSeconds = 10 }, inputPath: "/data/films/Film.mkv",
+            relativePath: "Film.mkv", workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 24);
+
+        Assert.Null(spec.KeyframeIntervalFrames);
+    }
 }

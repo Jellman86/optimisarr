@@ -269,12 +269,18 @@ internal sealed record SuperResolutionProbeDto(
     int? ExitCode,
     string? Error,
     string? OutputTail,
-    string? DeviceUsed)
+    string? DeviceUsed,
+    string? DetectedDevice,
+    bool UsingSoftwareVulkan,
+    string? Warning)
 {
     public static SuperResolutionProbeDto From(SuperResolutionProbeResult probe) => new(
         probe.Success,
         probe.ExitCode,
         probe.Error,
         probe.OutputTail,
-        probe.DeviceUsed);
+        probe.DeviceUsed,
+        probe.DetectedDevice,
+        probe.UsingSoftwareVulkan,
+        probe.Warning);
 }

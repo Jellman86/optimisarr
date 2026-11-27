@@ -277,6 +277,9 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
             entity.Property(file => file.AudioLanguages).HasMaxLength(256);
             entity.Property(file => file.SubtitleLanguages).HasMaxLength(512);
+            entity.Property(file => file.AudioTrackBytes).HasMaxLength(Optimisarr.Core.Queue.TrackSizes.MaxStoredLength);
+            entity.Property(file => file.SubtitleTrackBytes).HasMaxLength(Optimisarr.Core.Queue.TrackSizes.MaxStoredLength);
+            entity.Property(file => file.TrimOnlyTagRefusal).HasMaxLength(512);
 
             // Removing a library removes its inventory; orphan media files make no sense.
             entity.HasOne(file => file.Library)
@@ -374,6 +377,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(connection => connection.Type).HasConversion<string>().HasMaxLength(32);
             entity.Property(connection => connection.BaseUrl).IsRequired().HasMaxLength(1024);
             entity.Property(connection => connection.ApiKey).HasMaxLength(512);
+            entity.Property(connection => connection.WebhookSecretFingerprint).HasMaxLength(64);
+            entity.Property(connection => connection.RemotePathPrefix).HasMaxLength(1024);
+            entity.Property(connection => connection.LocalPathPrefix).HasMaxLength(1024);
+            entity.Property(connection => connection.WebhookLastOutcome).HasConversion<string>().HasMaxLength(32);
+            entity.Property(connection => connection.WebhookLastDetail).HasMaxLength(1024);
         });
 
         modelBuilder.Entity<Exclusion>(entity =>

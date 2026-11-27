@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { containerLabel, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
+import { containerLabel, floorTo, formatAbsoluteDateTime, formatDateTime, formatSize, formatSizeChangeBytes, formatSizeChangePercent, formatRelative, interlacedFieldOrder, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
 
 const now = new Date('2026-09-25T07:00:00Z')
 
@@ -9,6 +9,31 @@ test('recent times read as minutes, hours or days ago', () => {
   assert.equal(formatRelative('2026-09-25T04:02:48Z', now, 'en'), '3 hours ago')
   assert.equal(formatRelative('2026-09-23T07:00:00Z', now, 'en'), '2 days ago')
   assert.equal(formatRelative('2026-09-25T06:59:50Z', now, 'en'), 'now')
+})
+
+test('a moment within a day of now reads relative, in either direction', () => {
+  assert.equal(formatDateTime('2026-09-25T06:55:00Z', now, 'en'), '5 minutes ago')
+  assert.equal(formatDateTime('2026-09-25T04:00:00Z', now, 'en'), '3 hours ago')
+  assert.equal(formatDateTime('2026-09-25T09:00:00Z', now, 'en'), 'in 2 hours')
+  assert.equal(formatDateTime(new Date('2026-09-25T06:59:58Z'), now, 'en'), 'now')
+  // Just inside a day stays in hours so a same-day event never falsely reads as "yesterday" or "tomorrow".
+  assert.equal(formatDateTime('2026-09-24T07:01:00Z', now, 'en'), '23 hours ago')
+  assert.equal(formatDateTime('2026-09-26T05:30:00Z', now, 'en'), 'in 23 hours')
+})
+
+test('a moment a day or more from now reads as an absolute date and time without seconds', () => {
+  const expected = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-09-16T03:19:47Z'))
+  assert.equal(formatDateTime('2026-09-16T03:19:47Z', now, 'en-GB'), expected)
+  assert.equal(formatDateTime('2026-09-24T07:00:00Z', now, 'en-GB'), formatAbsoluteDateTime('2026-09-24T07:00:00Z', 'en-GB'))
+  assert.equal(formatDateTime('2026-10-01T07:00:00Z', now, 'en-GB'), formatAbsoluteDateTime('2026-10-01T07:00:00Z', 'en-GB'))
+  assert.doesNotMatch(formatDateTime('2026-09-16T03:19:47Z', now, 'en-GB'), /:47/)
+  assert.match(formatDateTime('2026-09-16T03:19:47Z', now, 'en-GB'), /2026/)
+})
+
+test('an unreadable date reads as a dash rather than "Invalid Date"', () => {
+  assert.equal(formatDateTime('not a date', now, 'en'), '—')
+  assert.equal(formatDateTime(new Date(Number.NaN), now, 'en'), '—')
+  assert.equal(formatAbsoluteDateTime('', 'en'), '—')
 })
 
 test('size change follows the size itself: negative when the output is smaller, positive when it grew', () => {
@@ -159,4 +184,25 @@ test('containers read as the file type a person knows, not the ffprobe demuxer l
 test('untagged track languages read as unknown', () => {
   assert.equal(languageList('und', 'unknown language'), 'unknown language')
   assert.equal(languageList('eng, und,jpn', 'unknown language'), 'eng, unknown language, jpn')
+})
+
+test('only an interlaced field order is reported, by the field shown first', () => {
+  assert.equal(interlacedFieldOrder('tt'), 'top')
+  assert.equal(interlacedFieldOrder('bt'), 'unstated')
+  assert.equal(interlacedFieldOrder('bb'), 'bottom')
+  assert.equal(interlacedFieldOrder('tb'), 'unstated')
+  for (const order of ['progressive', 'unknown', '', null, undefined]) assert.equal(interlacedFieldOrder(order), null)
+})
+
+test('a size rounded down never reads as reaching the next step', () => {
+  assert.equal(formatSize(1024 ** 3 - 30 * 1024), '1024 MB')
+  assert.equal(formatSize(1024 ** 3 - 30 * 1024, true), '1023 MB')
+  assert.equal(formatSize(1.97 * 1024 ** 3, true), '1.9 GB')
+  assert.equal(formatSize(2 * 1024 ** 3, true), '2.0 GB')
+})
+
+test('rounding down cuts without falling a step for a binary fraction', () => {
+  assert.equal(floorTo(4.999, 1), 4.9)
+  assert.equal(floorTo(0.29, 2), 0.29)
+  assert.equal(floorTo(5, 1), 5)
 })

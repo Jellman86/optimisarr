@@ -10,7 +10,8 @@
     onSelect: () => void
     danger?: boolean
     disabled?: boolean
-    title?: string
+    /** What choosing it does, shown under the label so it reads the same on touch as on hover. */
+    description?: string
   }
 
   let {
@@ -23,6 +24,7 @@
   let root: HTMLDivElement | undefined = $state()
   let trigger: HTMLButtonElement | undefined = $state()
   let itemButtons: HTMLButtonElement[] = $state([])
+  const menuId = $props.id()
 
   function close(restoreFocus = false) {
     open = false
@@ -75,7 +77,7 @@
 <div class="relative flex-shrink-0" bind:this={root}>
   <button
     type="button"
-    class="btn min-h-11 px-2"
+    class="btn btn-icon"
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label}
@@ -92,26 +94,34 @@
       role="menu"
       tabindex="-1"
       aria-label={label}
-      class="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-line bg-panel p-1 shadow-lg"
+      class="absolute right-0 z-20 mt-1 min-w-44 max-w-72 rounded-panel bg-panel p-1 shadow-[var(--lift-3)]"
       onkeydown={onMenuKeydown}
     >
       {#each items as item, index (item.label)}
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-50 {item.danger
+          class="hit-target flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-ring-inset disabled:pointer-events-none disabled:opacity-50 {item.danger
  ? 'text-bad hover:bg-bad-soft'
  : 'text-ink-2 hover:bg-raised'}"
           disabled={item.disabled}
-          title={item.title}
+          aria-labelledby={item.description ? `${menuId}-${index}-label` : undefined}
+          aria-describedby={item.description ? `${menuId}-${index}-description` : undefined}
           bind:this={itemButtons[index]}
           onclick={() => {
             close()
             item.onSelect()
           }}
         >
-          {#if item.icon}<Icon name={item.icon} class="h-4 w-4" />{/if}
-          {item.label}
+          {#if item.icon}<Icon name={item.icon} class="h-4 w-4 {item.description ? 'self-start mt-0.5' : ''}" />{/if}
+          {#if item.description}
+            <span class="flex min-w-0 flex-col gap-0.5">
+              <span id={`${menuId}-${index}-label`}>{item.label}</span>
+              <span id={`${menuId}-${index}-description`} class="text-xs text-ink-3">{item.description}</span>
+            </span>
+          {:else}
+            {item.label}
+          {/if}
         </button>
       {/each}
     </div>

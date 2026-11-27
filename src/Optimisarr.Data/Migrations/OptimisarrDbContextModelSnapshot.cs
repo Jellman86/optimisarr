@@ -101,9 +101,17 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("LocalPathPrefix")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePathPrefix")
+                        .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("RescanAfterChanges")
@@ -115,6 +123,21 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookLastDetail")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookLastOutcome")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("WebhookLastReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookSecretFingerprint")
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1175,6 +1198,9 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("KeyframeIntervalSeconds")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset?>("LastAutoDedupeAt")
                         .HasColumnType("TEXT");
 
@@ -1242,6 +1268,12 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<double?>("MinimumSizeSavingPercent")
+                        .HasColumnType("REAL");
+
+                    b.Property<long?>("MinimumTrackRemovalSavingBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("MinimumTrackRemovalSavingPercent")
                         .HasColumnType("REAL");
 
                     b.Property<bool>("MoveOnComplete")
@@ -1353,6 +1385,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("TrimAudioSilence")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("TrimSilenceWithoutConverting")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -1405,6 +1440,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("AudioLanguages")
                         .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AudioTrackBytes")
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("AudioTrackCount")
@@ -1497,8 +1536,16 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SubtitleTrackBytes")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("SubtitleTrackCount")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("TrimOnlyTagRefusal")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");

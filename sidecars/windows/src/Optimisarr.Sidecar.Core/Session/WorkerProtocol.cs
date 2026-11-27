@@ -15,5 +15,7 @@ public static class WorkerProtocol
     // Protocol 9 supports preserving MP4 timestamps and decoded-picture evidence.
     // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
     // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
-    public const int Maximum = 14;
+    // Protocol 15 accepts a bounded keyframe interval (-g).
+    // Protocol 16 accepts AMD AMF's constant-quality quantisers (-qp_i, -qp_p).
+    public const int Maximum = 16;
 }

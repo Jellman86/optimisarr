@@ -72,6 +72,13 @@ public sealed class MediaFile
     /// <summary>Embedded album-art streams reported with the attached-picture disposition.</summary>
     public int AttachedPictureCount { get; set; }
 
+    /// <summary>
+    /// Why this music file's tags would not survive a trim without converting it, read from the file
+    /// when it was probed or when a trim-only job was planned. Null when nothing stands in the way or
+    /// the tags have not been read; cleared with the other probe results when the file changes.
+    /// </summary>
+    public string? TrimOnlyTagRefusal { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 
@@ -103,6 +110,17 @@ public sealed class MediaFile
     /// nothing.
     /// </summary>
     public string? SubtitleLanguages { get; set; }
+
+    /// <summary>
+    /// Each audio track's size in bytes, in the same order as <see cref="AudioLanguages"/>, with
+    /// "?" for a track whose size is neither recorded nor estimable (e.g. "4500000000, ?"). Null
+    /// when the file was probed before track sizes were recorded; a minimum track-removal saving
+    /// then skips the file until it is probed again.
+    /// </summary>
+    public string? AudioTrackBytes { get; set; }
+
+    /// <summary>Each subtitle track's size in bytes, as <see cref="AudioTrackBytes"/>, in <see cref="SubtitleLanguages"/> order.</summary>
+    public string? SubtitleTrackBytes { get; set; }
 
     /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>
     public bool IsHdr { get; set; }

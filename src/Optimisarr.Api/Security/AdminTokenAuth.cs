@@ -29,7 +29,11 @@ public static class AdminTokenAuth
         // carry an id, so they are matched by segment rather than exact equality — and deliberately
         // scoped to /leases so this cannot widen to the whole /api/workers surface by accident.
         || path.Equals("/api/workers/claim", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWithSegments("/api/workers/leases", StringComparison.OrdinalIgnoreCase);
+        || path.StartsWithSegments("/api/workers/leases", StringComparison.OrdinalIgnoreCase)
+        // A Sonarr/Radarr webhook cannot carry the admin token either. It presents its connection's own
+        // 32-byte password, checked by the route before it reads anything; a connection without one
+        // accepts nothing, and the route can only take in files that already sit inside a library.
+        || ArrWebhookAuth.IsWebhookPath(path);
 
     public static bool IsProtectedPath(PathString path) =>
         path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)

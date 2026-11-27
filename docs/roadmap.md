@@ -69,6 +69,19 @@ must still hash to the bytes that were measured. The job records `AcceptedBelowT
 its failed report. Lost or repeated frames surface only as a lower VMAF score, so a score above the
 floor can still hide them; the guide says so rather than adding a separate gate.
 
+**Recorded default, 27 November 2026:** AMD AMF joins Auto encoder selection, after NVIDIA NVENC
+and before Intel QSV, although the project has no AMD hardware and has not run an AMF job itself. The
+contributor validated `h264_amf` and `hevc_amf`, including 10-bit HEVC, on an AMD RX 6600 under
+Windows. A machine is offered AMF only after its own real test encode with that encoder succeeds:
+each sidecar encodes a few frames before advertising it, and the server needs `/dev/dri` and a
+successful test encode, which fails without AMD's runtime, so Linux hosts using the shipped image
+keep their current choice. Workers below protocol 16 are never given AMF commands. Every result
+still passes the same verification gates, so the originals stay protected; the cost is that an
+updated Windows AMD worker moves from software to AMF encoding by itself, and some jobs that passed
+on the CPU may fail the size or VMAF gate and be retried or refused. Choosing **CPU only** in the
+queue's encoder settings keeps the previous behaviour. Review this once someone runs a full job on
+AMD hardware.
+
 **Recorded default, 7 November 2026:** a new library keeps each file's container ("Same as source")
 instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real
 Radarr 6.4.4 adopted the new file on its next rescan, but unmonitored the movie when its "Unmonitor
@@ -1370,7 +1383,7 @@ The release check closes that gap:
     on the server only. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p measured
     about 6 seconds per frame, so practical use needs a fast GPU. Workers often have one, for
     example a desktop NVIDIA card.
-    - **Protocol:** a super-resolution assignment kind (protocol 15) carrying the frozen engine
+    - **Protocol:** a super-resolution assignment kind (a protocol after 15) carrying the frozen engine
       options and expected upscaled size. Workers advertise the capability only after a real
       sample run proves the engine, models and Vulkan device. Older workers never receive these
       jobs, and a worker-only library waits rather than falling back silently.

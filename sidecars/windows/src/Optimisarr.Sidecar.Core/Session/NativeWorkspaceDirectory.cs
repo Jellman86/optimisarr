@@ -67,6 +67,7 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
                     if (create && !Directory.Exists(path) && !CreateDirectoryWindows(path, IntPtr.Zero)) ThrowIo();
                     handles.Add(OpenWindowsDirectory(path, delete: false));
                 }
+                RequireTrusted(handles[^1], full);
                 var root = handles[^1]; handles.RemoveAt(handles.Count - 1);
                 return new(full, root, handles);
             }
@@ -104,6 +105,8 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
             : UnixHandle(OpenAt(Descriptor, name, DirectoryFlags, 0));
         var child = new NativeWorkspaceDirectory(Path.Combine(FullPath, name), handle);
         if (child.Identity.Mount != Identity.Mount) { child.Dispose(); throw new IOException("A native workspace descendant changed mount."); }
+        try { RequireTrusted(handle, child.FullPath); }
+        catch { child.Dispose(); throw; }
         return child;
     }
 
@@ -135,6 +138,7 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
             if (identity.Links != 1 || identity.Mount != Identity.Mount)
                 throw new IOException("The native workspace file is redirected, shared or on another mount.");
             if (locked && !Windows && Flock(handle, 2 | 4) != 0) ThrowIo();
+            RequireTrusted(handle, Path.Combine(FullPath, name));
             return new FileStream(handle, mode == FileMode.Open && !locked ? FileAccess.Read : FileAccess.ReadWrite);
         }
         catch { handle.Dispose(); throw; }
@@ -229,10 +233,23 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
         return new($"linux:{linux.Major}:{linux.Minor}:{linux.Inode}", $"linux:{linux.Major}:{linux.Minor}:{linux.Mount}", (linux.Mode & 0xf000) == 0x4000, linux.Links);
     }
 
+    /// <summary>
+    /// On Windows the workspace is still walked by path, which is sound only while nobody but the
+    /// service and administrators can change what it walks through: anything else could empty a
+    /// folder and turn it into a junction in place. So every folder and file it adopts, the
+    /// control folder and its lock included, must be owned and changeable only by them (or by the
+    /// account running this). Elsewhere the worker runs in a container or under its own account.
+    /// </summary>
+    private static void RequireTrusted(SafeFileHandle handle, string path)
+    {
+        if (OperatingSystem.IsWindows() && WindowsFileApi.TrustProblem(handle, path) is { } problem) throw new IOException(problem);
+    }
+
     private static SafeFileHandle OpenWindowsDirectory(string path, bool delete)
     {
         var security = new SecurityAttributes { Length = Marshal.SizeOf<SecurityAttributes>() };
-        var handle = CreateFileWindows(path, 0x81u | (delete ? 0x10000u : 0), 3, ref security, 3, 0x2200000, IntPtr.Zero);
+        // List, read attributes and read the access list; and delete, when it is to be removed.
+        var handle = CreateFileWindows(path, 0x20081u | (delete ? 0x10000u : 0), 3, ref security, 3, 0x2200000, IntPtr.Zero);
         try
         {
             if (handle.IsInvalid) ThrowIo();

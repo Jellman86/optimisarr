@@ -619,8 +619,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return job.Id;
     }
 
+    // An M4A's tags are written into it on this server after the encode (#593), so AAC music is never offered.
     [Theory]
-    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.Anywhere, false)]
     [InlineData("aac", "aac", "m4a", 5, WorkPlacement.WorkerOnly, false)]
     [InlineData("aac", "libopus", "m4a", 6, WorkPlacement.WorkerOnly, false)]
     [InlineData("aac", "aac", "m4a", 6, WorkPlacement.LocalOnly, false)]
@@ -983,6 +985,87 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var workerId = await WorkerIdNamed("Previous soundtrack verifier");
         var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
         Assert.Contains("protocol 14", savedWorker.LastProblem);
+    }
+
+    [Fact]
+    public async Task A_protocol_14_worker_is_not_offered_a_keyframe_interval_and_the_job_waits()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous GOP", 1, ["libx265"], [], protocolMaximum: 14);
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(jobId));
+        using var check = _api.Services.CreateScope();
+        var workerId = await WorkerIdNamed("Previous GOP");
+        var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
+        Assert.Contains("protocol 15", savedWorker.LastProblem);
+    }
+
+    [Fact]
+    public async Task A_current_worker_receives_the_keyframe_interval_in_frames_of_the_source_rate()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Current GOP", 1, ["libx265"], []);
+        var jobId = await QueueAJob();
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        // The fixture probe reports 24000/1001, so ten seconds is 240 frames.
+        Assert.Equal("240", arguments[arguments.IndexOf("-g") + 1]);
+    }
+
+    [Fact]
+    public async Task A_protocol_15_amd_worker_is_given_its_cpu_encoder_instead_of_amf()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous AMD", 1, ["libx265", "hevc_amf"], [], protocolMaximum: 15);
+        await QueueAJob();
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Equal("libx265", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.DoesNotContain("-qp_i", arguments);
+    }
+
+    [Fact]
+    public async Task A_current_amd_worker_receives_an_amf_constant_quality_command_with_the_keyframe_interval()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Current AMD", 1, ["libx265", "hevc_amf"], []);
+        var jobId = await QueueAJob();
+        await SetKeyframeInterval(jobId, 10);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Equal("hevc_amf", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.Equal("cqp", arguments[arguments.IndexOf("-rc") + 1]);
+        Assert.Contains("-qp_i", arguments);
+        Assert.Equal("240", arguments[arguments.IndexOf("-g") + 1]);
+        Assert.DoesNotContain("-hwaccel", arguments);
+    }
+
+    private async Task SetKeyframeInterval(int jobId, int seconds)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var libraryId = await db.Jobs.Where(j => j.Id == jobId).Select(j => j.LibraryId).SingleAsync();
+        var library = await db.Libraries.SingleAsync(l => l.Id == libraryId);
+        library.KeyframeIntervalSeconds = seconds;
+        await db.SaveChangesAsync();
     }
 
     [Fact]

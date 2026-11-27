@@ -155,6 +155,32 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("No audio stream detected");
         }
 
+        var conversion = EvaluateAudioConversion(media, media.AudioCodec, rules);
+        if (conversion.IsEligible || !rules.TrimAudioSilence || !rules.TrimSilenceWithoutConverting)
+        {
+            return conversion;
+        }
+
+        // Every reason not to convert is about the conversion, so none of them stops a trim that
+        // keeps the file's format. The size floor goes too: it asks whether a conversion saves
+        // enough, and a trim is asked for to remove silence, not to save space.
+        var trimOnly = AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal);
+        return trimOnly.Plan is null
+            ? CandidateDecision.Skipped($"{conversion.Reason}. {trimOnly.Reason}")
+            : CandidateDecision.Eligible(trimOnly.Reason) with { TrimsOnly = true };
+    }
+
+    /// <summary>
+    /// How a music file that is not converted has its silence trimmed, or null when it is converted
+    /// or not trimmed at all. The same decision as <see cref="Evaluate"/>, for the job to act on.
+    /// </summary>
+    public static AudioTrimOnlyPlan? TrimOnlyPlanFor(MediaProperties media, RuleSettings rules) =>
+        media.Kind == MediaKind.Audio && EvaluateAudio(media, rules).TrimsOnly
+            ? AudioTrimOnly.Decide(media.AudioCodec, media.RelativePath, media.AttachedPictureCount, media.TrimOnlyTagRefusal).Plan
+            : null;
+
+    private static CandidateDecision EvaluateAudioConversion(MediaProperties media, string audioCodec, RuleSettings rules)
+    {
         if (media.SizeBytes < AudioTarget.MinFileSizeBytes)
         {
             return CandidateDecision.Skipped($"Below minimum size ({FormatSize(AudioTarget.MinFileSizeBytes)})");
@@ -165,15 +191,14 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
-        // MP3 is the only supported target for which the FFmpeg build shipped in our final image
-        // demonstrably retains an attached picture. Ogg Opus needs METADATA_BLOCK_PICTURE comment
-        // translation, while the M4A/ipod muxer silently drops inherited FLAC art. Fail before
-        // queueing instead of relying on the later verification gate to catch predictable loss.
-        if (!rules.TargetAudioCodec.Equals("mp3", StringComparison.OrdinalIgnoreCase)
+        // The shipped FFmpeg keeps an attached picture in MP3 (APIC) and M4A (covr). Ogg Opus would
+        // need METADATA_BLOCK_PICTURE comment translation. Fail before queueing instead of relying
+        // on the later verification gate to catch predictable loss.
+        if (rules.TargetAudioCodec.Equals("opus", StringComparison.OrdinalIgnoreCase)
             && media.AttachedPictureCount > 0)
         {
             return CandidateDecision.Skipped(
-                $"{rules.TargetAudioCodec} cannot safely preserve embedded cover art with the shipped FFmpeg; choose MP3 for this library");
+                $"{rules.TargetAudioCodec} cannot safely preserve embedded cover art with the shipped FFmpeg; choose AAC or MP3 for this library");
         }
 
         if (!rules.TargetAudioCodec.Equals("aac", StringComparison.OrdinalIgnoreCase)
@@ -194,7 +219,7 @@ public static class CandidateEvaluator
             rules.AudioBitrateKbps, media.MaxAudioChannels, rules.DownmixToStereo);
 
         // Lossless sources are always worth re-encoding: a large saving with no audible loss.
-        if (AudioTarget.IsLossless(media.AudioCodec))
+        if (AudioTarget.IsLossless(audioCodec))
         {
             return CandidateDecision.Eligible($"{media.AudioCodec} → {rules.TargetAudioCodec}");
         }
@@ -296,6 +321,19 @@ public static class CandidateEvaluator
         // conservative: no data, no removal.
         if (rules.TargetVideoCodec is null)
         {
+            // A copy keeps the Dolby Vision RPU in the video, but the shipped FFmpeg writes the
+            // configuration that tells a player to use it into MP4 only under -strict unofficial,
+            // and into MOV never. Copied there, the file would lose Dolby Vision and the
+            // "Dolby Vision kept" check would refuse it only after a full rewrite.
+            // Checked only where there is work to do, so a file with nothing to change keeps that reason.
+            var copyContainer = rules.TargetContainer is null
+                ? Path.GetExtension(media.RelativePath)
+                : Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath);
+            var dolbyVisionRefusal = media.IsDolbyVision && TranscodeSpecResolver.IsMp4Container(copyContainer)
+                ? CandidateDecision.Skipped(
+                    "Dolby Vision — copying it into an MP4 file would drop its Dolby Vision information; left untouched")
+                : null;
+
             var audioRemovals = media.AudioLanguages is null
                 ? (IReadOnlyList<int>)Array.Empty<int>()
                 : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);
@@ -315,7 +353,7 @@ public static class CandidateEvaluator
 
                 if (audioRemovals.Count + subtitleRemovals.Count > 0)
                 {
-                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals));
+                    return dolbyVisionRefusal ?? RemovalDecision(media, rules, audioRemovals, subtitleRemovals);
                 }
 
                 var languagesUnknown =
@@ -343,13 +381,13 @@ public static class CandidateEvaluator
 
             if (!alreadyClean)
             {
-                return CandidateDecision.Eligible($"Remux to {targetContainer} ({media.Container} → {targetContainer})");
+                return dolbyVisionRefusal ?? CandidateDecision.Eligible($"Remux to {targetContainer} ({media.Container} → {targetContainer})");
             }
 
             // A container-clean file can still carry tracks the kept-languages rules remove;
             // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
             return audioRemovals.Count + subtitleRemovals.Count > 0
-                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals))
+                ? dolbyVisionRefusal ?? RemovalDecision(media, rules, audioRemovals, subtitleRemovals)
                 : CandidateDecision.Skipped($"Already in the target container ({targetContainer})");
         }
 
@@ -382,6 +420,52 @@ public static class CandidateEvaluator
         }
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
+    }
+
+    /// <summary>
+    /// True when optimising the file would only remove tracks, copying every kept stream as it is:
+    /// track cleanup, or a remux clean-up of a file already in its target container whose audio is
+    /// copied. These are the jobs a library's minimum track-removal saving governs, since rewriting
+    /// the whole file is all they cost and the removed tracks are all they save.
+    /// </summary>
+    public static bool OnlyRemovesTracks(MediaProperties media, RuleSettings rules)
+    {
+        if (rules.TargetVideoCodec is not null || rules.VideoAudioCodec is not null)
+        {
+            return false;
+        }
+
+        if (rules.TargetContainer is null)
+        {
+            return true;
+        }
+
+        var target = Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath);
+        return target is not null
+            && media.Container?.Contains(ContainerKeyword(target), StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>What removing these tracks would save, from the sizes the inventory recorded.</summary>
+    public static TrackRemovalSaving RemovalSavingOf(
+        MediaProperties media, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals) =>
+        TrackRemovalSaving.Measure(media.SizeBytes, media.AudioTrackBytes, audioRemovals, media.SubtitleTrackBytes, subtitleRemovals);
+
+    // A file with tracks to remove is offered unless the library sets a minimum saving that this
+    // rewrite does not meet — or that cannot be checked, because a guess is no reason to rewrite.
+    private static CandidateDecision RemovalDecision(
+        MediaProperties media, RuleSettings rules, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
+    {
+        var reason = RemovalReason(media, audioRemovals, subtitleRemovals);
+        var minimum = TrackSavingMinimum.Of(rules);
+        if (!minimum.IsSet || !OnlyRemovesTracks(media, rules))
+        {
+            return CandidateDecision.Eligible(reason);
+        }
+
+        var saving = RemovalSavingOf(media, audioRemovals, subtitleRemovals);
+        return minimum.Refusal(saving) is { } refusal
+            ? CandidateDecision.Skipped(refusal)
+            : CandidateDecision.Eligible($"{reason} — saves {saving.Describe()}");
     }
 
     // Names the languages being removed, not just counts, so the inventory and the

@@ -19,6 +19,10 @@ public sealed class CandidateMeasurementTests : IDisposable
     private readonly string _scratch = Path.Combine(
         Path.GetTempPath(), "optimisarr-measure", Guid.NewGuid().ToString("N"));
 
+    // The work folder exists before any job does: the service creates and checks it at start, and
+    // a job's own folder is only ever created inside it.
+    public CandidateMeasurementTests() => Directory.CreateDirectory(_scratch);
+
     private static readonly byte[] SourceBytes = Encoding.UTF8.GetBytes("a source of some length");
 
     private static string Sha256(byte[] bytes) =>

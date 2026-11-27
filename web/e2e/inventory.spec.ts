@@ -1,9 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 export const inventoryFiles = [
-  { id: 7, libraryId: 1, relativePath: 'Films/Orbit (2025)/Orbit.2025.2160p.mkv', sizeBytes: 42_800_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, audioCodecs: 'truehd, aac', audioLanguages: 'eng, fra', audioTrackCount: 2, subtitleTrackCount: 4, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null },
-  { id: 8, libraryId: 1, relativePath: 'Films/Arrival/Arrival.2016.1080p.HEVC.mkv', sizeBytes: 8_200_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'hevc', width: 1920, height: 1080, durationSeconds: 6960, audioCodecs: 'dts', audioLanguages: 'eng', audioTrackCount: 1, subtitleTrackCount: 2, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null },
-  { id: 9, libraryId: 2, relativePath: 'Music/An extraordinarily long album name/01 - A very long track title with no artwork available.flac', sizeBytes: 28_400_000, status: 'Discovered', mediaKind: 'Audio', container: null, videoCodec: null, width: null, height: null, durationSeconds: null, audioCodecs: null, audioLanguages: null, audioTrackCount: null, subtitleTrackCount: null, probedAt: null, probeError: null, optimisedMarker: null },
+  { id: 7, libraryId: 1, relativePath: 'Films/Orbit (2025)/Orbit.2025.2160p.mkv', sizeBytes: 42_800_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'h264', width: 3840, height: 2160, durationSeconds: 9330, audioCodecs: 'truehd, aac', audioLanguages: 'eng, fra', audioTrackCount: 2, subtitleTrackCount: 4, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null, fieldOrder: 'progressive' },
+  { id: 8, libraryId: 1, relativePath: 'Films/Arrival/Arrival.2016.1080p.HEVC.mkv', sizeBytes: 8_200_000_000, status: 'Probed', mediaKind: 'Video', container: 'matroska', videoCodec: 'hevc', width: 1920, height: 1080, durationSeconds: 6960, audioCodecs: 'dts', audioLanguages: 'eng', audioTrackCount: 1, subtitleTrackCount: 2, probedAt: '2026-09-16T12:00:00Z', probeError: null, optimisedMarker: null, fieldOrder: 'tt' },
+  { id: 9, libraryId: 2, relativePath: 'Music/An extraordinarily long album name/01 - A very long track title with no artwork available.flac', sizeBytes: 28_400_000, status: 'Discovered', mediaKind: 'Audio', container: null, videoCodec: null, width: null, height: null, durationSeconds: null, audioCodecs: null, audioLanguages: null, audioTrackCount: null, subtitleTrackCount: null, probedAt: null, probeError: null, optimisedMarker: null, fieldOrder: null },
 ]
 
 export const poster = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><defs><linearGradient id="sky" x2="1" y2="1"><stop stop-color="#153756"/><stop offset="1" stop-color="#050915"/></linearGradient><radialGradient id="star"><stop stop-color="#ffdfa0"/><stop offset=".5" stop-color="#b57745"/><stop offset="1" stop-color="#543249"/></radialGradient></defs><path fill="url(#sky)" d="M0 0h400v600H0z"/><circle cx="268" cy="205" r="170" fill="url(#star)"/><circle cx="315" cy="168" r="166" fill="#111c32"/><path d="M0 430L170 320l230 130v150H0" fill="#17283e"/><text x="34" y="516" font-family="sans-serif" font-size="57" fill="#f0e3c9" letter-spacing="10">ORBIT</text><text x="38" y="550" font-family="sans-serif" font-size="13" fill="#bdc7d5" letter-spacing="5">ARTWORK FIXTURE</text></svg>'
@@ -42,9 +42,25 @@ export async function mockInventory(page: Page) {
     if (path === '/api/settings') return json(route, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
     if (path === '/api/inventory') {
       const library = url.searchParams.get('libraryId'), show = url.searchParams.get('show')
-      const scoped = inventoryFiles.filter(f => !library || f.libraryId === Number(library))
+      const search = url.searchParams.get('search')?.toLowerCase(), sort = url.searchParams.get('sort')
+      const interlacedOnly = url.searchParams.get('interlaced') === 'true'
+      const isInterlaced = (f: typeof inventoryFiles[number]) => ['tt', 'bb', 'tb', 'bt'].includes(f.fieldOrder ?? '')
+      const inScope = inventoryFiles.filter(f => (!library || f.libraryId === Number(library)) && (!search || f.relativePath.toLowerCase().includes(search)))
+      const scoped = inScope.filter(f => !interlacedOnly || isInterlaced(f))
       const items = scoped.filter(f => !show || (show === 'eligible' ? f.id === 7 : show === 'skipped' ? f.id === 8 : f.id === 9))
-      return json(route, { items: items.map(file => ({ file, eligible: file.id === 9 ? null : file.id === 7, reason: file.id === 9 ? null : file.id === 7 ? 'Video codec differs from the library’s HEVC target.' : 'Already uses the target codec.' })), total: items.length, counts: { all: scoped.length, eligible: scoped.filter(f => f.id === 7).length, skipped: scoped.filter(f => f.id === 8).length, unprobed: scoped.filter(f => f.id === 9).length } })
+      // Eligible, then not yet probed, then skipped: the server's verdict order.
+      const verdictRank = (f: typeof inventoryFiles[number]) => f.id === 7 ? 0 : f.id === 9 ? 1 : 2
+      const fileNameOf = (p: string) => p.split(/[\\/]/).pop() || p
+      const byPath = (a: typeof inventoryFiles[number], b: typeof inventoryFiles[number]) => a.relativePath.localeCompare(b.relativePath)
+      const byName = (a: typeof inventoryFiles[number], b: typeof inventoryFiles[number]) => fileNameOf(a.relativePath).localeCompare(fileNameOf(b.relativePath))
+      if (sort) {
+        const [column, direction] = sort.split('_')
+        const sign = direction === 'desc' ? -1 : 1
+        items.sort((a, b) => (column === 'size' ? sign * (a.sizeBytes - b.sizeBytes)
+          : column === 'verdict' ? sign * (verdictRank(a) - verdictRank(b))
+          : sign * byName(a, b)) || byPath(a, b))
+      }
+      return json(route, { items: items.map(file => ({ file, eligible: file.id === 9 ? null : file.id === 7, reason: file.id === 9 ? null : file.id === 7 ? 'Video codec differs from the library’s HEVC target.' : 'Already uses the target codec.' })), total: items.length, counts: { all: scoped.length, eligible: scoped.filter(f => f.id === 7).length, skipped: scoped.filter(f => f.id === 8).length, unprobed: scoped.filter(f => f.id === 9).length, interlaced: inScope.filter(isInterlaced).length } })
     }
     return json(route, {})
   })
@@ -98,7 +114,7 @@ test('a slower filter response cannot replace the latest selection', async ({ pa
   await page.route('**/api/inventory?**', async route => {
     if (new URL(route.request().url()).searchParams.get('show') !== 'eligible') return route.fallback()
     await gate
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: inventoryFiles[0], eligible: true, reason: 'Eligible' }], total: 1, counts: { all: 3, eligible: 1, skipped: 1, unprobed: 1 } }) })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: inventoryFiles[0], eligible: true, reason: 'Eligible' }], total: 1, counts: { all: 3, eligible: 1, skipped: 1, unprobed: 1, interlaced: 1 } }) })
   })
   await page.goto('/#/inventory')
   await page.getByRole('button', { name: 'Eligible (1)', exact: true }).click()
@@ -131,7 +147,7 @@ test('a successful probe refreshes the open file and its preview eligibility', a
   })
   await page.route('**/api/inventory?**', route => {
     if (!probed) return route.fallback()
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: updated, eligible: true, reason: 'Audio qualifies for the library’s Opus target.' }], total: 1, counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0 } }) })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ file: updated, eligible: true, reason: 'Audio qualifies for the library’s Opus target.' }], total: 1, counts: { all: 1, eligible: 1, skipped: 0, unprobed: 0, interlaced: 0 } }) })
   })
   await page.goto('/#/inventory')
   await page.getByRole('button', { name: /01 - A very long/ }).click()
@@ -187,7 +203,7 @@ test('a file held back by its last failure can be tried again from its details',
     const item = retriedOnce
       ? { file, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null }
       : { file, eligible: false, reason: failedReason, retryJobId: 55 }
-    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0 } } })
+    return route.fulfill({ json: { items: [item], total: 1, counts: { all: 1, eligible: retriedOnce ? 1 : 0, skipped: retriedOnce ? 0 : 1, unprobed: 0, interlaced: 0 } } })
   })
   const retries: string[] = []
   await page.route('**/api/jobs/55/retry*', route => {
@@ -219,7 +235,7 @@ test('trying again from the Skipped filter keeps the details open to say it was 
     const show = new URL(route.request().url()).searchParams.get('show')
     const item = { file: inventoryFiles[1], eligible: false, reason: failedReason, retryJobId: 55 }
     const items = retried && show === 'skipped' ? [] : [retried ? { ...item, eligible: true, reason: 'Video codec differs from the library’s HEVC target.', retryJobId: null } : item]
-    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0 } } })
+    return route.fulfill({ json: { items, total: items.length, counts: { all: 1, eligible: retried ? 1 : 0, skipped: retried ? 0 : 1, unprobed: 0, interlaced: 0 } } })
   })
   let refuse = true
   await page.route('**/api/jobs/55/retry*', route => {
@@ -267,4 +283,265 @@ test('the detail actions wrap instead of overflowing on a phone', async ({ page 
   await expect(footer.getByRole('link', { name: 'Optimise this file…', exact: true })).toBeInViewport({ ratio: 1 })
   expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
+})
+
+// The order the rows are shown in, read by file name.
+async function rowNames(page: Page) {
+  return page.locator('[id^="inventory-file-"]').evaluateAll(buttons => buttons.map(button => button.querySelector('.text-label')?.textContent ?? ''))
+}
+
+function recordInventoryRequests(page: Page) {
+  const requests: URLSearchParams[] = []
+  page.on('request', request => {
+    const url = new URL(request.url())
+    if (url.pathname === '/api/inventory') requests.push(url.searchParams)
+  })
+  return requests
+}
+
+test('search waits for a pause in typing, asks the server, and says when nothing matches', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  await page.getByRole('checkbox', { name: /Select Orbit/ }).check()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+
+  const search = page.getByRole('searchbox', { name: 'Search files' })
+  await expect(search).toHaveAttribute('placeholder', 'Filter by file or folder name…')
+  await search.pressSequentially('orbit', { delay: 20 })
+  await expect.poll(() => requests.map(params => params.get('search')).filter(Boolean)).toEqual(['orbit'])
+  expect(requests.at(-1)!.get('page')).toBe('1')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ })).toBeVisible()
+  // A pick made among the rows before the search does not carry into the new set.
+  await expect(page.getByText(/^\d+ (of \d+ )?selected$/)).toHaveCount(0)
+
+  await search.fill('nothing-here')
+  await search.press('Enter')
+  await expect(page.getByText('No files match “nothing-here”.')).toBeVisible()
+  await page.getByRole('main').getByRole('button', { name: 'Clear search' }).last().click()
+  await expect(search).toHaveValue('')
+  await expect(search).toBeFocused()
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  expect(requests.at(-1)!.has('search')).toBe(false)
+})
+
+test('the clear button and Escape both empty the search field', async ({ page }) => {
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  const search = page.getByRole('searchbox', { name: 'Search files' })
+  const clear = page.getByRole('search').getByRole('button', { name: 'Clear search' })
+  await expect(clear).toHaveCount(0)
+
+  await search.fill('arrival')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await clear.click()
+  await expect(search).toHaveValue('')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+
+  await search.fill('music')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+})
+
+test('size sorts largest first, then smallest, then back to path order', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  const header = page.getByRole('columnheader', { name: 'Size' })
+  const sortButton = header.getByRole('button', { name: 'Size' })
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('size_desc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', 'Arrival.2016.1080p.HEVC.mkv', '01 - A very long track title with no artwork available.flac'])
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'ascending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('size_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv', 'Orbit.2025.2160p.mkv'])
+
+  await sortButton.click()
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await expect.poll(() => requests.at(-1)?.has('sort')).toBe(false)
+})
+
+test('the verdict and file columns sort from the top of their order and only one column sorts at a time', async ({ page }) => {
+  await mockInventory(page)
+  const requests = recordInventoryRequests(page)
+  await page.goto('/#/inventory')
+  const verdict = page.getByRole('columnheader', { name: 'Rule verdict' })
+  const file = page.getByRole('columnheader', { name: 'File' })
+
+  await verdict.getByRole('button').click()
+  await expect(verdict).toHaveAttribute('aria-sort', 'ascending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('verdict_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', '01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv'])
+
+  await verdict.getByRole('button').click()
+  await expect(verdict).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('verdict_desc')
+
+  await file.getByRole('button').click()
+  await expect(file).toHaveAttribute('aria-sort', 'ascending')
+  await expect(verdict).toHaveAttribute('aria-sort', 'none')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('name_asc')
+  await expect.poll(() => rowNames(page)).toEqual(['01 - A very long track title with no artwork available.flac', 'Arrival.2016.1080p.HEVC.mkv', 'Orbit.2025.2160p.mkv'])
+  expect(requests.at(-1)!.get('page')).toBe('1')
+  await file.getByRole('button').click()
+  await expect(file).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(() => requests.at(-1)?.get('sort')).toBe('name_desc')
+  await expect.poll(() => rowNames(page)).toEqual(['Orbit.2025.2160p.mkv', 'Arrival.2016.1080p.HEVC.mkv', '01 - A very long track title with no artwork available.flac'])
+})
+
+test('rows are compact on a desktop and keep a finger-sized target on a phone', async ({ page }) => {
+  await mockInventory(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/inventory')
+  await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(3)
+  for (const height of await page.locator('tbody tr').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(48)
+    expect(height).toBeLessThanOrEqual(60)
+  }
+
+  await page.setViewportSize({ width: 375, height: 667 })
+  for (const height of await page.locator('[id^="inventory-file-"]').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(44)
+  }
+})
+
+for (const width of [320, 375]) {
+  test(`the search field and sortable headers fit a ${width}px phone without sideways scrolling`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: 700 })
+    await page.goto('/#/inventory')
+    const search = page.getByRole('searchbox', { name: 'Search files' })
+    await search.fill('a very long search that should never push the page sideways')
+    const box = (await search.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    const clear = (await page.getByRole('search').getByRole('button', { name: 'Clear search' }).boundingBox())!
+    expect(clear.x + clear.width).toBeLessThanOrEqual(box.x + box.width + 1)
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+    await search.fill('')
+    for (const name of ['File', 'Rule verdict']) {
+      const sort = (await page.getByRole('columnheader', { name }).getByRole('button').boundingBox())!
+      expect(sort.height).toBeGreaterThanOrEqual(44)
+    }
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+  })
+}
+
+for (const width of [1440, 375]) {
+  test(`an interlaced file is tagged with its field order and a progressive one is not, at ${width}px`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: width > 500 ? 900 : 700 })
+    await page.goto('/#/inventory')
+    await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Arrival 2016 1080p HEVC' })
+    const tag = dialog.locator('[data-interlaced-tag]')
+    await expect(tag).toHaveText('Interlaced')
+    await expect(tag).toBeInViewport()
+    // The field order sits behind the tag's information button, in words and in ffprobe's own code.
+    await dialog.getByRole('button', { name: 'About the field order' }).click()
+    await expect(dialog.getByRole('tooltip')).toContainText('top field first')
+    await expect(dialog.getByRole('tooltip')).toContainText('“tt”')
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+
+    // Progressive, and never probed: nothing to say, so no tag.
+    for (const name of [/Orbit.2025.2160p.mkv/, /01 - A very long/]) {
+      await page.getByRole('button', { name }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await expect(page.getByRole('dialog').locator('[data-interlaced-tag]')).toHaveCount(0)
+      await page.getByRole('button', { name: 'Close detail panel' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+    }
+  })
+
+  test(`the Interlaced filter lists only interlaced files and works with library and search, at ${width}px`, async ({ page }) => {
+    await mockInventory(page)
+    await page.setViewportSize({ width, height: width > 500 ? 900 : 700 })
+    const requests: URLSearchParams[] = []
+    page.on('request', request => { const url = new URL(request.url()); if (url.pathname === '/api/inventory') requests.push(url.searchParams) })
+    await page.goto('/#/inventory')
+    const toggle = page.getByRole('button', { name: 'Interlaced (1)', exact: true })
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(toggle).toBeInViewport()
+    // An independent on/off filter, not one of the verdict pills: it sits outside their group and
+    // carries a check only while on.
+    await expect(page.getByRole('group', { name: 'Filter files' }).getByRole('button', { name: /Interlaced/ })).toHaveCount(0)
+    await expect(toggle.locator('svg')).toHaveCount(0)
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(toggle.locator('svg')).toHaveCount(1)
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+    await expect(page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ })).toBeVisible()
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    // The verdict tallies now describe the interlaced files, and a verdict tab narrows them further.
+    await expect(page.getByRole('button', { name: 'All (1)', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Skipped (1)', exact: true }).click()
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+    expect(requests.at(-1)?.get('show')).toBe('skipped')
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    await page.getByRole('button', { name: 'All (1)', exact: true }).click()
+
+    // A search that finds no interlaced file says so, and offers the whole list back.
+    await page.getByRole('searchbox', { name: 'Search files' }).fill('orbit')
+    await expect(page.getByText('No interlaced files match these filters.')).toBeVisible()
+    expect(requests.at(-1)?.get('search')).toBe('orbit')
+    expect(requests.at(-1)?.get('interlaced')).toBe('true')
+    await page.getByRole('button', { name: 'Clear search' }).first().click()
+    await expect(page.locator('[id^="inventory-file-"]')).toHaveCount(1)
+
+    // Another library has none: the tag stays on, and the empty list explains a file probed long ago.
+    await page.getByLabel('Library', { exact: true }).selectOption('2')
+    await expect(page.getByRole('button', { name: 'Interlaced (0)', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('No interlaced files match these filters.')).toBeVisible()
+    await expect(page.getByText(/Re-probe/)).toBeVisible()
+    expect(await page.locator('main').evaluate(main => main.scrollWidth - main.clientWidth)).toBeLessThanOrEqual(1)
+    await page.getByRole('button', { name: 'Clear Interlaced filter', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Interlaced (0)', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: /01 - A very long/ })).toBeVisible()
+    expect(requests.at(-1)?.has('interlaced')).toBe(false)
+  })
+}
+
+test('an information tip inside a dialog opens beside its button on a desktop, and as a sheet on a phone', async ({ page }) => {
+  await mockInventory(page)
+  for (const { width, height } of [{ width: 1440, height: 900 }, { width: 375, height: 700 }]) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/#/inventory')
+    await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Arrival 2016 1080p HEVC' })
+    const button = dialog.getByRole('button', { name: 'About the field order' })
+    await button.click()
+    const tip = dialog.getByRole('tooltip')
+    await expect(tip).toBeVisible()
+    const glyph = (await button.locator('svg').boundingBox())!
+    const box = (await tip.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    expect(box.y + box.height).toBeLessThanOrEqual(height)
+    if (width > 639) {
+      // Just under the glyph, and starting where the glyph is rather than across the screen.
+      expect(Math.abs(box.y - (glyph.y + glyph.height))).toBeLessThanOrEqual(24)
+      expect(box.x).toBeLessThanOrEqual(glyph.x + glyph.width)
+      expect(box.x + box.width).toBeGreaterThanOrEqual(glyph.x)
+    } else {
+      // A phone keeps the full-width sheet along the bottom of the screen.
+      expect(box.x).toBe(16)
+      expect(box.width).toBe(width - 32)
+      expect(height - (box.y + box.height)).toBeLessThanOrEqual(24)
+    }
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+  }
 })

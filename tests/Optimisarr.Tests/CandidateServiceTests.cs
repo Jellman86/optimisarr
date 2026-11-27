@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -167,6 +168,89 @@ public sealed class CandidateServiceTests : IDisposable
 
         Assert.False(result.Eligible);
         Assert.Contains("Failed last time", result.Reason);
+    }
+
+    [Fact]
+    public async Task A_music_file_measured_with_no_silence_to_trim_is_not_offered_again_until_it_or_the_silence_settings_change()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Music", Path = "/data/music", MediaType = MediaType.Music, RuleProfile = RuleProfile.ConservativeHevc,
+                TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            MediaFile Song(string name) => new()
+            {
+                LibraryId = library.Id, Path = $"/data/music/{name}", RelativePath = name, SizeBytes = 6_000_000,
+                Status = MediaFileStatus.Probed, Container = "mp3", MediaKind = MediaKind.Audio, AudioCodecs = "mp3",
+                AudioBitrateKbps = 128, MaxAudioChannels = 2, ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                ProbedAt = DateTimeOffset.UtcNow,
+            };
+            var measured = Song("measured.mp3");
+            var otherSettings = Song("other-settings.mp3");
+            var unmeasured = Song("unmeasured.mp3");
+            var cancelled = Song("cancelled.mp3");
+            var fresh = Song("fresh.mp3");
+            db.MediaFiles.AddRange(measured, otherSettings, unmeasured, cancelled, fresh);
+            await db.SaveChangesAsync();
+
+            var finished = DateTimeOffset.Parse("2026-06-01T01:00:00Z");
+            Job Stopped(MediaFile file, string? decision) => new()
+            {
+                MediaFileId = file.Id, LibraryId = library.Id, Status = JobStatus.Cancelled, FinishedAt = finished, DetectedSilenceTrim = decision,
+            };
+            db.Jobs.AddRange(
+                Stopped(measured, SilenceTrimRecord.For(new(null, "No silence at the start or end.", Measured: true), -60, 2)),
+                // Measured at a threshold the library no longer uses: a new one may find silence.
+                Stopped(otherSettings, SilenceTrimRecord.For(new(null, "No silence at the start or end.", Measured: true), -70, 2)),
+                // The measurement failed, which says nothing about the file.
+                Stopped(unmeasured, SilenceTrimRecord.Unmeasured),
+                // Cancelled by a person before anything was measured.
+                Stopped(cancelled, null));
+            await db.SaveChangesAsync();
+        }
+
+        var results = await EvaluateAsync(libraryId: null);
+
+        Assert.False(Single(results, "measured.mp3").Eligible);
+        Assert.Contains("there was none", Single(results, "measured.mp3").Reason);
+        Assert.True(Single(results, "other-settings.mp3").Eligible);
+        Assert.True(Single(results, "unmeasured.mp3").Eligible);
+        Assert.True(Single(results, "cancelled.mp3").Eligible);
+        Assert.True(Single(results, "fresh.mp3").Eligible);
+        Assert.Contains("Trims silence only", Single(results, "fresh.mp3").Reason);
+    }
+
+    [Fact]
+    public async Task A_music_file_whose_tags_a_trim_would_lose_is_skipped_with_the_tags_named()
+    {
+        const string refusal = "Trimming it without converting would lose or change some of its tags (POPM, UFID), so it is left alone.";
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Music", Path = "/data/music", MediaType = MediaType.Music, RuleProfile = RuleProfile.ConservativeHevc,
+                TrimAudioSilence = true, TrimSilenceWithoutConverting = true,
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(new MediaFile
+            {
+                LibraryId = library.Id, Path = "/data/music/rated.mp3", RelativePath = "rated.mp3", SizeBytes = 6_000_000,
+                Status = MediaFileStatus.Probed, Container = "mp3", MediaKind = MediaKind.Audio, AudioCodecs = "mp3",
+                AudioBitrateKbps = 128, MaxAudioChannels = 2, ProbedAt = DateTimeOffset.UtcNow, TrimOnlyTagRefusal = refusal,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "rated.mp3");
+
+        Assert.False(result.Eligible);
+        Assert.EndsWith(refusal, result.Reason);
     }
 
     [Fact]

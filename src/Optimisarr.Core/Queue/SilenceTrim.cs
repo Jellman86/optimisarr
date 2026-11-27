@@ -154,8 +154,47 @@ public static class SilenceTrimSettings
         double.IsFinite(seconds) && seconds is >= ShortestMinimumSeconds and <= LongestMinimumSeconds;
 }
 
-/// <summary>A planned trim, or why there is none.</summary>
-public sealed record SilenceTrimDecision(AudioTrimPlan? Plan, string Reason);
+/// <summary>
+/// A planned trim, or why there is none. <see cref="Measured"/> says the file's silence was measured
+/// and the answer is about the file itself, so it holds until the file or the library's silence
+/// settings change; a file that could not be measured, or measured against itself, is not.
+/// </summary>
+public sealed record SilenceTrimDecision(AudioTrimPlan? Plan, string Reason, bool Measured = false);
+
+/// <summary>
+/// What a job stores in its silence-trim decision when there is no plan: <c>none:threshold:minimum</c>
+/// when the file was measured with those settings and has nothing to trim, or <see cref="Unmeasured"/>
+/// when it could not be measured. Only the first stops the file being offered again.
+/// </summary>
+public static class SilenceTrimRecord
+{
+    public const string Unmeasured = "unmeasured";
+    public const string NothingToTrimPrefix = "none";
+
+    public static string For(SilenceTrimDecision decision, double thresholdDb, double minimumSeconds) =>
+        decision.Plan?.ToString()
+        ?? (decision.Measured
+            ? string.Create(CultureInfo.InvariantCulture, $"{NothingToTrimPrefix}:{thresholdDb:R}:{minimumSeconds:R}")
+            : Unmeasured);
+
+    /// <summary>The settings a file was measured with and found to have nothing to trim.</summary>
+    public static bool TryReadNothingToTrim(string? stored, out double thresholdDb, out double minimumSeconds)
+    {
+        thresholdDb = minimumSeconds = 0;
+        var parts = stored?.Split(':');
+        return parts is [NothingToTrimPrefix, var threshold, var minimum]
+            && double.TryParse(threshold, NumberStyles.Float, CultureInfo.InvariantCulture, out thresholdDb)
+            && double.TryParse(minimum, NumberStyles.Float, CultureInfo.InvariantCulture, out minimumSeconds);
+    }
+
+    /// <summary>The decision a stored record stands for, so a retry within an attempt gives the same answer.</summary>
+    public static SilenceTrimDecision Read(string stored) =>
+        AudioTrimPlan.TryParse(stored) is { } plan
+            ? new(plan, "Trims the silence measured earlier in this attempt.", Measured: true)
+            : TryReadNothingToTrim(stored, out _, out _)
+                ? new(null, "No silence at the start or end.", Measured: true)
+                : new(null, "The file's silence could not be measured, so nothing was trimmed.");
+}
 
 /// <summary>What is known about a music file before its silence is measured.</summary>
 public sealed record SilenceTrimSource(
@@ -233,6 +272,12 @@ public static partial class SilenceTrimPlanner
         var length = measurement.DecodedSeconds;
         if (!(length > 0) || sampleRate <= 0)
             return new(null, "The file's length or sample rate is unknown.");
+        return PlanMeasured(measurement, sampleRate, thresholdDb, trimStart) with { Measured = true };
+    }
+
+    private static SilenceTrimDecision PlanMeasured(SilenceMeasurement measurement, int sampleRate, double thresholdDb, bool trimStart)
+    {
+        var length = measurement.DecodedSeconds;
 
         var edges = Edges(measurement);
         var leading = trimStart ? Math.Max(0, edges.Leading - PaddingSeconds) : 0;

@@ -21,7 +21,9 @@ public sealed record PlannedPicture(
     bool Deinterlace,
     bool CropBlackBars,
     NoiseReduction NoiseReduction,
-    bool Upscales);
+    bool Upscales,
+    // Seconds, as the library sets it; the job counts it in frames once it has probed the rate.
+    int? KeyframeIntervalSeconds = null);
 
 /// <summary>What happens to an image. <see cref="RecompressesLossy"/> is true when the source is
 /// already a compressed image, so it loses quality a second time.</summary>
@@ -30,11 +32,24 @@ public sealed record PlannedImage(string Format, int Quality, ImageDownscaleMode
 /// <summary>
 /// What happens to the sound. A null codec means every kept track is copied untouched.
 /// <see cref="TrimsSilence"/> is a rule, not a finding: the job measures whether there is any.
+/// <see cref="TrimOnly"/> is a music file that keeps its format and is only trimmed, so a job that
+/// finds no silence ends without writing anything.
 /// </summary>
-public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo, bool TrimsSilence = false);
+public sealed record PlannedSound(string? Codec, int? BitrateKbps, bool DownmixToStereo, bool TrimsSilence = false, bool TrimOnly = false);
 
 /// <summary>One audio or subtitle track of the source, in stream order, and whether the new file keeps it.</summary>
 public sealed record PlannedTrack(int Index, string? Language, bool Kept);
+
+/// <summary>
+/// What removing tracks would save, for a job that only removes tracks. <see cref="Bytes"/> and
+/// <see cref="Percent"/> are null when a removed track's size is not known.
+/// <see cref="MeetsMinimum"/> is null when the library sets no minimum or the saving is not known;
+/// either way a set minimum then skips the file, which the candidate reason explains.
+/// <see cref="NeedsReprobe"/> tells those two unknowns apart: true when the file was probed before
+/// track sizes were recorded, so a re-probe can still find them.
+/// </summary>
+public sealed record PlannedTrackSaving(
+    long? Bytes, double? Percent, double? MinimumPercent, long? MinimumBytes, bool? MeetsMinimum, bool NeedsReprobe);
 
 /// <summary>
 /// The file that would be written. Audio that MP4 cannot carry is already known from the
@@ -55,7 +70,8 @@ public sealed record OptimisationPlan(
     IReadOnlyList<PlannedTrack>? AudioTracks,
     IReadOnlyList<PlannedTrack>? SubtitleTracks,
     PlannedFile File,
-    PlannedImage? Image = null);
+    PlannedImage? Image = null,
+    PlannedTrackSaving? TrackSaving = null);
 
 public static class OptimisationPlanner
 {
@@ -75,6 +91,7 @@ public static class OptimisationPlanner
         bool sourceHasMp4IncompatibleAudio = false,
         bool upscales = false)
     {
+        var trimOnly = CandidateEvaluator.TrimOnlyPlanFor(media, rules);
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.RelativePath,
@@ -90,7 +107,8 @@ public static class OptimisationPlanner
             sourceAudioLanguages: media.AudioLanguages,
             sourceSubtitleLanguages: media.SubtitleLanguages,
             sourceWidth: media.Width,
-            sourceHeight: media.Height);
+            sourceHeight: media.Height,
+            audioTrimOnly: trimOnly);
 
         var fileName = Path.GetFileName(spec.OutputPath);
         var container = Path.GetExtension(fileName).TrimStart('.');
@@ -114,6 +132,12 @@ public static class OptimisationPlanner
                 rules.ImageDownscaleValue,
                 RecompressesLossy: media.VideoCodec is { } imageCodec && !ImageTarget.IsLossless(imageCodec));
             return new OptimisationPlan(media.Kind, Image, null, null, null, null, file, image);
+        }
+
+        if (trimOnly is not null)
+        {
+            return new OptimisationPlan(media.Kind, Audio, null,
+                new PlannedSound(trimOnly.Codec, null, false, TrimsSilence: true, TrimOnly: true), null, null, file);
         }
 
         if (media.Kind == MediaKind.Audio)
@@ -145,7 +169,8 @@ public static class OptimisationPlanner
                 VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, media.FieldOrder),
                 rules.CropBlackBars,
                 rules.NoiseReduction,
-                upscales)
+                upscales,
+                rules.KeyframeIntervalSeconds)
             : null;
 
         return new OptimisationPlan(
@@ -155,7 +180,25 @@ public static class OptimisationPlanner
             new PlannedSound(spec.AudioEncoder is null ? null : rules.VideoAudioCodec, spec.AudioBitrateKbps, spec.DownmixToStereo),
             Tracks(media.AudioLanguages, spec.RemoveAudioStreamIndexes),
             Tracks(media.SubtitleLanguages, spec.RemoveSubtitleStreamIndexes),
-            file);
+            file,
+            TrackSaving: TrackSavingOf(media, rules, spec.RemoveAudioStreamIndexes ?? [], spec.RemoveSubtitleStreamIndexes ?? []));
+    }
+
+    // Only a job that just removes tracks is judged by what they save; a re-encode or a container
+    // change is worth its rewrite for other reasons.
+    private static PlannedTrackSaving? TrackSavingOf(
+        MediaProperties media, RuleSettings rules, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
+    {
+        if (audioRemovals.Count + subtitleRemovals.Count == 0 || !CandidateEvaluator.OnlyRemovesTracks(media, rules))
+        {
+            return null;
+        }
+
+        var saving = CandidateEvaluator.RemovalSavingOf(media, audioRemovals, subtitleRemovals);
+        var minimum = TrackSavingMinimum.Of(rules);
+        return new PlannedTrackSaving(
+            saving.Bytes, saving.Percent, minimum.Percent, minimum.Bytes, minimum.IsMetBy(saving),
+            NeedsReprobe: saving.Knowledge == TrackSavingKnowledge.NotRecorded);
     }
 
     // Null when the languages were never captured: the kept-languages rule then removes nothing,

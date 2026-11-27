@@ -175,6 +175,7 @@ internal static class LibraryEndpoints
                 TrimAudioSilence = parsed.TrimAudioSilence,
                 AudioSilenceThresholdDb = parsed.AudioSilenceThresholdDb,
                 AudioSilenceMinimumSeconds = parsed.AudioSilenceMinimumSeconds,
+                TrimSilenceWithoutConverting = parsed.TrimSilenceWithoutConverting,
                 SuperResolutionEnabled = parsed.SuperResolutionEnabled,
                 SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck,
                 SuperResolutionEngine = parsed.SuperResolutionEngine,
@@ -182,6 +183,9 @@ internal static class LibraryEndpoints
                 SuperResolutionScale = parsed.SuperResolutionScale,
                 KeepAudioLanguages = parsed.KeepAudioLanguages,
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
+                MinimumTrackRemovalSavingPercent = parsed.MinimumTrackRemovalSavingPercent,
+                MinimumTrackRemovalSavingBytes = parsed.MinimumTrackRemovalSavingBytes,
+                KeyframeIntervalSeconds = parsed.KeyframeIntervalSeconds,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
                 TargetImageFormat = parsed.TargetImageFormat,
                 ImageQuality = parsed.ImageQuality,
@@ -269,6 +273,7 @@ internal static class LibraryEndpoints
                 TrimAudioSilence = request.TrimAudioSilence ?? library.TrimAudioSilence,
                 AudioSilenceThresholdDb = request.AudioSilenceThresholdDb ?? library.AudioSilenceThresholdDb,
                 AudioSilenceMinimumSeconds = request.AudioSilenceMinimumSeconds ?? library.AudioSilenceMinimumSeconds,
+                TrimSilenceWithoutConverting = request.TrimSilenceWithoutConverting ?? library.TrimSilenceWithoutConverting,
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -323,6 +328,7 @@ internal static class LibraryEndpoints
             library.TrimAudioSilence = parsed.TrimAudioSilence;
             library.AudioSilenceThresholdDb = parsed.AudioSilenceThresholdDb;
             library.AudioSilenceMinimumSeconds = parsed.AudioSilenceMinimumSeconds;
+            library.TrimSilenceWithoutConverting = parsed.TrimSilenceWithoutConverting;
             library.SuperResolutionEnabled = parsed.SuperResolutionEnabled;
             library.SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck;
             if (parsed.SuperResolutionChoiceSent)
@@ -333,6 +339,9 @@ internal static class LibraryEndpoints
             }
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
+            library.MinimumTrackRemovalSavingPercent = parsed.MinimumTrackRemovalSavingPercent;
+            library.MinimumTrackRemovalSavingBytes = parsed.MinimumTrackRemovalSavingBytes;
+            library.KeyframeIntervalSeconds = parsed.KeyframeIntervalSeconds;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
             library.TargetImageFormat = parsed.TargetImageFormat;
             library.ImageQuality = parsed.ImageQuality;

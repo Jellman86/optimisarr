@@ -121,7 +121,7 @@ test('the status bar names the state, and the job list says what is being worked
 
   await page.goto('/#/')
 
-  // Scoped to the page: the sidebar's encoding card names the same file, encoder and figure.
+  // Scoped to main so the test checks the Dashboard's own in-flight list directly.
   const main = page.locator('main')
   await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
   await expect(main.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
@@ -131,7 +131,7 @@ test('the status bar names the state, and the job list says what is being worked
   await expect(main.getByText('Adaptive VMAF')).toBeVisible()
 })
 
-test('the sidebar shows what is encoding, whichever page is open', async ({ page }) => {
+test('the sidebar shows what is encoding on pages without a live job list', async ({ page }) => {
   // The mark already turns while work runs; the card beneath the navigation says what the work
   // is, so a reader on Settings or Libraries does not have to go to the Queue to find out.
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
@@ -523,18 +523,59 @@ test('remote work animates the slices; reduced motion holds a twisted still', as
 
 async function mockJobsHub(page: Page) {
   let notify = () => {}
+  let handshake = () => {}
+  const ready = new Promise<void>(resolve => { handshake = resolve })
   await page.route('**/hubs/jobs/negotiate?*', route => json(route, {
     negotiateVersion: 1, connectionId: 'brand-test', connectionToken: 'brand-test',
     availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
   }))
   await page.routeWebSocket('**/hubs/jobs?*', socket => {
     socket.onMessage(message => {
-      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+      if (!String(message).includes('"protocol"')) return
+      socket.send('{}\u001e')
+      handshake()
     })
     notify = () => socket.send(JSON.stringify({ type: 1, target: 'jobsChanged', arguments: [] }) + '\u001e')
   })
-  return () => notify()
+  // Events sent before the handshake completes are dropped, so a test can wait for `ready`.
+  return Object.assign(() => notify(), { ready })
 }
+
+test('a job event refreshes the dashboard list before its next poll', async ({ page }) => {
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const list = page.locator('main').getByRole('region', { name: 'In flight' })
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
+  await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
+
+  fixture.jobs = [liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'New feature.mkv' })]
+  await notify.ready
+  notify()
+  await expect(list.getByText('New feature', { exact: true })).toBeVisible()
+  await expect(list.getByText('Harborlight S02E07', { exact: true })).toHaveCount(0)
+})
+
+test('a burst of job events folds into one follow-up dashboard refresh', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  const held: Route[] = []
+  await page.route('**/api/results/daily*', route => { held.push(route) })
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  await expect.poll(() => held.length).toBe(1)
+  await notify.ready
+
+  for (let event = 0; event < 4; event++) notify()
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(1)
+
+  await json(held[0], [])
+  await expect.poll(() => held.length).toBe(2)
+  await json(held[1], [])
+  await page.waitForTimeout(300)
+  expect(held.length).toBe(2)
+})
 
 test('job events change the cube state while suspended work keeps moving illumination', async ({ page }) => {
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
@@ -544,6 +585,7 @@ test('job events change the cube state while suspended work keeps moving illumin
   const mark = page.locator('aside canvas').first()
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   fixture.queue = { runningJobs: 1, suspendedEncodeCount: 1, runningEncodesSuspended: true }
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
@@ -591,6 +633,7 @@ test('reduced-motion sessions never load graphics code', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
   expect(graphics).toEqual([])
@@ -624,6 +667,7 @@ test('the icon stops scheduling paints offscreen and resumes a slow drift when i
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   fixture.queue = { runningJobs: 0 }
   fixture.jobs = []
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
   await page.waitForTimeout(550)
@@ -692,6 +736,7 @@ test('idle geometry stays fixed and work/theme changes reuse the same meshes', a
   expect((await graphics()).light).not.toEqual(resting.light)
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
   await expect.poll(async () => (await graphics()).angle, { timeout: 15_000 }).toBeGreaterThan(.05)
@@ -723,7 +768,8 @@ test('theme changes update reduced-motion stills and the favicon', async ({ page
 test('a working sidebar keeps its footer reachable in a short window', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
   await page.setViewportSize({ width: 1280, height: 600 })
-  await page.goto('/#/')
+  // Settings, because the rail's encoding card only shows on pages that do not show the work themselves.
+  await page.goto('/#/settings')
   const rail = page.locator('aside')
   await expect(rail.getByRole('button', { name: 'Language: English' })).toBeInViewport()
   await expect(rail.getByRole('button', { name: 'Toggle theme' })).toBeInViewport()
@@ -738,10 +784,11 @@ test('the sidebar recovers artwork when the next job follows one without a poste
   const notify = await mockJobsHub(page)
   await page.route('**/api/media/7/thumbnail', route => route.fulfill({ status: 404 }))
   await page.route('**/api/media/8/thumbnail', route => route.fulfill({ contentType: 'image/png', path: 'public/favicon-192.png' }))
-  await page.goto('/#/')
+  await page.goto('/#/settings')
   await expect(page.locator('aside [data-thumbnail]')).toBeVisible()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCount(0)
   fixture.jobs = [liveJob({ id: 8, mediaFileId: 8, relativePath: 'New film.mkv' })]
+  await notify.ready
   notify()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveJSProperty('naturalWidth', 192)
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCSS('opacity', '1')
@@ -784,6 +831,7 @@ test('a lost graphics context falls back once and still follows theme and activi
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
   const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
@@ -831,6 +879,7 @@ test('stellar activity settles back to idle and retains its renderer through the
   await expect(mark).toHaveAttribute('data-brand-mode', 'cycle')
   fixture.queue = { runningJobs: 0 }
   fixture.jobs = []
+  await notify.ready
   notify()
   await expect(mark).toHaveAttribute('data-brand-mode', 'settle')
   await expect(mark).toHaveAttribute('data-brand-mode', 'rest', { timeout: 15_000 })
@@ -881,7 +930,7 @@ test('recent results show each file before and after, with what it saved', async
   await expect(results.getByText('The Long Tide')).toBeVisible()
   await expect(results.getByText('1.2 GB → 352 MB')).toBeVisible()
   await expect(results.getByText('−71%')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('img')).toHaveAccessibleName('Last 2 days: 871 MB saved')
+  await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('slider')).toHaveAccessibleName('Last 2 days: 871 MB saved')
 })
 
 test('a file that grew says so, and never claims a saving', async ({ page }) => {
@@ -914,8 +963,13 @@ test('a file that grew says so, and never claims a saving', async ({ page }) => 
   // The growth is drawn in the warning tone, and a figure with nothing to say in neutral ink.
   await expect(results.getByText('+20%')).toHaveClass(/text-warn/)
   await expect(results.getByText('0%', { exact: true })).toHaveClass(/text-ink-2/)
-  // A saving finer than a percent still reads as a saving, at a tenth of a percent.
-  await expect(results.getByText('−0.1%')).toHaveClass(/text-ok/)
+  // A saving finer than a percent still reads as a saving, at a tenth of a percent: ink beside
+  // the filled ok mark.
+  const saving = results.getByText('−0.1%')
+  await expect(saving).toHaveAttribute('data-size-change', 'saved')
+  await expect(saving).toHaveClass(/text-ink/)
+  await expect(saving).not.toHaveClass(/text-ok/)
+  await expect(saving.locator('[data-ok-mark]')).toBeVisible()
 })
 
 test('an idle in-flight panel shows the last finished title instead of an empty box', async ({ page }) => {
@@ -934,6 +988,10 @@ test('an idle in-flight panel shows the last finished title instead of an empty 
   await expect(last).toContainText('S02E07 · The Long Tide')
   await expect(last).toContainText('1.2 GB → 352 MB −71%')
   await expect(last).toContainText('TV · Mac Studio · 3 hours ago')
+  // A dashboard panel is not a detail header: the poster identifies the title on its own,
+  // with no artwork glow behind it.
+  await expect(last.locator('[data-thumbnail]')).toBeVisible()
+  await expect(last.locator('.poster-glow')).toHaveCount(0)
 })
 
 test('the idle in-flight panel reads a grown file the same way the results table does', async ({ page }) => {
@@ -999,4 +1057,420 @@ test('an overlapping later poll does not starve a completed status response', as
   await expect(page.locator('.status-strip-reason')).toHaveText('First completed poll')
   await json(pending[1], { ...QUEUE_CLEAR, canStart: false, blockedReason: 'Second completed poll' })
   await expect(page.locator('.status-strip-reason')).toHaveText('Second completed poll')
+})
+
+test('the rail leaves the encoding card to the pages that already show the work', async ({ page }) => {
+  // Dashboard and Queue show the running job on the page; the rail repeating it beside them was
+  // the same job three times on one screen. Every other page still gets the card.
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+
+  await page.goto('/#/settings')
+  await expect(card).toBeVisible()
+
+  await page.goto('/#/')
+  await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
+  await expect(card).toHaveCount(0)
+
+  await page.goto('/#/queue')
+  await expect(page.getByRole('heading', { level: 1, name: 'Queue' })).toBeVisible()
+  await expect(card).toHaveCount(0)
+
+  // Query parameters on Queue and unknown routes that fall back to Dashboard stay consistent.
+  await page.goto('/#/queue?filter=active')
+  await expect(card).toHaveCount(0)
+  await page.goto('/#/nowhere')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await expect(card).toHaveCount(0)
+
+  // The rail's own activity figure stays everywhere, so the queue entry still says work is running.
+  await expect(page.locator('aside').getByRole('button', { name: /Queue/ })).toContainText('1 / 14')
+})
+
+test('the browser tab names the page that is open', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  await expect(page).toHaveTitle('Dashboard · Optimisarr')
+
+  const rail = page.locator('aside')
+  // The queue entry carries its count, so its name is "Queue 14".
+  await rail.getByRole('button', { name: /^Queue/ }).click()
+  await expect(page).toHaveTitle('Queue · Optimisarr')
+  await rail.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page).toHaveTitle('Settings · Optimisarr')
+
+  // A page inside a section names itself first, then the section.
+  await page.evaluate(() => { window.location.hash = '/settings/encoding' })
+  await expect(page).toHaveTitle('Encoding · Settings · Optimisarr')
+  await page.evaluate(() => { window.location.hash = '/inventory/duplicates' })
+  await expect(page).toHaveTitle('Find duplicates · Inventory · Optimisarr')
+
+  // The title follows the language too.
+  await rail.getByRole('button', { name: 'Language: English' }).click()
+  await page.getByRole('option', { name: 'Deutsch' }).click()
+  await expect(page).not.toHaveTitle(/Find duplicates/)
+  await expect(page).toHaveTitle(/ · Bestand · Optimisarr$/)
+})
+
+test('moving to another page puts keyboard focus on its heading, and the first page leaves focus alone', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await expect(page.locator('body')).toBeFocused()
+
+  const rail = page.locator('aside')
+  await rail.getByRole('button', { name: 'Schedule', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  const schedule = page.getByRole('heading', { level: 1, name: 'Schedule' })
+  await expect(schedule).toBeFocused()
+  // Focus that the heading takes for a screen reader is not a tab stop.
+  await expect(schedule).toHaveAttribute('tabindex', '-1')
+
+  await rail.getByRole('button', { name: 'Inventory', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Inventory' })).toBeFocused()
+
+  // Back and forward are navigation too.
+  await page.goBack()
+  await expect(schedule).toBeFocused()
+
+  // Navigating between Settings rooms and overview keeps focus moving on Back and Forward too.
+  await rail.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeFocused()
+  await page.locator('#settings-room-encoding').click()
+  await expect(page.locator('#room-heading')).toBeFocused()
+  await page.goBack()
+  await expect(page.locator('#settings-room-encoding')).toBeFocused()
+  await page.goForward()
+  await expect(page.locator('#room-heading')).toBeFocused()
+})
+
+test('a new page starts at its top', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const main = page.locator('main')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+  await main.evaluate((element) => { element.style.paddingBottom = '3000px'; element.scrollTop = 1500 })
+  await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.locator('aside').getByRole('button', { name: 'Schedule', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Schedule' })).toBeFocused()
+  expect(await main.evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test('a long status reason wraps onto further lines instead of being cut off once the phone strip is open', async ({ page }) => {
+  // The reason used to be clipped to one line with an ellipsis, and the rest lived only in a
+  // tooltip that touch and keyboard users could not open. A phone still shows one line until the
+  // strip is opened, with a real button, and then the whole reason is on screen.
+  const waiting = '1418 job(s) waiting for the TV optimise window (00:00–05:00), and 12 more waiting for the Films optimise window (01:00–06:00) on this server'
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockDashboard(page, { queue: { waitingReason: waiting } })
+  await page.goto('/#/')
+
+  const reason = page.locator('.status-strip-reason')
+  await expect(reason).toHaveText(waiting)
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'Status details' }).click()
+  await expect(reason).not.toHaveCSS('text-overflow', 'ellipsis')
+  await expect(reason).not.toHaveCSS('white-space', 'nowrap')
+  // All of it is on screen: more than one line tall, and nothing hidden past its right edge.
+  const metrics = await reason.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    overflow: element.scrollWidth - element.clientWidth,
+  }))
+  expect(metrics.height).toBeGreaterThan(metrics.lineHeight * 1.5)
+  expect(metrics.overflow).toBeLessThanOrEqual(0)
+  // The full sentence is on screen, so it needs no tooltip repeating it.
+  await expect(reason).not.toHaveAttribute('title')
+  const strip = await page.locator('.status-strip').boundingBox()
+  expect(strip!.x + strip!.width).toBeLessThanOrEqual(390)
+})
+
+test('a wrapped playback link keeps its lines together on a touch screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const hold = { watcher: 'Riker Plex', year: null, artist: null, paused: false, kind: 'Episode', season: 2, episode: 5, device: 'Living Room TV' }
+  await mockDashboard(page, {
+    queue: {
+      canStart: false, blockedReason: 'Paused while Riker Plex is active (2 streams).',
+      playbackHolds: [
+        { ...hold, title: 'A Very Long Episode Title That Will Need More Than One Line', series: 'An Example Show With A Long Name', user: 'alex' },
+        { ...hold, title: 'Second', series: 'Other', user: 'sam' },
+      ],
+    },
+  })
+  await page.goto('/#/')
+  await page.getByRole('region', { name: 'State' }).getByRole('button', { name: 'Status details' }).click()
+  const reason = page.locator('.status-strip-playback')
+  await expect(reason).toContainText('An Example Show With A Long Name')
+  const metrics = await reason.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+  }))
+  // A 44px target, but lines spaced as text rather than 44px apart.
+  expect(metrics.height).toBeGreaterThanOrEqual(44)
+  expect(metrics.lineHeight).toBeLessThan(metrics.fontSize * 2)
+})
+
+const NOTHING_WAITING = { readyToReplace: 0, inQuarantine: 0, failed: 0 }
+
+async function panelHeadings(page: Page) {
+  return page.locator('main').getByRole('heading', { level: 2 }).allTextContents()
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }, { width: 2560, height: 1440 }]) {
+  test(`a decision waiting on you leads the dashboard at ${viewport.width}px, ahead of the figures`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await mockDashboard(page, { stats: { readyToReplace: 3 } })
+    await page.goto('/#/')
+
+    const needs = page.getByRole('region', { name: 'Needs you' })
+    const savings = page.getByRole('region', { name: 'Total space saved' })
+    await expect(needs.getByRole('button', { name: 'Replace' })).toBeVisible()
+    // First in the document as well as on screen, so a keyboard reaches it first too.
+    expect((await panelHeadings(page))[0]).toBe('Needs you')
+    const [needsBox, savingsBox] = [await needs.boundingBox(), await savings.boundingBox()]
+    expect(needsBox!.y + needsBox!.height).toBeLessThanOrEqual(savingsBox!.y + 1)
+    // The figure beside each decision is a title, never a second display figure competing with the saving.
+    await expect(needs.getByText('3', { exact: true })).toHaveClass(/text-title/)
+    await expect(page.locator('main .text-display')).toHaveCount(1)
+  })
+
+  test(`with nothing waiting at ${viewport.width}px, the saving and the work in flight lead instead`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await mockDashboard(page, { stats: NOTHING_WAITING })
+    await page.goto('/#/')
+
+    const needs = page.getByRole('region', { name: 'Needs you' })
+    const savings = page.getByRole('region', { name: 'Total space saved' })
+    await expect(needs.getByText('Nothing is waiting on a decision from you.')).toBeVisible()
+    const headings = await panelHeadings(page)
+    expect(headings[0]).toBe('Total space saved')
+    expect(headings.indexOf('Needs you')).toBeGreaterThan(0)
+    const [needsBox, savingsBox] = [await needs.boundingBox(), await savings.boundingBox()]
+    expect(needsBox!.y).toBeGreaterThan(savingsBox!.y + savingsBox!.height - 1)
+  })
+}
+
+test('waiting decisions sit side by side when the panel spans a wide screen, and stack on a phone', async ({ page }) => {
+  await mockDashboard(page, { stats: { readyToReplace: 3 } })
+  const items = page.getByRole('region', { name: 'Needs you' }).getByRole('listitem')
+
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  await page.goto('/#/')
+  await expect(items).toHaveCount(3)
+  const wide = await Promise.all([0, 1, 2].map(index => items.nth(index).boundingBox()))
+  expect(Math.abs(wide[0]!.y - wide[2]!.y)).toBeLessThan(2)
+  expect(wide[1]!.x).toBeGreaterThan(wide[0]!.x + wide[0]!.width - 2)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const narrow = await Promise.all([0, 1].map(index => items.nth(index).boundingBox()))
+  expect(narrow[1]!.y).toBeGreaterThan(narrow[0]!.y + narrow[0]!.height - 2)
+})
+
+test('one or two waiting decisions fill the wide banner without leaving empty columns', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockDashboard(page, { stats: { readyToReplace: 2, inQuarantine: 0, failed: 0 } })
+  await page.goto('/#/')
+  const panel = page.getByRole('region', { name: 'Needs you' })
+  const one = panel.getByRole('listitem')
+  await expect(one).toHaveCount(1)
+  const [panelBox, oneBox] = [await panel.boundingBox(), await one.first().boundingBox()]
+  expect(oneBox!.width).toBeGreaterThan(panelBox!.width * 0.9)
+
+  await page.unroute('**/api/**')
+  await mockDashboard(page, { stats: { readyToReplace: 2, inQuarantine: 5, failed: 0 } })
+  await page.reload()
+  const two = panel.getByRole('listitem')
+  await expect(two).toHaveCount(2)
+  const [left, right] = [await two.nth(0).boundingBox(), await two.nth(1).boundingBox()]
+  expect(Math.abs(left!.y - right!.y)).toBeLessThan(2)
+  expect(left!.width + right!.width).toBeGreaterThan(panelBox!.width * 0.9)
+})
+
+test('suspended local encodes pause cleanly in In flight while finalizing work labels itself as replacing', async ({ page }) => {
+  await mockDashboard(page, {
+    queue: { runningJobs: 1, manuallyPaused: true, manualPauseMode: 'suspended', runningEncodesSuspended: true, canStart: false, blockedReason: 'Paused manually.' },
+    jobs: [
+      liveJob(),
+      liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'TV/Harborlight/S02/Harborlight.S02E08.mkv', status: 'ReadyToReplace', finalizing: true, progress: 0 }),
+    ],
+  })
+  await page.goto('/#/')
+  const inFlight = page.getByRole('region', { name: 'In flight' })
+  const pausedStage = inFlight.locator('[data-stage-tone="paused"]')
+  await expect(pausedStage).toHaveText('Paused')
+  await expect(pausedStage).toHaveClass(/text-warn/)
+  await expect(pausedStage.locator('.animate-pulse')).toHaveCount(0)
+  const finalizingStage = inFlight.locator('[data-stage-tone="live"]')
+  await expect(finalizingStage).toContainText('Finalising replacement')
+})
+
+test('in-flight values carry their names and the encoder’s own quality control', async ({ page }) => {
+  await mockDashboard(page, {
+    queue: { runningJobs: 1 },
+    jobs: [
+      liveJob({ videoQualityMode: 'icq', effectiveVideoQuality: 20 }),
+      liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'TV/Harborlight/S02/Harborlight.S02E08.mkv', videoEncoder: 'libx265', videoQualityMode: 'AdaptiveVmaf' }),
+    ],
+  })
+
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/')
+    const main = page.locator('main')
+    // A hardware encode is labelled with its own control, never "CRF" beside a bare "icq".
+    await expect(main.getByText('ICQ 20', { exact: true })).toBeVisible()
+    await expect(main.getByText('icq', { exact: true })).toHaveCount(0)
+    await expect(main.getByText('CRF 24', { exact: true })).toBeVisible()
+    await expect(main.getByText('Adaptive VMAF', { exact: true })).toBeVisible()
+    // Every quality value sits under its name, on a phone as well as on a wide screen.
+    const labels = main.getByText('Quality mode', { exact: true })
+    await expect(labels).toHaveCount(2)
+    await expect(labels.first()).toBeVisible()
+  }
+})
+
+test('only running work is drawn in the live blue; waiting work is plain and a failure is failed', async ({ page }) => {
+  await mockDashboard(page, {
+    queue: { runningJobs: 1 },
+    jobs: [
+      liveJob(),
+      liveJob({ id: 5846, mediaFileId: 5846, relativePath: 'TV/Harborlight/S02/Harborlight.S02E08.mkv', status: 'Queued', progress: 0 }),
+      liveJob({ id: 5847, mediaFileId: 5847, relativePath: 'TV/Harborlight/S02/Harborlight.S02E09.mkv', status: 'ReadyToReplace', progress: 0 }),
+      liveJob({ id: 5848, mediaFileId: 5848, relativePath: 'TV/Harborlight/S02/Harborlight.S02E10.mkv', status: 'Failed', progress: 0 }),
+    ],
+  })
+  await page.goto('/#/')
+
+  const stage = (name: string) => page.locator('main [data-stage-tone]').filter({ hasText: name })
+  await expect(stage('Encoding')).toHaveClass(/text-accent/)
+  await expect(stage('Encoding').locator('.animate-pulse')).toHaveCount(1)
+  for (const name of ['Queued', 'Ready to replace']) {
+    await expect(stage(name)).toHaveClass(/text-ink-2/)
+    await expect(stage(name)).not.toHaveClass(/text-accent/)
+    await expect(stage(name).locator('.animate-pulse')).toHaveCount(0)
+  }
+  await expect(stage('Failed')).toHaveClass(/text-bad/)
+  await expect(stage('Failed')).not.toHaveClass(/text-accent/)
+  // Waiting work holds still rather than sweeping as if it were running.
+  const queuedRow = page.locator('main li').filter({ has: stage('Queued') })
+  await expect(queuedRow.locator('.progress-indeterminate')).toHaveCount(0)
+  await expect(queuedRow.getByText('in progress')).toHaveCount(0)
+})
+
+test('an in-flight title stays readable when the panel takes half of a laptop screen', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  await page.goto('/#/')
+
+  const title = page.locator('main').getByRole('button', { name: /^Harborlight S02E07/ })
+  await expect(title).toBeVisible()
+  // The full title fits: it is not cut to its first letter by a three-column row.
+  expect(await title.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+test('the fleet names its columns and shows this server’s free work space', async ({ page }) => {
+  await mockDashboard(page, { workersAvailable: true })
+  await page.goto('/#/')
+
+  const fleet = page.locator('.area-fleet')
+  const columns = fleet.locator('[data-fleet-columns]')
+  await expect(columns).toBeVisible()
+  await expect(columns).toHaveText(/Machine\s*Load\s*Free space/)
+  // QUEUE_CLEAR reports 3,171,405,266,944 bytes free on the work disk.
+  const local = fleet.getByRole('listitem').first()
+  await expect(local).toContainText('This server')
+  await expect(local.getByText('2.9 TB', { exact: true })).toBeVisible()
+
+  await fleet.getByRole('button', { name: 'Pair one →' }).click()
+  await expect(page).toHaveURL(/#\/settings\/workers$/)
+})
+
+test('on a phone, free space is named on its own line rather than left as a bare size', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockDashboard(page, { queue: { freeDiskBytes: null } })
+  await page.goto('/#/')
+
+  const local = page.locator('.area-fleet').getByRole('listitem').first()
+  await expect(page.locator('.area-fleet [data-fleet-columns]')).toBeHidden()
+  await expect(local.getByText('Free space', { exact: true })).toBeVisible()
+  // An unknown size is an accessible dash, not an empty cell.
+  const cell = local.getByText('Free space', { exact: true }).locator('..')
+  await expect(cell.getByText('—', { exact: true })).toBeVisible()
+  await expect(cell).toHaveText(/^Free space\s*—\s*Unknown$/)
+})
+
+test('the saved-per-day chart steps through days from the keyboard and reads its figures in words', async ({ page }) => {
+  const MB = 1024 * 1024
+  await mockDashboard(page, {
+    daily: [
+      { date: '2026-09-21', bytesSaved: 100 * MB, files: 1 },
+      { date: '2026-09-22', bytesSaved: 0, files: 0 },
+      { date: '2026-09-23', bytesSaved: 500 * MB, files: 2 },
+      { date: '2026-09-24', bytesSaved: 1024 * MB, files: 1 },
+      { date: '2026-09-25', bytesSaved: 200 * MB, files: 3 },
+    ],
+  })
+  await page.goto('/#/')
+
+  const chart = page.getByRole('region', { name: 'Saved per day' })
+  const plot = chart.getByRole('slider')
+  const readout = chart.locator('[data-saved-readout]')
+  const spoken = chart.locator('[data-saved-announcement]')
+  await expect(plot).toHaveAccessibleName('Last 5 days: 1.8 GB saved')
+  await expect(plot).toHaveAccessibleDescription('Use Left and Right arrow keys to inspect individual days.')
+  await expect(spoken).toHaveAttribute('aria-live', 'polite')
+
+  // The figures are on screen without a pointer.
+  const summary = chart.locator('[data-saved-summary]')
+  await expect(readout).toHaveText('Last 5 days: 1.8 GB saved')
+  await expect(summary).toContainText('365 MB a day on average')
+  await expect(summary).toContainText(/Peak .+: 1\.0 GB/)
+  // Nothing is spoken until a key moves the selection; hovering stays quiet.
+  await plot.hover()
+  await expect(spoken).toHaveText('')
+
+  await page.mouse.move(0, 0)
+  await plot.focus()
+  await page.keyboard.press('ArrowLeft')
+  // The first key lands on the latest day that saved something: today here.
+  await expect(readout).toHaveText(/200 MB saved from 3 files/)
+  await expect(spoken).toHaveText(/200 MB saved from 3 files/)
+  await page.keyboard.press('ArrowLeft')
+  await expect(readout).toHaveText(/1\.0 GB saved from 1 file$/)
+  await expect(spoken).toHaveText(/1\.0 GB saved from 1 file$/)
+  await expect(chart.locator('.saved-day-selected')).toHaveCount(1)
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
+  await expect(readout).toHaveText(/nothing finished/)
+  await page.keyboard.press('ArrowRight')
+  await expect(readout).toHaveText(/500 MB saved from 2 files/)
+  await page.keyboard.press('Home')
+  await expect(readout).toHaveText(/100 MB saved from 1 file$/)
+  await page.keyboard.press('End')
+  await expect(readout).toHaveText(/200 MB saved from 3 files/)
+  await page.keyboard.press('Escape')
+  await expect(readout).toHaveText('Last 5 days: 1.8 GB saved')
+  await expect(spoken).toHaveText('')
+  await expect(chart.locator('.saved-day-selected')).toHaveCount(0)
+
+  // Leaving the chart also clears the day selection back to the summary.
+  await page.keyboard.press('ArrowLeft')
+  await expect(chart.locator('.saved-day-selected')).toHaveCount(1)
+  await plot.blur()
+  await expect(readout).toHaveText('Last 5 days: 1.8 GB saved')
+  await expect(chart.locator('.saved-day-selected')).toHaveCount(0)
+})
+
+test('the sidebar toggle names what pressing it will do', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const collapse = page.getByRole('button', { name: 'Collapse sidebar', exact: true })
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  await collapse.click()
+  const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true })
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
+  await expand.click()
+  await expect(collapse).toBeVisible()
 })

@@ -11,6 +11,11 @@ import * as f from './docs-fixtures.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const output = resolve(web, '../docs/images')
 const port = Number(process.env.DOCS_PORT ?? 4197)
+// The documentation shows the dark appearance. --scheme=light or --scheme=both captures the other
+// as well, for when a page needs it.
+const schemeArgument = process.argv.find(arg => arg.startsWith('--scheme='))?.slice('--scheme='.length) ?? 'dark'
+const schemes = schemeArgument === 'both' ? ['dark', 'light'] : [schemeArgument]
+if (!schemes.every(scheme => scheme === 'dark' || scheme === 'light')) throw Error(`Unknown --scheme=${schemeArgument}; use dark, light or both.`)
 const origin = `http://127.0.0.1:${port}`
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'], {cwd:web,stdio:'pipe'})
 let serverError='';server.stderr.on('data',d=>serverError+=d)
@@ -48,12 +53,13 @@ try {
   function draw(){const sky=ctx.createLinearGradient(0,0,0,540);sky.addColorStop(0,'#2b6583');sky.addColorStop(1,'#c2b890');ctx.fillStyle=sky;ctx.fillRect(0,0,960,540);ctx.fillStyle='#e6daba';ctx.beginPath();ctx.arc(700,150,65,0,Math.PI*2);ctx.fill();for(let layer=0;layer<3;layer++){ctx.fillStyle=['#426779','#284d61','#163345'][layer];ctx.beginPath();ctx.moveTo(0,290+layer*70);for(let x=0;x<=960;x+=80)ctx.lineTo(x,270+layer*70+Math.sin(x/110+layer)*65);ctx.lineTo(960,540);ctx.lineTo(0,540);ctx.fill()}ctx.font='18px sans-serif';ctx.fillStyle='#dce8df';ctx.fillText('LUMEN COAST · FABRICATED DOCUMENTATION MEDIA',30,508)}
   draw();recorder.start();const timer=setInterval(draw,40);await new Promise(r=>setTimeout(r,12000));clearInterval(timer);recorder.stop();return await result
  }),'base64');await mediaPage.close()
+ for(const scheme of schemes){
  let calibrationKind='Video',calibrationLibrary=1
  let queueStatus=f.queue,watcher={...f.watcher}
  const sessionId='11111111-1111-1111-1111-111111111111'
  function comparison(){return {id:sessionId,libraryId:calibrationLibrary,mediaFileId:1,source:calibrationKind==='Image'?'Lumen landscape.png':f.files[0].relativePath,mediaKind:calibrationKind,status:'Comparing',preparationProgress:1,preparationState:'Working',error:null,result:null,variants:['ORIGINAL','A','B','C','D',...(calibrationKind==='Image'?['E']:[])].map((name,index)=>({name,isOriginal:index===0,diagnostics:null,samples:Array.from({length:calibrationKind==='Image'?1:3},(_,scene)=>({sampleNumber:scene+1,sampleCount:calibrationKind==='Image'?1:3,durationSeconds:calibrationKind==='Image'?0:12,url:`/api/calibration/${sessionId}/variants/${name}/samples/${scene}/content`,startSeconds:0,gainDb:0}))}))}}
- const context=await browser.newContext({viewport:{width:1440,height:1000},deviceScaleFactor:1,colorScheme:'dark',reducedMotion:'reduce',locale:'en-GB',timezoneId:'UTC'})
- await context.addInitScript(()=>{localStorage.setItem('optimisarr-theme','dark');localStorage.setItem('optimisarr-locale','en')})
+ const context=await browser.newContext({viewport:{width:1440,height:1000},deviceScaleFactor:1,colorScheme:scheme,reducedMotion:'reduce',locale:'en-GB',timezoneId:'UTC'})
+ await context.addInitScript(scheme=>{localStorage.setItem('optimisarr.theme',scheme);localStorage.setItem('optimisarr:locale','en')},scheme)
  await context.route('**/*',async route=> {
   const url=new URL(route.request().url()),path=url.pathname
   if(url.origin!==origin) throw Error(`External request blocked: ${url.origin}`)
@@ -89,7 +95,7 @@ try {
   if(path==='/api/exclusions')return json(route,[{id:1,mediaFileId:6,libraryId:1,path:'/data/films/'+f.files[5].relativePath,relativePath:f.files[5].relativePath,source:'RepeatedFailures',reason:'Quality target not met after the recovery retry. Original retained.',createdAt:f.when}])
   if(/^\/api\/media\/\d+\/plan$/.test(path))return json(route,f.plan)
   if(path==='/api/settings/dry-run-unlock')return json(route,f.unlockEffects)
-  if(path==='/api/inventory')return json(route,{items:f.files.map(file=>({file,eligible:file.id!==3,reason:file.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.'})),total:f.files.length,counts:{all:f.files.length,eligible:7,skipped:1,unprobed:0}})
+  if(path==='/api/inventory')return json(route,{items:f.files.map(file=>({file,eligible:file.id!==3,reason:file.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.'})),total:f.files.length,counts:{all:f.files.length,eligible:7,skipped:1,unprobed:0,interlaced:0}})
   if(path==='/api/replacements')return json(route,f.replacements)
   if(path==='/api/quarantine/duplicates')return json(route,[])
   if(path==='/api/libraries/1/duplicates/cleanup/preview')return json(route,{ready:true,groups:1,copies:1,bytesToFree:1024,leftAlone:{}})
@@ -116,14 +122,15 @@ try {
  const page=await context.newPage(),errors=[]
  await page.clock.setFixedTime(new Date('2026-09-17T12:00:30Z'))
  page.on('pageerror',error=>errors.push(error.message))
- async function go(route) {await page.goto(`${origin}/#${route}`);await page.locator('main').waitFor();await page.waitForTimeout(500);await page.evaluate(()=>document.fonts.ready)}
+ // A page's code arrives after its route, so wait for the page itself, not its placeholder.
+ async function go(route) {await page.goto(`${origin}/#${route}`);await page.locator('main').waitFor();await expect(page.locator('main .page-pending')).toHaveCount(0,{timeout:15_000});await page.waitForTimeout(500);await page.evaluate(()=>document.fonts.ready)}
  async function shot(name,selector='main') {
   await page.mouse.move(0,0);await page.waitForTimeout(100)
   const target=selector?page.locator(selector):page
-  await target.screenshot({path:resolve(output,`optimisarr-${name}-dark.png`),animations:'disabled'})
-  captured.push(name);console.log(`Captured ${name}`)
+  await target.screenshot({path:resolve(output,`optimisarr-${name}-${scheme}.png`),animations:'disabled'})
+  captured.push(`optimisarr-${name}-${scheme}.png`);console.log(`Captured ${name} (${scheme})`)
  }
- async function aliases(source,names){for(const name of names){await copyFile(resolve(output,`optimisarr-${source}-dark.png`),resolve(output,`optimisarr-${name}-dark.png`));captured.push(name)}}
+ async function aliases(source,names){for(const name of names){await copyFile(resolve(output,`optimisarr-${source}-${scheme}.png`),resolve(output,`optimisarr-${name}-${scheme}.png`));captured.push(`optimisarr-${name}-${scheme}.png`)}}
  await go('/');await expect(page.getByRole('heading',{name:'Dashboard',exact:true})).toBeVisible();await shot('dashboard',null);await shot('dashboard-main');await aliases('dashboard-main',['dashboard-savings'])
  await go('/libraries');await expect(page.locator('[data-library-card="1"]')).toBeVisible();await shot('libraries',null);await shot('libraries-main')
  await page.setViewportSize({width:2048,height:1167})
@@ -148,7 +155,7 @@ try {
  await go('/quarantine');await shot('quarantine',null);await shot('quarantine-main');await page.setViewportSize({width:1440,height:1500});await go('/quarantine/1');await expect(page.locator('[data-quarantine-review]')).toBeVisible();await expect.poll(()=>page.locator('video').evaluateAll(videos=>videos.every(v=>v.readyState>=2))).toBe(true);await page.getByRole('button',{name:'Play both',exact:true}).click();await page.waitForTimeout(250);await page.getByRole('button',{name:'Pause both',exact:true}).click();await expect.poll(()=>page.locator('video').evaluateAll(videos=>videos.every(v=>!v.seeking))).toBe(true);await shot('quarantine-review');await page.getByRole('heading',{name:'Verification',exact:true}).scrollIntoViewIfNeeded();await shot('quarantine-verification','section:has(> div > #quarantine-verification)');await page.setViewportSize({width:1440,height:1000})
  await go('/settings');await shot('settings')
  for(const [room,name]of[['encoding','settings-general'],['files','settings-files'],['media-servers','settings-connections'],['download-managers','settings-downloads'],['notifications','settings-notifications'],['workers','settings-workers'],['system','settings-system']]){await go('/settings/'+room);await expect(page.getByRole('button',{name:'All settings',exact:true})).toBeVisible();if(room==='encoding')await page.locator('.workload-details summary').click();await shot(name)}
- await go('/settings/system');await page.getByRole('heading',{name:'Tools',exact:true}).scrollIntoViewIfNeeded();await shot('settings-tools','[data-config-section]:has(h2:text-is("Tools"))');await aliases('settings-tools',['tools']);await page.getByRole('heading',{name:'Hardware acceleration',exact:true}).scrollIntoViewIfNeeded();await page.locator('#global-hardware').evaluate(el=>el.scrollIntoView({block:'start'}));await page.waitForTimeout(100);const hardwareBounds=await page.locator('#global-hardware').boundingBox(),encoderBounds=await page.locator('#global-encoders').boundingBox();await page.screenshot({path:resolve(output,'optimisarr-settings-hardware-dark.png'),clip:{x:hardwareBounds.x,y:hardwareBounds.y,width:hardwareBounds.width,height:encoderBounds.y+encoderBounds.height-hardwareBounds.y},animations:'disabled'});captured.push('settings-hardware')
+ await go('/settings/system');await page.getByRole('heading',{name:'Tools',exact:true}).scrollIntoViewIfNeeded();await shot('settings-tools','[data-config-section]:has(h2:text-is("Tools"))');await aliases('settings-tools',['tools']);await page.getByRole('heading',{name:'Hardware acceleration',exact:true}).scrollIntoViewIfNeeded();await page.locator('#global-hardware').evaluate(el=>el.scrollIntoView({block:'start'}));await page.waitForTimeout(100);const hardwareBounds=await page.locator('#global-hardware').boundingBox(),encoderBounds=await page.locator('#global-encoders').boundingBox();await page.screenshot({path:resolve(output,`optimisarr-settings-hardware-${scheme}.png`),clip:{x:hardwareBounds.x,y:hardwareBounds.y,width:hardwareBounds.width,height:encoderBounds.y+encoderBounds.height-hardwareBounds.y},animations:'disabled'});captured.push(`optimisarr-settings-hardware-${scheme}.png`)
  await page.getByRole('heading',{name:'Backup & restore',exact:true}).scrollIntoViewIfNeeded();await shot('settings-backup','[data-config-section]:has(h2:text-is("Backup & restore"))')
  const diagnosticCapture={id:'22222222-2222-4222-8222-222222222222',status:'Recording',startedAt:'2026-09-17T11:20:00Z',expiresAt:'2026-09-18T11:20:00Z',stoppedAt:null,scopedJobId:null,includePaths:false,eventsStored:146,maximumEvents:10000,eventLimitReached:false,pinned:false,bytesStored:78620,maximumBytes:4194304}
  await go('/settings/system');await shot('diagnostics-settings','#diagnostic-capture')
@@ -187,14 +194,17 @@ try {
  await go('/queue');await expect(page.locator('.playback-holds').first()).not.toContainText('Taylor');await expect(page.locator('.playback-holds').first()).toContainText('Lumen Coast');await shot('queue-playback-private',null)
  if(errors.length)throw Error('UI errors: '+errors.join('\n'))
  if(unexpected.size)throw Error('Unmocked requests: '+[...unexpected].join(', '))
+ await context.close()
+ }
  await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({
   description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',
   command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
   uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
   uiWorkingTreeModified:execFileSync('git',['status','--porcelain','--','web/src','web/scripts'],{cwd:resolve(web,'..'),encoding:'utf8'}).trim().length>0,
   viewport:{width:1440,height:1000},libraryViewport:{width:2048,height:1167},mobileViewport:{width:390,height:1000},diagnosticMobileViewport:{width:390,height:1800},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
-  images:captured.map(name=>`optimisarr-${name}-dark.png`),
-  sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),
+  schemes,
+  images:captured,
+  sha256:Object.fromEntries(await Promise.all(captured.map(async file=>[file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]))),
  },null,2)+'\n')
  }
 }finally{await browser?.close();server.kill('SIGTERM')}

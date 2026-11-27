@@ -3,7 +3,7 @@
   // media server) for film/TV, embedded cover art for music, and a down-scaled still for an image.
   // A fixed box so it never shifts layout, with a clean placeholder when nothing resolves — artwork
   // is a recognition aid here, never a state signal, so a missing image is silent.
-  let { mediaFileId, src, alt = '', size = 'sm', shape = 'portrait' }: { mediaFileId?: number; src?: string | null; alt?: string; size?: 'sm' | 'md' | 'lg' | 'poster'; shape?: 'portrait' | 'square' } =
+  let { mediaFileId, src, alt = '', size = 'sm', shape = 'portrait' }: { mediaFileId?: number; src?: string | null; alt?: string; size?: 'xs' | 'sm' | 'md' | 'lg' | 'poster'; shape?: 'portrait' | 'square' } =
     $props()
 
   let loaded = $state(false)
@@ -24,12 +24,12 @@
 
   // Artwork corners scale with the artwork, as album and poster art does in the Apple apps.
   const corner = $derived(size === 'poster' || size === 'lg' ? 'rounded-[10px]' : 'rounded-[5px]')
-  const box = $derived(size === 'poster' ? (shape === 'square' ? 'h-32 w-32' : 'h-48 w-32') : size === 'lg' ? (shape === 'square' ? 'h-24 w-24' : 'h-36 w-24') : size === 'md' ? (shape === 'square' ? 'h-16 w-16' : 'h-16 w-11') : (shape === 'square' ? 'h-8 w-8' : 'h-12 w-8'))
+  const box = $derived(size === 'poster' ? (shape === 'square' ? 'h-32 w-32' : 'h-48 w-32') : size === 'lg' ? (shape === 'square' ? 'h-24 w-24' : 'h-36 w-24') : size === 'md' ? (shape === 'square' ? 'h-16 w-16' : 'h-16 w-11') : size === 'xs' ? (shape === 'square' ? 'h-7 w-7' : 'h-10 w-7') : (shape === 'square' ? 'h-8 w-8' : 'h-12 w-8'))
 </script>
 
 {#key source}
 <div
-  data-thumbnail data-shape={shape}
+  data-thumbnail data-shape={shape} data-size={size}
   class="relative shrink-0 overflow-hidden bg-raised shadow-[0_1px_3px_rgba(0,0,0,0.18)] ring-1 ring-line {corner} {box}"
 >
   {#if source && !failed}
@@ -37,7 +37,7 @@
       src={source}
       {alt}
       loading="lazy"
-      class="h-full w-full object-cover transition-opacity duration-200"
+      class="h-full w-full object-cover transition-opacity duration-(--motion-slow) ease-(--motion-ease-enter)"
       class:opacity-0={!loaded}
       class:opacity-100={loaded}
       onload={() => (loaded = true)}

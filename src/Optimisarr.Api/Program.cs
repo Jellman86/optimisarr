@@ -59,6 +59,8 @@ builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new SilenceDetectService(transcodeFfmpeg));
+builder.Services.AddSingleton(new KeptAudioComparisonService(transcodeFfmpeg));
+builder.Services.AddSingleton<MusicTagService>();
 var timestampIntegrity = new TimestampIntegrityCheck(ffprobe);
 builder.Services.AddSingleton(timestampIntegrity);
 builder.Services.AddSingleton<ISourceTimelinePreflight>(
@@ -117,6 +119,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
+builder.Services.AddSingleton<LibraryInventoryLocks>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>();
 builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
@@ -151,6 +154,10 @@ builder.Services.AddScoped<ArrTrackedFilesService>(services => new ArrTrackedFil
     services.GetRequiredService<IHttpClientFactory>(),
     services.GetRequiredService<ILogger<ArrTrackedFilesService>>()));
 builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddSingleton<ArrWebhookSettlingQueue>();
+builder.Services.AddSingleton<ArrWebhookGate>();
+builder.Services.AddSingleton<ArrWebhookIntakeOptions>();
+builder.Services.AddScoped<ArrWebhookService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
 builder.Services.AddSingleton<BlindCalibrationService>();
@@ -195,6 +202,7 @@ builder.Services.AddHostedService<TimedCleanupWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
+builder.Services.AddHostedService<ArrWebhookSettlingWorker>();
 builder.Services.AddSingleton<MediaProbeBatches>();
 builder.Services.AddHostedService<MediaProbeBatchWorker>();
 
@@ -320,6 +328,8 @@ app.MapSystemEndpoints();
 app.MapDiagnosticCaptureEndpoints();
 
 app.MapLibraryEndpoints();
+
+app.MapArrWebhookEndpoints();
 
 app.MapCalibrationEndpoints();
 
@@ -584,13 +594,19 @@ internal sealed record SaveLibraryRequest(
     bool? TrimAudioSilence = null,
     double? AudioSilenceThresholdDb = null,
     double? AudioSilenceMinimumSeconds = null,
+    bool? TrimSilenceWithoutConverting = null,
     bool? SuperResolutionEnabled = null,
     string? SuperResolutionQualityCheck = null,
     string? SuperResolutionEngine = null,
     string? SuperResolutionModel = null,
     int? SuperResolutionScale = null,
     bool? DeinterlaceVideo = null,
-    string? NoiseReduction = null);
+    string? NoiseReduction = null,
+    // Null sets no minimum, so a client that leaves these out saves a library without one.
+    double? MinimumTrackRemovalSavingPercent = null,
+    long? MinimumTrackRemovalSavingBytes = null,
+    // Null keeps the encoder's own keyframe interval, so a client that leaves it out saves none.
+    int? KeyframeIntervalSeconds = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -698,7 +714,11 @@ internal sealed record LibraryDto(
     string NoiseReduction,
     bool TrimAudioSilence,
     double AudioSilenceThresholdDb,
-    double AudioSilenceMinimumSeconds)
+    double AudioSilenceMinimumSeconds,
+    bool TrimSilenceWithoutConverting,
+    double? MinimumTrackRemovalSavingPercent,
+    long? MinimumTrackRemovalSavingBytes,
+    int? KeyframeIntervalSeconds)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -795,7 +815,11 @@ internal sealed record LibraryDto(
         library.NoiseReduction.ToString(),
         library.TrimAudioSilence,
         library.AudioSilenceThresholdDb,
-        library.AudioSilenceMinimumSeconds);
+        library.AudioSilenceMinimumSeconds,
+        library.TrimSilenceWithoutConverting,
+        library.MinimumTrackRemovalSavingPercent,
+        library.MinimumTrackRemovalSavingBytes,
+        library.KeyframeIntervalSeconds);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -1,5 +1,6 @@
 using Optimisarr.Core;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Queue;
 
@@ -80,6 +81,15 @@ public sealed record TranscodeSpec(
     public AudioTrimPlan? SilenceTrim { get; init; }
 
     /// <summary>
+    /// Set when a music file keeps its format and only has <see cref="SilenceTrim"/> removed. Its
+    /// <see cref="AudioEncoder"/> is then the source's own lossless codec, or null for a stream copy.
+    /// </summary>
+    public AudioTrimOnlyPlan? AudioTrimOnly { get; init; }
+
+    /// <summary>The ID3 tags a trim-only MP3's source has, which its output is written to match.</summary>
+    public Id3Layout? TrimOnlyId3 { get; init; }
+
+    /// <summary>
     /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
     /// single library bitrate for every re-encoded track.
     /// </summary>
@@ -100,6 +110,12 @@ public sealed record TranscodeSpec(
     /// <summary>False when the source's video carries decode times only and nothing copied needs
     /// generated presentation times; +genpts would mistime its reordered pictures (SourceTimestampFacts).</summary>
     public bool RegeneratePresentationTimestamps { get; init; } = true;
+
+    /// <summary>
+    /// The longest run of frames between keyframes a video re-encode may produce, or null for the
+    /// encoder's own default. Counted at the rate the encode produces (see <see cref="KeyframeInterval"/>).
+    /// </summary>
+    public int? KeyframeIntervalFrames { get; init; }
 
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
@@ -225,8 +241,23 @@ public static class FfmpegCommandBuilder
             args.Add(inputStart.ToString());
         }
 
+        var copyCut = ResolveTrimOnlyCopyCut(spec);
+        if (copyCut?.InputSeekSeconds is { } copySeek)
+        {
+            args.Add("-ss");
+            args.Add(copySeek);
+        }
+
         args.Add("-i");
         args.Add(spec.InputPath);
+
+        // A seek moves every stream of its input, and an attached picture only exists at the start,
+        // so the cover art is read again from an input that is not seeked.
+        if (copyCut is { PictureInput: 1 })
+        {
+            args.Add("-i");
+            args.Add(spec.InputPath);
+        }
 
         if (clipSeek.OutputStartSeconds is { } outputStart)
         {
@@ -236,6 +267,9 @@ public static class FfmpegCommandBuilder
 
         switch (spec.Kind)
         {
+            case MediaKind.Audio when spec.AudioTrimOnly is not null:
+                AppendTrimOnlyAudioArguments(args, spec, copyCut);
+                break;
             case MediaKind.Audio:
                 AppendAudioArguments(args, spec);
                 break;
@@ -255,7 +289,10 @@ public static class FfmpegCommandBuilder
             args.Add(clip.ToString());
         }
 
-        if (!string.IsNullOrWhiteSpace(optimisedMarker))
+        // FFmpeg can write a music file's tags to MP4 either as iTunes atoms, without any tag it has no
+        // atom for, or with use_metadata_tags as QuickTime keys most music software cannot read. An M4A
+        // gets the iTunes atoms here, and the marker and the other tags after the encode (#593).
+        if (!string.IsNullOrWhiteSpace(optimisedMarker) && !WritesTagsAfterEncode(spec))
         {
             args.Add("-metadata");
             args.Add($"{OptimisationMarker.MetadataKey}={optimisedMarker}");
@@ -317,7 +354,7 @@ public static class FfmpegCommandBuilder
             args.Add("-map");
             args.Add("-0:d");
         }
-        else if (!spec.VideoOnly && family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc)
+        else if (!spec.VideoOnly && family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc or EncoderFamily.Amf)
         {
             // A hardware encoder can abort on a data stream (camera timecode, GoPro GPMF) even in a
             // Matroska output, where the MP4 exclusion above doesn't apply. Drop data streams for any
@@ -473,6 +510,8 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
+        AppendKeyframeInterval(args, spec);
+
         // Advanced encoder options, resolved for this exact encoder. A family with no equivalent
         // contributes nothing here, so an Auto-mode library that lands on QSV simply encodes as it
         // always did rather than receiving arguments it would reject.
@@ -622,8 +661,10 @@ public static class FfmpegCommandBuilder
     public static string? AudioFilterChain(TranscodeSpec spec)
     {
         var chain = ResolveAudioFilter(spec).Chain;
-        // Never a video's soundtrack, which must stay in step with its picture.
+        // Never a video's soundtrack, which must stay in step with its picture, and never a stream
+        // copy, which cuts between frames without decoding anything.
         var trim = spec is { SilenceTrim: { } plan, Kind: not MediaKind.Video, AudioSampleOnly: false, ClipSeconds: null, ClipStartSeconds: null }
+            && spec.AudioTrimOnly?.Method != AudioTrimOnlyMethod.StreamCopy
             ? plan.FilterExpression
             : null;
         return trim is null ? chain : chain is null ? trim : $"{trim},{chain}";
@@ -648,10 +689,11 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
-        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg.
-        // AAC and Opus candidates with attached pictures are rejected before dispatch because
-        // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
-        // Map MP3's picture before the audio and target its output stream explicitly.
+        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg;
+        // M4A keeps its pictures as covr, mapped after the audio below. Opus candidates with
+        // attached pictures are rejected before dispatch because this build cannot translate
+        // inherited picture streams into Ogg comments. Map MP3's picture before the audio and
+        // target its output stream explicitly.
         if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
@@ -678,6 +720,18 @@ public static class FfmpegCommandBuilder
         AppendDownmix(args, spec);
         AppendAudioFilter(args, spec);
 
+        // MP4 keeps cover art in its iTunes covr atom, which FFmpeg writes from attached pictures
+        // that are JPEG, PNG or BMP. They are copied, so the picture's bytes are the source's own.
+        if (!spec.AudioSampleOnly && WritesTagsAfterEncode(spec))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v");
+            args.Add("copy");
+            args.Add("-disposition:v");
+            args.Add("attached_pic");
+        }
+
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.
         if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
@@ -687,6 +741,99 @@ public static class FfmpegCommandBuilder
             args.Add("-c:s");
             args.Add("mov_text");
         }
+    }
+
+    /// <summary>
+    /// How a stream copy cuts its window. MP3 and MP4 seek their input, which lands on a frame at or
+    /// just before the target (MP4 writes an edit list for the rest). An Ogg seek lands hundreds of
+    /// milliseconds early and the copy would keep all of it, so Ogg drops the frames before the
+    /// window on the way out instead; it has no attached picture for that to lose. Lengths are
+    /// durations from the first kept frame, since a seek restarts the output timeline at zero.
+    /// </summary>
+    private sealed record TrimOnlyCopyCut(string? InputSeekSeconds, string? OutputSeekSeconds, string? DurationSeconds, int PictureInput);
+
+    private static TrimOnlyCopyCut? ResolveTrimOnlyCopyCut(TranscodeSpec spec)
+    {
+        if (spec.Kind != MediaKind.Audio || spec.AudioTrimOnly is not { } trimOnly) return null;
+        // Never write a file that is the source over again under a trim's name.
+        if (spec.SilenceTrim is not { } trim || !trim.TrimsStart && !trim.TrimsEnd)
+            throw new InvalidOperationException("A trim-only audio job needs the silence to trim.");
+        if (trimOnly.Method != AudioTrimOnlyMethod.StreamCopy) return null;
+
+        var start = Seconds(trim.StartSample, trim.SampleRate);
+        var duration = trim.EndSample is { } end ? Seconds(end - trim.StartSample, trim.SampleRate) : null;
+        var seeksInput = Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase);
+        return seeksInput
+            ? new(trim.TrimsStart ? start : null, null, duration, trim.TrimsStart ? 1 : 0)
+            : new(null, trim.TrimsStart ? start : null, duration, 0);
+    }
+
+    private static string Seconds(long samples, int sampleRate) =>
+        ((double)samples / sampleRate).ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static void AppendTrimOnlyAudioArguments(List<string> args, TranscodeSpec spec, TrimOnlyCopyCut? copyCut)
+    {
+        var extension = Path.GetExtension(spec.OutputPath).ToLowerInvariant();
+        args.Add("-map_metadata");
+        args.Add("0");
+
+        // Cover art is copied as it is. Ogg and WAV cannot carry it, so such files are never trimmed
+        // without converting (see AudioTrimOnly).
+        if (extension is not (".opus" or ".ogg" or ".wav"))
+        {
+            args.Add("-map");
+            args.Add($"{copyCut?.PictureInput ?? 0}:v?");
+            args.Add("-c:v");
+            args.Add("copy");
+        }
+
+        args.Add("-map");
+        args.Add("0:a");
+        args.Add("-c:a");
+        args.Add(spec.AudioEncoder ?? "copy");
+        // FFmpeg's strongest FLAC setting, so a file encoded again rarely comes out larger.
+        if (spec.AudioEncoder == "flac")
+        {
+            args.Add("-compression_level");
+            args.Add("12");
+        }
+
+        if (copyCut is null)
+        {
+            // The exact samples, as a conversion trims them.
+            AppendAudioFilter(args, spec);
+            return;
+        }
+
+        if (extension == ".mp3") AppendTrimOnlyId3Arguments(args, spec);
+
+        if (copyCut.OutputSeekSeconds is { } outputSeek)
+        {
+            args.Add("-ss");
+            args.Add(outputSeek);
+        }
+
+        if (copyCut.DurationSeconds is { } duration)
+        {
+            args.Add("-t");
+            args.Add(duration);
+        }
+    }
+
+    /// <summary>
+    /// An MP3's tags are written in the source's own ID3 version, so 2.3 frames stay 2.3 frames, with
+    /// an ID3v1 tag again when the source has one. Its iTunes gapless figures (iTunSMPB) and length
+    /// (TLEN) describe the whole file, not the cut, so they go; FFmpeg writes the cut's own encoder
+    /// delay in a new LAME header.
+    /// </summary>
+    private static void AppendTrimOnlyId3Arguments(List<string> args, TranscodeSpec spec)
+    {
+        // Read from the source when the job was planned; never written blind.
+        if (spec.TrimOnlyId3 is not { } id3)
+            throw new InvalidOperationException("A trim-only MP3 job needs the source's ID3 layout.");
+        args.AddRange(["-metadata", "iTunSMPB=", "-metadata", "TLEN="]);
+        if (id3.Version == 3) args.AddRange(["-id3v2_version", "3"]);
+        if (id3.HasId3v1) args.AddRange(["-write_id3v1", "1"]);
     }
 
     private static void AppendImageArguments(List<string> args, TranscodeSpec spec)
@@ -750,20 +897,24 @@ public static class FfmpegCommandBuilder
     private static int MapToRange(int quality, int bestAt100, int worstAt0) =>
         (int)Math.Round(worstAt0 + (bestAt100 - worstAt0) * (quality / 100.0));
 
-    private static bool IsMp4Family(string outputPath) =>
-        // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for
-        // the custom optimisation tag to survive.
-        Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov" or ".m4a" or ".m4b";
+    private static bool IsMp4Family(string outputPath) => Mp4TagReader.IsMp4Family(outputPath);
+
+    /// <summary>
+    /// A music file written as MP4, whose marker and the tags FFmpeg has no iTunes atom for are
+    /// written into its tag list after the encode (see <see cref="Mp4TagCarryOver"/>).
+    /// </summary>
+    public static bool WritesTagsAfterEncode(TranscodeSpec spec) => spec.Kind == MediaKind.Audio && IsMp4Family(spec.OutputPath);
 
     // The hardware family is inferred from the resolved encoder name, so quality and device
     // arguments stay correct whatever codec was selected (e.g. h264_vaapi vs hevc_vaapi).
-    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi, VideoToolbox }
+    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi, VideoToolbox, Amf }
 
     private static EncoderFamily FamilyOf(string encoder) =>
         encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Nvenc
         : encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Qsv
         : encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Vaapi
         : encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.VideoToolbox
+        : encoder.EndsWith("_amf", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Amf
         : EncoderFamily.Cpu;
 
     // Apple's encoders take constant quality as -q:v on a 1–100 scale where higher is better, the
@@ -824,7 +975,34 @@ public static class FfmpegCommandBuilder
                     args.Add("qsv");
                 }
                 break;
+            case EncoderFamily.Amf:
+                // AMF on Windows initialises its device implicitly from the first AMD adapter the
+                // ffmpeg build finds, so no -init_hw_device is required. AMF encodes from system-memory
+                // frames (software decode + GPU encode, the proven path), which is why this family is
+                // not included in the hardware-decode set and needs no device declaration at all.
+                break;
         }
+    }
+
+    /// <summary>
+    /// The GOP length, as <c>-g</c>, which libx264, libx265, SVT-AV1, NVENC, QSV, VA-API,
+    /// VideoToolbox and AMD AMF each read as their maximum keyframe distance. No minimum and no scene-cut
+    /// option go with it, so each encoder keeps adding keyframes at cuts as it always has.
+    /// </summary>
+    internal static void AppendKeyframeInterval(List<string> args, TranscodeSpec spec)
+    {
+        if (spec.KeyframeIntervalFrames is not { } frames)
+        {
+            return;
+        }
+
+        if (frames is < 1 or > KeyframeInterval.MaximumFrames)
+        {
+            throw new ArgumentOutOfRangeException(nameof(spec), frames, "The keyframe interval is outside the supported range.");
+        }
+
+        args.Add("-g");
+        args.Add(frames.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;
@@ -851,6 +1029,11 @@ public static class FfmpegCommandBuilder
                 break;
             case EncoderFamily.Vaapi:
                 args.AddRange(["-rc_mode", "CQP", "-qp", q]);
+                break;
+            case EncoderFamily.Amf:
+                // Constant quantisation, the only AMF mode that maps a 0-51 quality number faithfully;
+                // -rc cqp with the same QP on I and P frames, mirroring the VAAPI CQP path.
+                args.AddRange(["-rc", "cqp", "-qp_i", q, "-qp_p", q]);
                 break;
             case EncoderFamily.VideoToolbox:
                 args.AddRange(["-q:v", VideoToolboxQuality(quality).ToString()]);

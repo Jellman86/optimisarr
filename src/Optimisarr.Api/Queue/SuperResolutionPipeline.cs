@@ -44,7 +44,9 @@ internal sealed record SuperResolutionRunHooks(
     Func<bool> IsPaused,
     Func<int, IDisposable?> TrackProcess,
     Func<double, Task> ReportProgress,
-    Func<int, IDisposable?>? TrackEncoder = null);
+    Func<int, IDisposable?>? TrackEncoder = null,
+    Func<string, bool>? TryReportEngineOutput = null,
+    Action<int, int, int?>? ReportBatchCompleted = null);
 
 /// <summary>
 /// The super-resolution pipeline as a bounded stream. The decoder writes PNG pictures to a pipe
@@ -104,7 +106,7 @@ internal static class SuperResolutionPipeline
                     clock.Touch();
                 }
 
-                var engine = await RunEngineAsync(request, hooks, processes, input, output, written, clock, token);
+                var engine = await RunEngineAsync(request, hooks, processes, input, output, written, reportDevice: batch == 0, clock, token);
                 if (engine is not null)
                 {
                     return engine;
@@ -130,6 +132,7 @@ internal static class SuperResolutionPipeline
                 written += frames;
                 DeleteQuietly(input);
                 DeleteQuietly(output);
+                hooks.ReportBatchCompleted?.Invoke(batch + 1, written, request.ExpectedFrames);
                 if (request.ExpectedFrames is > 0 and var expected)
                 {
                     await hooks.ReportProgress(Math.Min(1.0, (double)written / expected));
@@ -194,14 +197,19 @@ internal static class SuperResolutionPipeline
 
     private static async Task<QueueDispatcher.FfmpegRun?> RunEngineAsync(
         SuperResolutionRunRequest request, SuperResolutionRunHooks hooks, List<OwnedProcess> processes,
-        string input, string output, int writtenBefore, ProgressClock clock, CancellationToken token)
+        string input, string output, int writtenBefore, bool reportDevice, ProgressClock clock, CancellationToken token)
     {
         var engine = Start(processes, request.EnginePath, request.EngineArguments(input, output), hooks, readStdout: false, writeStdin: false);
         var produced = 0;
+        var deviceReported = !reportDevice || hooks.TryReportEngineOutput is null;
         while (!engine.HasExited)
         {
             await Task.WhenAny(engine.WaitAsync(token), Task.Delay(WatchdogInterval, token));
             token.ThrowIfCancellationRequested();
+            if (!deviceReported)
+            {
+                deviceReported = hooks.TryReportEngineOutput!.Invoke(engine.Log);
+            }
             var count = Directory.EnumerateFiles(output, "*.png").Count();
             if (count > produced)
             {
@@ -217,6 +225,10 @@ internal static class SuperResolutionPipeline
         await engine.WaitAsync(token);
         processes.Remove(engine);
         await engine.DisposeAsync();
+        if (!deviceReported)
+        {
+            hooks.TryReportEngineOutput!.Invoke(engine.Log);
+        }
         return engine.ExitCode == 0 ? null
             : new QueueDispatcher.FfmpegRun(engine.ExitCode, $"The super-resolution engine exited with code {engine.ExitCode}.", engine.Log);
     }
@@ -388,7 +400,13 @@ internal sealed class OwnedProcess : IAsyncDisposable
         };
     }
 
-    public Task WaitAsync(CancellationToken token) => _process.WaitForExitAsync(token);
+    public async Task WaitAsync(CancellationToken token)
+    {
+        await _process.WaitForExitAsync(token);
+        // Drain captured stderr before callers inspect Log on exit; WaitForExitAsync returns
+        // before the background reader task finishes appending the final pipe buffer.
+        try { await _stderr.WaitAsync(token); } catch (Exception error) when (error is IOException or ObjectDisposedException) { }
+    }
 
     private bool _disposed;
 

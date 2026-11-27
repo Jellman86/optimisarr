@@ -65,7 +65,7 @@
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
     <p id="replace-locked-reason" class="min-w-0 flex-1 text-sm font-medium">{i18n.m.jobResult.locked_reason}</p>
     {#if !confirming}
-      <button type="button" class="btn min-h-11" onclick={press} disabled={busy}>{busy ? i18n.m.jobResult.unlocking : i18n.m.jobResult.unlock}</button>
+      <button type="button" class="btn" onclick={press} disabled={busy}>{busy ? i18n.m.jobResult.unlocking : i18n.m.jobResult.unlock}</button>
     {/if}
   </div>
   <p class="mt-2 text-xs leading-relaxed">{t(i18n.m.jobResult.unlock_scope, { place: settingsPlace })}</p>
@@ -83,8 +83,8 @@
         {/if}
       </ul>
       <div class="mt-3 flex flex-wrap gap-2">
-        <button type="button" class="btn btn-danger min-h-11" onclick={unlock} disabled={busy}>{busy ? i18n.m.jobResult.unlocking : i18n.m.jobResult.unlock_confirm}</button>
-        <button type="button" class="btn min-h-11" onclick={() => (confirming = false)} disabled={busy}>{i18n.m.common.cancel}</button>
+        <button type="button" class="btn btn-lg btn-danger" onclick={unlock} disabled={busy}>{busy ? i18n.m.jobResult.unlocking : i18n.m.jobResult.unlock_confirm}</button>
+        <button type="button" class="btn btn-lg" onclick={() => (confirming = false)} disabled={busy}>{i18n.m.common.cancel}</button>
       </div>
     </div>
   {/if}

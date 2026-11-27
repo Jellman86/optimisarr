@@ -114,12 +114,12 @@ test('the queue no longer hides its management behind a toggle', async ({ page }
   await page.goto('/#/queue')
 
   await expect(page.getByRole('button', { name: 'Manage queue' })).toHaveCount(0)
-  const clearErrors = page.getByRole('button', { name: 'Clear errored (1)' })
+  const clearErrors = page.getByRole('button', { name: 'Clear errored (1)', exact: true })
   await expect(clearErrors).toBeVisible()
 
   // The action sits at the right end of the filter row, not in a row of its own.
   const filters = page.locator('[data-queue-filters]')
-  const row = filters.locator('.queue-filters')
+  const row = filters.locator('.filter-bar')
   const actions = filters.locator('.queue-toolbar-actions')
   expect((await actions.boundingBox())!.x).toBeGreaterThanOrEqual((await row.boundingBox())!.x)
 
@@ -140,14 +140,14 @@ test('the clear-errors count is what the clear removes: failed and cancelled job
   await mockQueue(page, [job(1, 'Failed'), job(2, 'Cancelled'), job(3, 'Cancelled'), held])
   await page.goto('/#/queue')
 
-  await expect(page.getByRole('button', { name: 'Clear errored (3)' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear errored (3)', exact: true })).toBeVisible()
 })
 
 test('a queue with only cancelled jobs can still clear them', async ({ page }) => {
   await mockQueue(page, [job(1, 'Cancelled'), job(2, 'Queued')])
   await page.goto('/#/queue')
 
-  await expect(page.getByRole('button', { name: 'Clear errored (1)' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear errored (1)', exact: true })).toBeVisible()
 })
 
 test('the selection is dropped when the tab changes, and a batch keeps only the rows it refused', async ({ page }) => {
@@ -158,7 +158,7 @@ test('the selection is dropped when the tab changes, and a batch keeps only the 
   await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
 
   // The Failures tab shows other rows, so the picks do not follow the operator there.
-  const tabs = page.locator('.queue-tabs')
+  const tabs = page.locator('.segmented')
   await tabs.getByRole('button', { name: /^Failures/ }).click()
   await tabs.getByRole('button', { name: /^Queue/ }).click()
   await expect(page.locator('[data-queue-batch]')).toBeHidden()
@@ -194,3 +194,31 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(scan.violations, JSON.stringify(scan.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([])
   })
 }
+
+test('the chosen filter is a lit fill, not the accent fill, and every filter is a full-size target on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockQueue(page, [job(1, 'Failed'), job(2, 'Queued')])
+  await page.goto('/#/queue')
+
+  const filters = page.locator('[data-queue-filters]').getByRole('group')
+  const chosen = filters.getByRole('button', { name: 'All · 2', exact: true })
+  await expect(chosen).toHaveAttribute('aria-pressed', 'true')
+  const fill = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.className = 'bg-accent-fill'
+    document.body.append(probe)
+    const value = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return value
+  })
+  await expect(chosen).not.toHaveCSS('background-color', fill)
+  await expect(chosen).toHaveCSS('font-weight', '600')
+
+  for (const pill of await filters.getByRole('button').all()) {
+    expect((await pill.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  }
+
+  await filters.getByRole('button', { name: 'Failed · 1', exact: true }).click()
+  await expect(filters.getByRole('button', { name: 'Failed · 1', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(chosen).toHaveAttribute('aria-pressed', 'false')
+})

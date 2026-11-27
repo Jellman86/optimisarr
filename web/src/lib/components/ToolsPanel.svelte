@@ -5,6 +5,7 @@
   import { api, type EncoderCapability, type HardwareCapability, type ToolCheck } from '../api'
   import Banner from './Banner.svelte'
   import ConfigSection from './ConfigSection.svelte'
+  import OkMark from './OkMark.svelte'
   import { i18n } from '../i18n/i18n.svelte'
 
   let tools = $state<ToolCheck[]>([])
@@ -54,14 +55,14 @@
     description={i18n.m.shared.tools_intro}
   >
     <div class="mb-4 flex justify-end">
-      <button class="btn min-h-11 w-full sm:w-auto" onclick={() => load(true)} disabled={loading}>
+      <button class="btn w-full sm:w-auto" onclick={() => load(true)} disabled={loading}>
         {loading ? i18n.m.common.checking : i18n.m.shared.refresh}
       </button>
     </div>
 
     <div class="grid min-w-0 gap-4 lg:grid-cols-2">
       {#each tools as tool}
-        <article class="card min-w-0 p-4" data-tool-card>
+        <article class="surface-sunken min-w-0 p-4" data-tool-card>
           <div class="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
             <div class="min-w-0">
               <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -80,10 +81,7 @@
               {tool.available ? i18n.m.shared.available : i18n.m.shared.missing}
             </span>
           </div>
-          <p
-            class="mt-3 break-words text-xs leading-relaxed text-ink-3 [overflow-wrap:anywhere]"
-            title={tool.version ?? tool.error ?? ''}
-          >
+          <p class="mt-3 break-words text-xs leading-relaxed text-ink-3 [overflow-wrap:anywhere]">
             {tool.version ?? tool.error ?? ''}
           </p>
         </article>
@@ -101,7 +99,7 @@
         <div class="callout tone-warn mb-4">{hardware.error}</div>
       {/if}
       <div class="grid min-w-0 gap-4 lg:grid-cols-3">
-        <article class="card min-w-0 p-4">
+        <article class="surface-sunken min-w-0 p-4">
           <h3 class="text-sm font-semibold text-ink">{i18n.m.shared.ffmpeg_hwaccels}</h3>
           <div class="mt-3 flex min-w-0 flex-wrap gap-2">
             {#each hardware.hardwareAccelerators as accelerator}
@@ -112,16 +110,16 @@
           </div>
         </article>
 
-        <article class="card min-w-0 p-4">
+        <article class="surface-sunken min-w-0 p-4">
           <h3 class="text-sm font-semibold text-ink">{i18n.m.shared.nvidia_runtime}</h3>
-          <span class="badge mt-3 max-w-full {hardware.nvidiaRuntimeAvailable ? 'tone-ok' : 'bg-raised text-ink-3'}">
+          <span class="badge mt-3 max-w-full {hardware.nvidiaRuntimeAvailable ? 'tone-ok' : 'tone-muted'}">
             {hardware.nvidiaRuntimeAvailable ? i18n.m.shared.available : i18n.m.shared.not_detected}
           </span>
         </article>
 
-        <article class="card min-w-0 p-4">
+        <article class="surface-sunken min-w-0 p-4">
           <h3 class="text-sm font-semibold text-ink">{i18n.m.shared.dri_device}</h3>
-          <span class="badge mt-3 max-w-full {hardware.driDeviceAvailable ? 'tone-ok' : 'bg-raised text-ink-3'}">
+          <span class="badge mt-3 max-w-full {hardware.driDeviceAvailable ? 'tone-ok' : 'tone-muted'}">
             {hardware.driDeviceAvailable ? i18n.m.shared.mapped : i18n.m.shared.not_mapped}
           </span>
         </article>
@@ -135,16 +133,16 @@
     >
       <div class="grid min-w-0 gap-4 lg:grid-cols-2">
         {#each encoderGroups as [mode, encoders]}
-          <article class="card min-w-0 p-4">
+          <article class="surface-sunken min-w-0 p-4">
             <h3 class="mb-3 font-semibold text-ink">{mode}</h3>
             <div class="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
               {#each encoders as encoder}
-                <div class="min-w-0 rounded border border-line p-3 text-xs">
+                <div class="min-w-0 rounded-lg bg-panel p-3 text-xs shadow-[var(--lift-1)]">
                   <div class="break-all font-mono text-ink-2">{encoder.name}</div>
                   <div class="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <span class="uppercase text-ink-4">{encoder.codec}</span>
-                    <span class={encoder.available ? 'text-ok' : 'text-ink-4'}>
-                      {encoder.available ? i18n.m.shared.available : i18n.m.shared.missing}
+                    <span class="inline-flex items-center gap-1 {encoder.available ? 'text-ink-2' : 'text-ink-4'}">
+                      {#if encoder.available}<OkMark class="h-3 w-3" />{/if}{encoder.available ? i18n.m.shared.available : i18n.m.shared.missing}
                     </span>
                   </div>
                 </div>

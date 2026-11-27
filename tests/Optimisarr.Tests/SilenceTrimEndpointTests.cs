@@ -30,4 +30,33 @@ public sealed class SilenceTrimEndpointTests(AdminTokenAuthEndpointTests.Tokened
         }
         finally { await client.DeleteAsync($"/api/libraries/{id}"); }
     }
+
+    [Fact]
+    public async Task Trimming_files_that_are_not_converted_is_saved_and_kept_by_an_older_client_that_leaves_it_out()
+    {
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", AdminTokenAuthEndpointTests.TokenedApi.Token);
+        var path = Directory.CreateDirectory(Path.Combine(api.LibraryDirectory, "trim-only-" + Guid.NewGuid().ToString("N"))).FullName;
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = "Trim only", ["path"] = path, ["mediaType"] = "Music", ["ruleProfile"] = "ConservativeHevc",
+            ["trimAudioSilence"] = true,
+        };
+        using var created = await client.PostAsJsonAsync("/api/libraries", new Dictionary<string, object?>(body) { ["trimSilenceWithoutConverting"] = true });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var saved = JsonNode.Parse(await created.Content.ReadAsStringAsync())!;
+        var id = saved["id"]!.GetValue<int>();
+        try
+        {
+            Assert.True(saved["trimSilenceWithoutConverting"]!.GetValue<bool>());
+
+            using var older = await client.PutAsJsonAsync($"/api/libraries/{id}", body);
+            Assert.Equal(HttpStatusCode.OK, older.StatusCode);
+            Assert.True(JsonNode.Parse(await older.Content.ReadAsStringAsync())!["trimSilenceWithoutConverting"]!.GetValue<bool>());
+
+            using var off = await client.PutAsJsonAsync($"/api/libraries/{id}", new Dictionary<string, object?>(body) { ["trimSilenceWithoutConverting"] = false });
+            Assert.False(JsonNode.Parse(await off.Content.ReadAsStringAsync())!["trimSilenceWithoutConverting"]!.GetValue<bool>());
+        }
+        finally { await client.DeleteAsync($"/api/libraries/{id}"); }
+    }
 }
