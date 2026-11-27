@@ -96,13 +96,21 @@ public static class Program
                 out Func<CancellationToken, Task<SidecarCapabilities>> _,
                 report: status => Log(logger, status),
                 reportJob: line => logger.LogInformation("{Line}", line),
-                monitor: services.GetRequiredService<WorkerMonitor>());
+                monitor: services.GetRequiredService<WorkerMonitor>(),
+                warn: line => logger.LogWarning("{Line}", line));
             return session;
         });
         builder.Services.AddHostedService<SidecarWorker>();
 
         using var host = builder.Build();
-        await host.RunAsync();
+        try
+        {
+            await host.RunAsync();
+        }
+        finally
+        {
+            BackgroundGpuReading.Shared.Dispose();
+        }
         return 0;
     }
 
@@ -182,6 +190,14 @@ public static class Program
     internal static string ScratchDirectory() =>
         Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK")
         ?? @"C:\OptimisarrWork";
+
+    /// <summary>
+    /// How many jobs this machine takes at once: one unless the machine-wide
+    /// <c>OPTIMISARR_SIDECAR_CONCURRENCY</c> says otherwise, for a machine with the accelerators
+    /// and working space to run several. See <see cref="SidecarConcurrency.Parse"/>.
+    /// </summary>
+    internal static (int Jobs, string? Problem) ConfiguredConcurrency() =>
+        SidecarConcurrency.Parse(Environment.GetEnvironmentVariable(SidecarConcurrency.Variable));
 
     /// <summary>
     /// Free space where the work would actually happen, not on the system drive. The server uses
@@ -297,19 +313,26 @@ public static class Program
         out Func<CancellationToken, Task<SidecarCapabilities>> probe,
         Action<SessionStatus>? report = null,
         Action<string>? reportJob = null,
-        WorkerMonitor? monitor = null)
+        WorkerMonitor? monitor = null,
+        Action<string>? warn = null)
     {
         var prober = new CapabilityProber(new ProcessCommandRunner());
         var scratch = ScratchDirectory();
+        // Read once: the number offered to the server and the admission guarding it must agree.
+        var (concurrency, concurrencyProblem) = ConfiguredConcurrency();
+        if (concurrencyProblem is not null)
+        {
+            (warn ?? Console.Error.WriteLine)(concurrencyProblem);
+        }
 
         probe = async token =>
         {
             var ffmpeg = FindFfmpeg();
-            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), 1, token);
+            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), concurrency, token);
             if (ffmpeg is not null)
             {
                 var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, token);
-                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? 1 : 0 };
+                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? concurrency : 0 };
             }
             return NativeWorkerResources.Refresh(proved, scratch);
         };
@@ -336,6 +359,16 @@ public static class Program
             wantsPreview: monitor is null ? null : () => monitor.WantsPreviews,
             publishPreview: monitor is null ? null : (jobId, jpeg) => monitor.PublishPreview(jobId, jpeg));
 
+        Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> runAssignment = async (pairing, assignment, token) =>
+        {
+            try
+            {
+                var result = await runner.RunAsync(pairing, assignment, token);
+                monitor?.Complete(assignment.JobId, result.Detail);
+                return result;
+            }
+            finally { monitor?.Remove(assignment.JobId); }
+        };
         return new SidecarSession(
             client,
             new DpapiCredentialStore(),
@@ -344,15 +377,6 @@ public static class Program
             delay: Task.Delay,
             report: report,
             refreshCapabilities: cap => NativeWorkerResources.Refresh(cap, scratch),
-            runJob: async (pairing, assignment, token) =>
-            {
-                try
-                {
-                    var result = await runner.RunAsync(pairing, assignment, token);
-                    monitor?.Complete(assignment.JobId, result.Detail);
-                    return result;
-                }
-                finally { monitor?.Remove(assignment.JobId); }
-            });
+            runJob: ConcurrentScratchAdmission.ForConcurrency(concurrency, scratch, runAssignment, client.ReleaseForCapacityAsync));
     }
 }

@@ -304,9 +304,13 @@ public sealed class ConcurrentSidecarSessionTests
         public Action? BeforeClaimReply { get; set; }
         public int Releases { get; private set; }
 
+        /// <summary>The last path segment of every request, in the order they were made.</summary>
+        public List<string> Requests { get; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Requests.Add(request.RequestUri!.Segments[^1]);
             if (request.RequestUri!.AbsolutePath.EndsWith("/claim", StringComparison.Ordinal)) BeforeClaimReply?.Invoke();
             if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal)) Releases++;
             if (request.RequestUri.AbsolutePath.EndsWith("/heartbeat", StringComparison.Ordinal))
@@ -442,11 +446,13 @@ public sealed class ConcurrentSidecarSessionTests
         var running = 0;
         var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // One claim per check-in, so the second job arrives with the second check-in.
         var handler = new Handler(
             (HttpStatusCode.OK, Beat),
             (HttpStatusCode.OK, Assignment(1)),
+            (HttpStatusCode.OK, Beat),
             (HttpStatusCode.OK, Assignment(2)),
-            (HttpStatusCode.NoContent, ""));
+            (HttpStatusCode.OK, Beat));
 
         var session = Session(handler, maxConcurrency: 2, runJob: async (_, assignment, _) =>
         {
@@ -471,6 +477,28 @@ public sealed class ConcurrentSidecarSessionTests
             await loop;
         }
         Assert.Equal(0, Volatile.Read(ref running));
+    }
+
+    [Fact]
+    public async Task A_second_job_is_claimed_at_the_next_check_in_not_the_same_one()
+    {
+        // The server judges every claim in a round against the free space last reported. A second
+        // claim straight away would be offered as if the first job had charged nothing, refused
+        // here, and handed back into a ten-minute cooldown.
+        var handler = new Handler(
+            (HttpStatusCode.OK, Beat),
+            (HttpStatusCode.OK, Assignment(1)),
+            (HttpStatusCode.OK, Beat),
+            (HttpStatusCode.OK, Assignment(2)),
+            (HttpStatusCode.OK, Beat),
+            (HttpStatusCode.NoContent, ""));
+
+        var session = Session(handler, maxConcurrency: 3, runJob: (_, assignment, _) =>
+            Task.FromResult(new JobOutcome(assignment.JobId, Delivered: true, "done")), stopAfterBeats: 3);
+
+        await session.RunAsync(CancellationToken.None);
+
+        Assert.Equal(["heartbeat", "claim", "heartbeat", "claim", "heartbeat", "claim"], handler.Requests);
     }
 
     [Fact]
