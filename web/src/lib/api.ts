@@ -88,12 +88,12 @@ export type SetupReadiness = {
 }
 
 export type SetupRecommendation = {
-  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
+  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi' | 'AmdAmf'
   hardwareDecode: boolean
   vmafTier: 'Off' | 'Balanced' | 'Keep'
   scheduleStart: string
   scheduleEnd: string
-  encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
+  encoderReason: 'nvidia' | 'amd' | 'intel' | 'vaapi' | 'cpu'
   vmafReason: 'cuda-balanced' | 'cpu-cost' | 'unavailable'
 }
 

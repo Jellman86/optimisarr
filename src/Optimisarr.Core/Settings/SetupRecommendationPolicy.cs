@@ -33,7 +33,10 @@ public static class SetupRecommendationPolicy
         bool cudaVmafAvailable)
     {
         var encoder = RecommendEncoder(encoders);
-        var hardwareDecode = encoder is not EncoderMode.Cpu;
+        // NVENC, QSV and VAAPI hardware-decode their source; AMF encodes from system-memory frames
+        // (software decode + GPU encode), so recommending hardware decode for an AMD encoder would
+        // turn a queue setting on that the AMF command then ignores.
+        var hardwareDecode = encoder is EncoderMode.NvidiaNvenc or EncoderMode.IntelQsv or EncoderMode.Vaapi;
         // Off is offered only when VMAF cannot run. New video libraries use adaptive VMAF by default, so
         // a software-only VMAF is no reason to recommend turning a quality check off.
         var vmafTier = !vmafAvailable
@@ -51,6 +54,7 @@ public static class SetupRecommendationPolicy
             encoder switch
             {
                 EncoderMode.NvidiaNvenc => "nvidia",
+                EncoderMode.AmdAmf => "amd",
                 EncoderMode.IntelQsv => "intel",
                 EncoderMode.Vaapi => "vaapi",
                 _ => "cpu"
@@ -63,6 +67,7 @@ public static class SetupRecommendationPolicy
     private static EncoderMode RecommendEncoder(IReadOnlyList<EncoderCapability> encoders)
     {
         if (Available(encoders, "NVIDIA NVENC", "hevc")) return EncoderMode.NvidiaNvenc;
+        if (Available(encoders, "AMD AMF", "hevc")) return EncoderMode.AmdAmf;
         if (Available(encoders, "Intel QSV", "hevc")) return EncoderMode.IntelQsv;
         if (Available(encoders, "VAAPI", "hevc")) return EncoderMode.Vaapi;
         return EncoderMode.Cpu;

@@ -142,7 +142,30 @@ public class WorkerProtocolTests
         Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.MinimumForEncodeCommand(["-c:v:0", "hevc_qsv", "-g", "240"]));
         Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.MinimumForAssignment(["-c:v:0", "libx265", "-g", "240"],
             Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true, measuresSoundtracks: true));
-        Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.Current);
+        Assert.True(WorkerProtocol.Current >= WorkerProtocol.KeyframeIntervalVersion);
         Assert.True(WorkerProtocol.KeyframeIntervalVersion > WorkerProtocol.SoundtrackTimingVersion);
+    }
+
+    [Theory]
+    [InlineData("-qp_i")]
+    [InlineData("-qp_p")]
+    public void An_amd_amf_constant_quality_command_is_offered_only_to_workers_that_accept_its_qp_options(string option)
+    {
+        // Sidecars before protocol 16 refuse -qp_i and -qp_p as unknown options.
+        Assert.Equal(WorkerProtocol.AmfConstantQualityVersion, WorkerProtocol.MinimumForEncodeCommand(["-c:v:0", "hevc_amf", "-rc", "cqp", option, "24"]));
+        Assert.Equal(WorkerProtocol.AmfConstantQualityVersion, WorkerProtocol.MinimumForAssignment(
+            ["-c:v:0", "hevc_amf", "-rc", "cqp", option, "24", "-g", "240"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true, measuresSoundtracks: true));
+        Assert.True(WorkerProtocol.Current >= WorkerProtocol.AmfConstantQualityVersion);
+        Assert.True(WorkerProtocol.AmfConstantQualityVersion > WorkerProtocol.KeyframeIntervalVersion);
+    }
+
+    [Fact]
+    public void A_real_amf_command_needs_the_amf_protocol()
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("{{input}}", "{{output}}.mkv", "hevc", 24, null, false);
+
+        Assert.Equal(WorkerProtocol.AmfConstantQualityVersion,
+            WorkerProtocol.MinimumForEncodeCommand(Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, videoEncoder: "hevc_amf")));
     }
 }

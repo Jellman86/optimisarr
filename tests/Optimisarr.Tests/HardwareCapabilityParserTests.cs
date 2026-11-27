@@ -68,4 +68,33 @@ public sealed class HardwareCapabilityParserTests
         Assert.Contains(encoders, encoder => encoder is { Name: "libx264", Mode: "CPU", Available: true });
         Assert.Contains(encoders, encoder => encoder is { Name: "libx265", Mode: "CPU", Available: true });
     }
+
+    private const string AmdListing = """
+         V....D libx265              libx265 H.265 / HEVC
+         V....D h264_amf             AMD AMF H.264 Encoder
+         V....D hevc_amf             AMD AMF HEVC encoder
+         V....D av1_amf              AMD AMF AV1 encoder
+         V....D hevc_vaapi           H.265/HEVC (VAAPI)
+        """;
+
+    [Fact]
+    public void A_listed_amf_encoder_is_a_candidate_only_with_a_render_device()
+    {
+        // jellyfin-ffmpeg lists AMF whether or not AMD's AMF runtime is installed; the real test
+        // encode that follows decides. Without a render node there is no AMD GPU to try.
+        var withDevice = HardwareCapabilityParser.ParseEncoders(AmdListing, nvidiaRuntimeAvailable: false, driDeviceAvailable: true);
+        var withoutDevice = HardwareCapabilityParser.ParseEncoders(AmdListing, nvidiaRuntimeAvailable: false, driDeviceAvailable: false);
+
+        Assert.Contains(withDevice, encoder => encoder is { Name: "hevc_amf", Codec: "hevc", Mode: "AMD AMF", Available: true });
+        Assert.Contains(withDevice, encoder => encoder is { Name: "h264_amf", Codec: "h264", Mode: "AMD AMF", Available: true });
+        Assert.Contains(withoutDevice, encoder => encoder is { Name: "hevc_amf", Available: false });
+    }
+
+    [Fact]
+    public void Av1_amf_is_not_offered_because_its_quantiser_scale_differs()
+    {
+        var encoders = HardwareCapabilityParser.ParseEncoders(AmdListing, nvidiaRuntimeAvailable: false, driDeviceAvailable: true);
+
+        Assert.DoesNotContain(encoders, encoder => encoder.Name == "av1_amf");
+    }
 }

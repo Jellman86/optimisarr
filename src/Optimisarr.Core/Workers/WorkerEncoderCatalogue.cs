@@ -39,14 +39,28 @@ public static class WorkerEncoderCatalogue
     public static EncoderMode ModeForWorker(EncoderMode queueMode) =>
         queueMode == EncoderMode.Cpu ? EncoderMode.Cpu : EncoderMode.Auto;
 
-    /// <summary>Chooses a worker's encoder from the names it advertised, under the queue's mode.</summary>
+    /// <summary>
+    /// Chooses a worker's encoder from the names it advertised, under the queue's mode. Sidecars
+    /// already advertised proved AMF encoders before they accepted AMF's quality options, so a
+    /// worker on an older protocol is chosen for as if it had none and keeps its other encoders.
+    /// </summary>
     public static EncoderSelection Select(
         string targetCodec,
         EncoderMode queueMode,
         IEnumerable<string> advertised,
+        int protocolVersion,
         int? sourceBitDepth = null,
         bool avoidIntelQsv = false) =>
-        EncoderSelector.Select(targetCodec, ModeForWorker(queueMode), Describe(advertised), sourceBitDepth, avoidIntelQsv);
+        EncoderSelector.Select(
+            targetCodec,
+            ModeForWorker(queueMode),
+            Describe(advertised)
+                .Where(encoder => encoder.Mode != AmdAmf || protocolVersion >= WorkerProtocol.AmfConstantQualityVersion)
+                .ToList(),
+            sourceBitDepth,
+            avoidIntelQsv);
+
+    private const string AmdAmf = "AMD AMF";
 
     // The mode strings are the ones the local hardware probe reports, so the selector's preference
     // order applies unchanged to a remote worker.
@@ -54,6 +68,9 @@ public static class WorkerEncoderCatalogue
         name is "libx264" or "libx265" or "libsvtav1" ? "CPU"
         : name.EndsWith("_nvenc", StringComparison.Ordinal) ? "NVIDIA NVENC"
         : name.EndsWith("_qsv", StringComparison.Ordinal) ? "Intel QSV"
+        // av1_amf reads -qp_i/-qp_p as a 0-255 quantiser index rather than the 0-51 scale the
+        // quality number is on, so only the H.264 and HEVC encoders are taught.
+        : name is "h264_amf" or "hevc_amf" ? AmdAmf
         : name.EndsWith("_vaapi", StringComparison.Ordinal) ? "VAAPI"
         : name.EndsWith("_videotoolbox", StringComparison.Ordinal) ? "VideoToolbox"
         : null;

@@ -25,11 +25,11 @@ the selected encoder on each job.
 The per-library **Encoder effort** setting describes intent rather than storing a raw FFmpeg
 preset. Optimisarr resolves it after the exact encoder has been selected:
 
-| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | VAAPI |
-|---|---|---:|---|---|---|
-| Fast | `fast` | `10` | `p2` | `fast` | Driver default |
-| Balanced | `medium` | `8` | `p4` | `medium` | Driver default |
-| Efficient | `slow` | `6` | `p7` | `slow` | Driver default |
+| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | AMD AMF | VAAPI |
+|---|---|---:|---|---|---|---|
+| Fast | `fast` | `10` | `p2` | `fast` | `speed` | Driver default |
+| Balanced | `medium` | `8` | `p4` | `medium` | Driver default | Driver default |
+| Efficient | `slow` | `6` | `p7` | `slow` | `quality` | Driver default |
 
 This is particularly important in **Auto** mode, where the encoder depends on the target codec,
 proved host capabilities, and source bit depth. Existing libraries, API requests, and imported
@@ -70,6 +70,39 @@ Intel/VA-API filter or its driver fails to initialise, Optimisarr deletes the pa
 and retries once with software decode and tone mapping. The normal decode, HDR-signal, Rec.709
 metadata, timing, stream, size, and optional VMAF verification gates still decide whether the
 completed output may replace its original.
+
+## AMD AMF
+
+AMD's own encoder, AMF (`h264_amf` and `hevc_amf`), is a separate encoder family from VA-API.
+**Auto** prefers it after NVIDIA NVENC and before Intel QSV and VA-API, and **Settings → Encoding**
+offers it as **AMD AMF**. It is used only where a real test encode proved it: on this server under
+**Settings → System → Tools**, or on a [remote worker](remote-workers.md) by the worker's own test.
+
+Optimisarr asks AMF for constant quantisation (`-rc cqp` with the same `-qp_i` and `-qp_p`),
+with the same headroom as the other hardware encoders, and passes a library's
+[keyframe interval](configuration.md#keyframe-interval) as `-g`. AMF encodes frames decoded in
+software, so **Hardware decoding** does not apply to it. Content tuning, bitrate limits and
+adaptive quantisation are not passed to AMF. AV1 AMF (`av1_amf`) is not used, because it reads
+its quantiser on a 0–255 scale rather than the scale Optimisarr's quality number is on.
+
+AMD AMF support was contributed by [gnolnos](https://github.com/gnolnos) and validated by them on
+an AMD Radeon RX 6600 through the Windows sidecar. The project has no AMD hardware and has not
+tested it. Every AMF output goes through the same verification checks before an original is
+replaced.
+
+On Linux, the bundled Jellyfin FFmpeg lists the AMF encoders, but they also need AMD's
+proprietary AMF runtime, which the Optimisarr image and the Linux sidecar image do not include.
+Without it the test encode fails, AMF is shown as unavailable, and Auto keeps choosing VA-API or
+the CPU. For an AMD GPU on Linux, use [VA-API](#intel-and-amd). A Windows sidecar needs
+nothing extra: its bundled FFmpeg includes AMF and uses the AMD driver's runtime. Workers need
+sidecar protocol 16 for AMF jobs; an older AMD worker keeps encoding with its other encoders.
+
+Once an AMD worker updates, Auto moves its video jobs from the CPU to AMF by itself. To keep a
+worker on the CPU, choose **CPU only** in the queue's encoder settings. The test encode proves
+8-bit encoding only, so on an older card that encodes HEVC in 8-bit alone, a 10-bit source can
+fail when the encoder opens and is then retried or left as it is; the original is not touched. With
+**AMD AMF** chosen as the encoder, a library that targets AV1 cannot run, because AV1 AMF is not
+used.
 
 ## NVIDIA
 

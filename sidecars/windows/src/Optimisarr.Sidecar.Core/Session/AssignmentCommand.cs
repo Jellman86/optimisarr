@@ -39,7 +39,7 @@ public static class AssignmentCommand
     {
         "-progress", "-threads", "-fflags", "-i", "-map", "-map_metadata", "-metadata",
         "-disposition:v:0", "-c", "-c:v", "-c:v:0", "-c:a", "-c:s", "-filter:v:0", "-vf",
-        "-crf", "-preset", "-q:v", "-qp", "-cq", "-rc", "-b:v", "-b:a", "-ac",
+        "-crf", "-preset", "-q:v", "-qp", "-qp_i", "-qp_p", "-cq", "-rc", "-b:v", "-b:a", "-ac",
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0", "-itsoffset",
@@ -74,6 +74,13 @@ public static class AssignmentCommand
         int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var frames)
         && frames is >= 1 and <= Optimisarr.Core.Queue.KeyframeInterval.MaximumFrames
         && value == frames.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    // AMD AMF's per-frame-type constant quantiser (protocol 16): a canonical whole number on the
+    // 0-51 scale the server's quality number is clamped to.
+    private static bool IsAmfQuantiser(string value) =>
+        int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var qp)
+        && qp is >= 0 and <= 51
+        && value == qp.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private static bool IsAudioBitrateValue(string value) =>
         value.EndsWith('k') && int.TryParse(value.AsSpan(0, value.Length - 1), System.Globalization.NumberStyles.None,
@@ -139,6 +146,9 @@ public static class AssignmentCommand
                 case "-g" when !IsGopLength(value):
                     return new CommandRefusal($"'{value}' is not a keyframe interval this sidecar accepts.");
                 case "-g": break;
+                case "-qp_i" or "-qp_p" when !IsAmfQuantiser(value):
+                    return new CommandRefusal($"'{value}' is not an AMD AMF quantiser this sidecar accepts.");
+                case "-qp_i" or "-qp_p": break;
                 case "-color_range:v:0" when value is not ("tv" or "pc"):
                 case "-bsf:v:0" when value is not ("h264_metadata=video_full_range_flag=0" or "h264_metadata=video_full_range_flag=1"):
                     return new CommandRefusal($"Unsupported colour metadata value for '{token}'.");

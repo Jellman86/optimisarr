@@ -14,6 +14,9 @@ public sealed class EncoderPresetPolicyTests
     [InlineData("h264_qsv", "quick", "fast")]
     [InlineData("hevc_qsv", "balanced", "medium")]
     [InlineData("av1_qsv", "efficient", "slow")]
+    [InlineData("h264_amf", "quick", "speed")]
+    [InlineData("hevc_amf", "efficient", "quality")]
+    [InlineData("av1_amf", "efficient", "quality")]
     [InlineData("libsvtav1", "quick", "10")]
     [InlineData("libsvtav1", "balanced", "8")]
     [InlineData("libsvtav1", "efficient", "6")]
@@ -42,6 +45,22 @@ public sealed class EncoderPresetPolicyTests
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal("efficient", result.Effort);
+        Assert.Null(result.FfmpegPreset);
+    }
+
+    [Theory]
+    [InlineData("h264_amf")]
+    [InlineData("hevc_amf")]
+    [InlineData("av1_amf")]
+    public void Amf_balanced_uses_the_driver_default(string encoder)
+    {
+        // AMF has no balance-between-speed-and-quality preset; only "speed" and "quality" are
+        // named, so balanced (the middle effort) delegates to the driver default rather than
+        // inventing a value the encoder would reject.
+        var result = EncoderPresetPolicy.Resolve(encoder, "balanced");
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal("balanced", result.Effort);
         Assert.Null(result.FfmpegPreset);
     }
 

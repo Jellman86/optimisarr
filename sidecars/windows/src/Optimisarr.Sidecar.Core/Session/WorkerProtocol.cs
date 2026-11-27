@@ -16,5 +16,6 @@ public static class WorkerProtocol
     // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
     // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
     // Protocol 15 accepts a bounded keyframe interval (-g).
-    public const int Maximum = 15;
+    // Protocol 16 accepts AMD AMF's constant-quality quantisers (-qp_i, -qp_p).
+    public const int Maximum = 16;
 }
