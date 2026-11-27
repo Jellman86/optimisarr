@@ -97,6 +97,13 @@ the CPU. For an AMD GPU on Linux, use [VA-API](#intel-and-amd). A Windows sideca
 nothing extra: its bundled FFmpeg includes AMF and uses the AMD driver's runtime. Workers need
 sidecar protocol 16 for AMF jobs; an older AMD worker keeps encoding with its other encoders.
 
+Once an AMD worker updates, Auto moves its video jobs from the CPU to AMF by itself. To keep a
+worker on the CPU, choose **CPU only** in the queue's encoder settings. The test encode proves
+8-bit encoding only, so on an older card that encodes HEVC in 8-bit alone, a 10-bit source can
+fail when the encoder opens and is then retried or left as it is; the original is not touched. With
+**AMD AMF** chosen as the encoder, a library that targets AV1 cannot run, because AV1 AMF is not
+used.
+
 ## NVIDIA
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and

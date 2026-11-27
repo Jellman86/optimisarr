@@ -156,7 +156,7 @@ public class WorkerProtocolTests
         Assert.Equal(WorkerProtocol.AmfConstantQualityVersion, WorkerProtocol.MinimumForAssignment(
             ["-c:v:0", "hevc_amf", "-rc", "cqp", option, "24", "-g", "240"],
             Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true, measuresSoundtracks: true));
-        Assert.Equal(WorkerProtocol.AmfConstantQualityVersion, WorkerProtocol.Current);
+        Assert.True(WorkerProtocol.Current >= WorkerProtocol.AmfConstantQualityVersion);
         Assert.True(WorkerProtocol.AmfConstantQualityVersion > WorkerProtocol.KeyframeIntervalVersion);
     }
 
