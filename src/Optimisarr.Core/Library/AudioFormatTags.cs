@@ -69,17 +69,19 @@ public static class AudioFormatTags
     /// <summary>The M4A atom a sort-order tag under this name is written as, or null when it is not one.</summary>
     public static string? Mp4SortAtom(string name) => SortAtoms.GetValueOrDefault(name);
 
-    /// <param name="includeLanguage">
-    /// Keep a <c>language</c> tag, which the comparison leaves out but a conversion still carries over.
-    /// </param>
-    public static IReadOnlyDictionary<string, AudioFormatTag> Normalise(IReadOnlyDictionary<string, string>? tags, bool includeLanguage = false)
+    /// <summary>
+    /// The tags under one name each, without those written for every new file. A <c>language</c>
+    /// is left out too: ffprobe's tags hold the audio track's language with the file's own, so it is
+    /// compared from <see cref="MediaProbeResult.TagLanguage"/> instead.
+    /// </summary>
+    public static IReadOnlyDictionary<string, AudioFormatTag> Normalise(IReadOnlyDictionary<string, string>? tags)
     {
         var result = new Dictionary<string, AudioFormatTag>(StringComparer.Ordinal);
         if (tags is null) return result;
         foreach (var (rawKey, rawValue) in tags.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             var spelled = rawKey.Trim().ToLowerInvariant();
-            if (Technical.Contains(spelled) && !(includeLanguage && spelled == "language") || string.IsNullOrWhiteSpace(rawValue)) continue;
+            if (Technical.Contains(spelled) || string.IsNullOrWhiteSpace(rawValue)) continue;
             var tag = new AudioFormatTag(rawKey.Trim(), rawValue.Trim());
             var name = Aliases.GetValueOrDefault(spelled, spelled);
             if (result.TryGetValue(name, out var other) && other.Value != tag.Value)

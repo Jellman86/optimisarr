@@ -682,12 +682,17 @@ class Harness:
         ("ALBUM", "Fixtures é"), ("DATE", "2021"), ("TRACKNUMBER", "03"), ("TRACKTOTAL", "12"), ("DISCNUMBER", "1"),
         ("DISCTOTAL", "2"), ("GENRE", "Ambient"), ("COMPOSER", "Fixture Composer"), ("ALBUMARTISTSORT", "Album Artist, Fixture"),
         ("MUSICBRAINZ_ALBUMID", "b0b0b0b0-0000-4000-8000-000000000001"), ("MUSICBRAINZ_TRACKID", "b0b0b0b0-0000-4000-8000-000000000002"),
-        ("REPLAYGAIN_TRACK_GAIN", "-6.50 dB"), ("BPM", "120")]
+        ("REPLAYGAIN_TRACK_GAIN", "-6.50 dB"), ("BPM", "120"), ("LANGUAGE", "eng"), ("ACCEPTANCE:NOTE", "colon kept")]
     ITUNES_FLAC_ITEMS = {"©nam": "iTunes fixture", "©ART": "Optimisarr acceptance", "aART": "Fixture Album Artist",
         "©alb": "Fixtures é", "©day": "2021", "©gen": "Ambient", "©wrt": "Fixture Composer", "soaa": "Album Artist, Fixture",
         "----:com.apple.iTunes:MusicBrainz Album Id": "b0b0b0b0-0000-4000-8000-000000000001",
         "----:com.apple.iTunes:MusicBrainz Track Id": "b0b0b0b0-0000-4000-8000-000000000002",
-        "----:com.apple.iTunes:REPLAYGAIN_TRACK_GAIN": "-6.50 dB", "----:com.apple.iTunes:BPM": "120"}
+        "----:com.apple.iTunes:REPLAYGAIN_TRACK_GAIN": "-6.50 dB", "----:com.apple.iTunes:BPM": "120",
+        # Every M4A's audio track says "und", which ffprobe shows as the file's language too.
+        "----:com.apple.iTunes:LANGUAGE": "eng", "----:com.apple.iTunes:ACCEPTANCE:NOTE": "colon kept"}
+    # An MP3's language frame, and a track "number" the trkn atom cannot hold, which stays text.
+    ITUNES_MP3_ITEMS = {"©nam": "iTunes fixture", "©ART": "Optimisarr acceptance",
+        "----:com.apple.iTunes:LANGUAGE": "eng", "----:com.apple.iTunes:track": "A1"}
 
     def audio_itunes(self, source="flac"):
         """A tagged music file converted to AAC keeps its tags as iTunes atoms, with its cover art."""
@@ -702,6 +707,14 @@ class Harness:
             self.tools.encode(noise + ["-i", self.tools.path(cover), "-map", "0:a", "-map", "1:v", "-c:v", "copy",
                 "-disposition:v", "attached_pic", "-ac", "2", "-c:a", "flac", self.tools.path(fixture)])
             audio_tags.write_flac(fixture, self.ITUNES_FLAC_TAGS)
+        elif source == "mp3":
+            # A lossy source must be re-encoded on purpose, and clear the music size floor at 320 kb/s.
+            fixture = fixtures / f"{name}.mp3"
+            self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=120:sample_rate=48000:seed=42",
+                "-ac", "2", "-c:a", "libmp3lame", "-b:a", "320k", self.tools.path(fixture)])
+            audio_tags.write_id3(fixture, [audio_tags.id3_text("TIT2", "iTunes fixture"),
+                audio_tags.id3_text("TPE1", "Optimisarr acceptance"), audio_tags.id3_text("TLAN", "eng"),
+                audio_tags.id3_text("TRCK", "A1")])
         elif source == "alac":
             fixture = fixtures / f"{name}.m4a"
             self.tools.encode(noise + ["-ac", "2", "-c:a", "alac", self.tools.path(fixture)])
@@ -726,7 +739,8 @@ class Harness:
             require(audio_tags.mp4_tags(fixture)[0] == "quicktime-keys", "The fixture was not written as QuickTime keys")
         case = self.create_job(name, fixture, overrides={"mediaType": "Music", "audioTargetCodec": "aac",
             "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
-            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0})
+            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0,
+            "reencodeLossyAudio": source == "mp3"})
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
         require(job["status"] == "ReadyToReplace", f"AAC conversion failed: {job['errorMessage']}")
@@ -737,7 +751,7 @@ class Harness:
         candidate = self.output(case)
         # Independently of the server and of ffprobe, which reads QuickTime keys as readily as atoms.
         layout, items = audio_tags.mp4_tags(candidate)
-        source_layout, source_items = audio_tags.mp4_tags(case["source"]) if source != "flac" else (None, [])
+        source_layout, source_items = audio_tags.mp4_tags(case["source"]) if source not in ("flac", "mp3") else (None, [])
         save(self.report.root / name / "tags.json", {"layout": layout, "sourceLayout": source_layout,
             "items": [(key, [(kind, payload.hex() if kind not in (1,) else payload.decode()) for kind, payload in values]) for key, values in items]})
         require(layout == "itunes", f"The M4A's tags are {layout}, not iTunes atoms")
@@ -752,6 +766,10 @@ class Harness:
             numbers = {key: values[0][1] for key, values in items if key in ("trkn", "disk")}
             require(numbers.get("trkn", b"")[2:6] == bytes([0, 3, 0, 12]), f"Track number/total wrong: {numbers.get('trkn')}")
             require(numbers.get("disk", b"")[2:6] == bytes([0, 1, 0, 2]), f"Disc number/total wrong: {numbers.get('disk')}")
+        elif source == "mp3":
+            for key, value in self.ITUNES_MP3_ITEMS.items():
+                require(texts.get(key) == value, f"{key} is {texts.get(key)!r}, not {value!r}")
+            require(not any(key == "trkn" for key, _ in items), "FFmpeg's reading of track A1 was kept as a number")
         elif source == "alac":
             regenerated = {"©too", "----:com.apple.iTunes:iTunSMPB", "----:com.optimisarr:optimisarr"}
             kept = sorted((key, values) for key, values in items if key not in regenerated)
@@ -761,7 +779,7 @@ class Harness:
             require(texts.get("©nam") == "iTunes fixture", "The title was not written as ©nam")
             require(texts.get("----:com.apple.iTunes:MusicBrainz Album Id") == "b0b0b0b0-0000-4000-8000-000000000001",
                     "The MusicBrainz identifier was not carried over")
-        if source != "quicktime-keys":
+        if source in ("flac", "alac"):
             covers = [values for key, values in items if key == "covr"]
             require(len(covers) == 1 and covers[0][0][1] == cover.read_bytes(), "The cover art did not reach covr unchanged")
             require(any(s.get("disposition", {}).get("attached_pic") == 1 for s in probe["streams"]), "ffprobe sees no cover art")
@@ -1591,7 +1609,7 @@ class Harness:
                     self.report.case(f"local-audio-{codec}", lambda c=codec: self.audio(c))
                 self.report.case("local-audio-artwork", lambda: self.audio("mp3", artwork=True))
                 self.report.case("local-audio-aac-artwork", lambda: self.audio("aac", artwork=True))
-                for source in ("flac", "alac", "quicktime-keys"):
+                for source in ("flac", "mp3", "alac", "quicktime-keys"):
                     self.report.case(f"local-audio-aac-itunes-{source}", lambda s=source: self.audio_itunes(s))
                 for codec in ("opus", "aac", "mp3"):
                     self.report.case(f"local-audio-trim-{codec}", lambda c=codec: self.audio_trim(c))

@@ -378,7 +378,8 @@ public sealed class VerificationService(
                     ? new Mp4TagEvidence(null, null)
                     : new Mp4TagEvidence(
                         Optimisarr.Core.Library.Mp4TagReader.IsMp4Family(original.Path) ? await musicTags.ReadMp4Async(original.Path, cancellationToken) : null,
-                        await musicTags.ReadMp4Async(outputPath, cancellationToken))
+                        await musicTags.ReadMp4Async(outputPath, cancellationToken),
+                        originalProbe.TagLanguage)
                 : null;
 
             var input = new VerificationInput(

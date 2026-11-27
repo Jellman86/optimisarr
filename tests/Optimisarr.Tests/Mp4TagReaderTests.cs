@@ -128,6 +128,15 @@ public sealed class Mp4TagReaderTests
     }
 
     [Fact]
+    public void A_freeform_name_may_hold_a_colon_but_its_mean_may_not()
+    {
+        // The key splits at the first colon after the mean, so only the mean must be without one.
+        Assert.Equal(["----:com.apple.iTunes:FOO:BAR"],
+            Read(M4a(Freeform("com.apple.iTunes", "FOO:BAR", "baz"))).Tags!.Items.Select(item => item.Key));
+        Assert.Null(Read(M4a(Freeform("com.apple:iTunes", "FOO", "baz"))).Tags);
+    }
+
+    [Fact]
     public void Two_movie_boxes_or_none_are_unreadable()
     {
         Assert.Null(Read([.. Ftyp, .. Mdat]).Tags);

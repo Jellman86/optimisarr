@@ -681,10 +681,11 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
-        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg.
-        // AAC and Opus candidates with attached pictures are rejected before dispatch because
-        // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
-        // Map MP3's picture before the audio and target its output stream explicitly.
+        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg;
+        // M4A keeps its pictures as covr, mapped after the audio below. Opus candidates with
+        // attached pictures are rejected before dispatch because this build cannot translate
+        // inherited picture streams into Ogg comments. Map MP3's picture before the audio and
+        // target its output stream explicitly.
         if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");

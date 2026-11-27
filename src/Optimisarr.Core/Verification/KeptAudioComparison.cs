@@ -27,9 +27,10 @@ public sealed record TagsKeptEvidence(MusicTagRead? Source, MusicTagRead? Output
 /// <summary>
 /// The tag atoms of a music file written as MP4 and, when it is MP4 too, of its source. A null
 /// <paramref name="Source"/> means the source is another format; a null <paramref name="Output"/>
-/// means the tags were not read, which fails.
+/// means the tags were not read, which fails. <paramref name="SourceLanguage"/> is the language the
+/// source's own tags state, which the new file must hold as its iTunes language item.
 /// </summary>
-public sealed record Mp4TagEvidence(Mp4TagRead? Source, Mp4TagRead? Output);
+public sealed record Mp4TagEvidence(Mp4TagRead? Source, Mp4TagRead? Output, string? SourceLanguage = null);
 
 /// <summary>Reads the per-packet digests of FFmpeg's <c>framehash</c> muxer.</summary>
 public static class FrameHashParser

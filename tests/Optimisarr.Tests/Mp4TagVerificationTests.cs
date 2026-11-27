@@ -81,6 +81,37 @@ public sealed class Mp4TagVerificationTests
     }
 
     [Fact]
+    public void A_language_the_source_s_tags_state_must_be_an_itunes_item_with_the_same_value()
+    {
+        // ffprobe shows every M4A's audio track as language "und", so the item itself is read.
+        var kept = Read(M4a(Text("©nam", "Title"), Freeform("com.apple.iTunes", "LANGUAGE", "eng"),
+            Freeform("com.optimisarr", "optimisarr", "1.2.3")));
+        var changed = Read(M4a(Text("©nam", "Title"), Freeform("com.apple.iTunes", "LANGUAGE", "fra")));
+        var output = new Dictionary<string, string> { ["title"] = "Title", ["language"] = "und", ["handler_name"] = "SoundHandler" };
+
+        var passed = Outcome(Audio(new Mp4TagEvidence(null, Read(Converted), null), output: output));
+        var carried = Outcome(Audio(new Mp4TagEvidence(null, kept, "eng"), output: output));
+        var lost = Outcome(Audio(new Mp4TagEvidence(null, Read(Converted), "eng"), output: output));
+        var different = Outcome(Audio(new Mp4TagEvidence(null, changed, "eng"), output: output));
+
+        Assert.Equal(CheckOutcome.Passed, passed.Outcome);
+        Assert.Equal(CheckOutcome.Passed, carried.Outcome);
+        Assert.Equal(CheckOutcome.Failed, lost.Outcome);
+        Assert.Equal("Audio metadata tag 'LANGUAGE' was lost.", lost.Detail);
+        Assert.Equal(CheckOutcome.Failed, different.Outcome);
+        Assert.Equal("Audio metadata tag 'LANGUAGE' changed during conversion.", different.Detail);
+    }
+
+    [Fact]
+    public void A_track_number_kept_as_text_counts_as_kept()
+    {
+        var input = Audio(new Mp4TagEvidence(null, Read(Converted)),
+            source: new() { ["title"] = "Title", ["track"] = "A1" }, output: new() { ["title"] = "Title", ["track"] = "A1" });
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(input).Outcome);
+    }
+
+    [Fact]
     public void A_lost_track_total_still_fails()
     {
         var input = Audio(new Mp4TagEvidence(null, Read(Converted)),

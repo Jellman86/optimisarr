@@ -16,7 +16,11 @@ public sealed class Mp4TagWiringTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("optimisarr-mp4-tags-").FullName;
 
-    private static readonly Dictionary<string, string> FfmpegTags = new() { ["title"] = "Title", ["encoder"] = "Lavf61.7.103" };
+    private static readonly Dictionary<string, string> FfmpegTags = new()
+    {
+        ["major_brand"] = "M4A ", ["title"] = "Title", ["encoder"] = "Lavf61.7.103",
+        ["language"] = "und", ["handler_name"] = "SoundHandler", ["vendor_id"] = "[0][0][0][0]",
+    };
 
     private string Write(string name, byte[] bytes)
     {
@@ -36,13 +40,13 @@ public sealed class Mp4TagWiringTests : IDisposable
         var output = Write("Track.m4a", encoded);
 
         var problem = await new MusicTagService().CarryOverMp4TagsAsync(source, output,
-            new Dictionary<string, string> { ["TITLE"] = "Title", ["MUSICBRAINZ_ALBUMID"] = "abc" }, FfmpegTags, "1.2.3", default);
+            new Dictionary<string, string> { ["TITLE"] = "Title", ["MUSICBRAINZ_ALBUMID"] = "abc", ["LANGUAGE"] = "eng" }, FfmpegTags, "eng", "1.2.3", default);
 
         Assert.Null(problem);
         var written = File.ReadAllBytes(output);
         var moov = (int)Tags(output).MoovOffset;
         Assert.Equal(encoded.AsSpan(0, moov).ToArray(), written.AsSpan(0, moov).ToArray());
-        Assert.Equal(["©nam", "©too", "----:com.apple.iTunes:MusicBrainz Album Id", "----:com.optimisarr:optimisarr"],
+        Assert.Equal(["©nam", "©too", "----:com.apple.iTunes:LANGUAGE", "----:com.apple.iTunes:MusicBrainz Album Id", "----:com.optimisarr:optimisarr"],
             Tags(output).Items.Select(item => item.Key));
         Assert.Equal("fLaC"u8.ToArray(), File.ReadAllBytes(source));
     }
@@ -53,7 +57,7 @@ public sealed class Mp4TagWiringTests : IDisposable
         var bytes = (byte[])[.. Ftyp, .. Moov(Box("udta", ItunesMeta(Text("©nam", "Title")))), .. Mdat];
         var output = Write("Track.m4a", bytes);
 
-        var problem = await new MusicTagService().CarryOverMp4TagsAsync(Write("Track.flac", []), output, null, FfmpegTags, "1.2.3", default);
+        var problem = await new MusicTagService().CarryOverMp4TagsAsync(Write("Track.flac", []), output, null, FfmpegTags, null, "1.2.3", default);
 
         Assert.Contains("not at the end", problem);
         Assert.Equal(bytes, File.ReadAllBytes(output));
@@ -65,7 +69,7 @@ public sealed class Mp4TagWiringTests : IDisposable
         var bytes = (byte[])[.. Ftyp, .. Mdat, .. Moov(QuickTimeKeysMeta(("TITLE", "Title")))];
         var output = Write("Track.m4a", bytes);
 
-        Assert.NotNull(await new MusicTagService().CarryOverMp4TagsAsync(Write("Track.flac", []), output, null, FfmpegTags, "1.2.3", default));
+        Assert.NotNull(await new MusicTagService().CarryOverMp4TagsAsync(Write("Track.flac", []), output, null, FfmpegTags, null, "1.2.3", default));
         Assert.Equal(bytes, File.ReadAllBytes(output));
     }
 

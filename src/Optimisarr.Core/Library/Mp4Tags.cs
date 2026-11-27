@@ -155,7 +155,11 @@ public static class Mp4TagReader
         {
             if (parts is not [{ Type: "mean" } mean, { Type: "name" } name, ..])
                 throw new Mp4BoxException("a freeform item without its mean and name");
-            key = $"----:{FullBoxText(moov, mean)}:{FullBoxText(moov, name)}";
+            // The key's first colon after the mean ends it, so only the mean must be without one;
+            // a tag named FOO:BAR in a FLAC file keeps its name.
+            var meanText = FullBoxText(moov, mean);
+            if (meanText.Contains(':', StringComparison.Ordinal)) throw new Mp4BoxException("a freeform item it cannot read");
+            key = $"----:{meanText}:{FullBoxText(moov, name)}";
             parts = parts[2..];
         }
         if (parts.Count == 0 || parts.Any(part => part.Type != "data")) throw new Mp4BoxException($"a {Printable(key)} item it cannot read");
@@ -173,9 +177,7 @@ public static class Mp4TagReader
     {
         var body = moov.AsSpan(box.Body);
         if (body.Length < 4) throw new Mp4BoxException("a freeform item it cannot read");
-        var text = MusicTagReader.StrictUtf8.GetString(body[4..]);
-        // The key holds the mean and the name apart with the separator, so neither may contain it.
-        return text.Contains(':', StringComparison.Ordinal) ? throw new Mp4BoxException("a freeform item it cannot read") : text;
+        return MusicTagReader.StrictUtf8.GetString(body[4..]);
     }
 
     internal static string Printable(string type) => type.All(c => c is >= ' ' and <= '~' or '©') ? type : "binary";

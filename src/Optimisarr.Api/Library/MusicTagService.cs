@@ -51,11 +51,13 @@ public class MusicTagService
     /// </summary>
     /// <param name="sourceTags">The source's tags as ffprobe reports them.</param>
     /// <param name="outputTags">The new file's tags as ffprobe reports them, before this adds any.</param>
+    /// <param name="sourceLanguage">The language the source's own tags state, if any.</param>
     public virtual async Task<string?> CarryOverMp4TagsAsync(
         string sourcePath,
         string outputPath,
         IReadOnlyDictionary<string, string>? sourceTags,
         IReadOnlyDictionary<string, string>? outputTags,
+        string? sourceLanguage,
         string marker,
         CancellationToken cancellationToken)
     {
@@ -76,7 +78,7 @@ public class MusicTagService
                     source = Mp4TagReader.Read(new FileBytes(sourceHandle, cancellationToken)).Tags;
                 }
 
-                var items = Mp4TagCarryOver.Plan(output, source, sourceTags, outputTags, marker);
+                var items = Mp4TagCarryOver.Plan(output, source, sourceTags, outputTags, sourceLanguage, marker);
                 var moov = file.Read(output.MoovOffset, (int)(file.Length - output.MoovOffset));
                 var rewritten = Mp4TagWriter.ReplaceItems(moov, items, out var problem);
                 if (rewritten is null) return problem;

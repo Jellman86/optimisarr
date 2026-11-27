@@ -18,6 +18,13 @@ public static class Mp4TagCarryOver
 
     private static readonly string MarkerKey = $"----:{MarkerMean}:{OptimisationMarker.MetadataKey}";
 
+    /// <summary>The item Picard and Mp3tag write a music file's language tag as.</summary>
+    public const string LanguageKey = $"----:{ItunesMean}:LANGUAGE";
+
+    /// <summary>True when <paramref name="item"/> holds exactly <paramref name="value"/> as UTF-8 text, as this writes it.</summary>
+    public static bool HoldsText(Mp4TagItem item, string value) =>
+        item.Values is [var only] && only == $"1:{MusicTagReader.Sha256(System.Text.Encoding.UTF8.GetBytes(value))}";
+
     /// <summary>
     /// Written again for the new file, so the source's are not kept: the encoder name (<c>©too</c>),
     /// iTunes' gapless figures (<c>iTunSMPB</c>) and encoder settings (<c>Encoding Params</c>,
@@ -41,52 +48,78 @@ public static class Mp4TagCarryOver
     /// <param name="source">The source's MP4 tags, or null when it is not an MP4 file.</param>
     /// <param name="sourceTags">The source's tags as ffprobe reports them.</param>
     /// <param name="outputTags">The tags FFmpeg wrote, as ffprobe reports them.</param>
+    /// <param name="sourceLanguage">
+    /// The language the source's own tags state (<see cref="MediaProbeResult.TagLanguage"/>). The
+    /// probe's tags cannot say it: they hold every M4A track's "und" too.
+    /// </param>
     public static IReadOnlyList<ReadOnlyMemory<byte>> Plan(
         Mp4Tags output,
         Mp4Tags? source,
         IReadOnlyDictionary<string, string>? sourceTags,
         IReadOnlyDictionary<string, string>? outputTags,
+        string? sourceLanguage,
         string marker)
     {
         var items = source is { Layout: Mp4TagLayout.Itunes }
             ? [.. source.Items.Where(item => !Regenerated(item.Key)).Select(item => item.Atom),
                 .. output.Items.Where(item => item.Key == "©too").Select(item => item.Atom)]
-            : CarryOver(output, sourceTags, outputTags);
+            : CarryOver(output, sourceTags, outputTags, sourceLanguage);
         items.Add(Mp4TagWriter.Freeform(MarkerMean, OptimisationMarker.MetadataKey, marker));
         return items;
     }
 
     private static List<ReadOnlyMemory<byte>> CarryOver(
-        Mp4Tags output, IReadOnlyDictionary<string, string>? sourceTags, IReadOnlyDictionary<string, string>? outputTags)
+        Mp4Tags output, IReadOnlyDictionary<string, string>? sourceTags, IReadOnlyDictionary<string, string>? outputTags, string? sourceLanguage)
     {
-        var source = AudioFormatTags.Normalise(sourceTags, includeLanguage: true);
-        var written = AudioFormatTags.Normalise(outputTags, includeLanguage: true);
-        var items = output.Items.Where(item => item.Key != MarkerKey).ToList();
+        var source = AudioFormatTags.Normalise(sourceTags);
+        var written = AudioFormatTags.Normalise(outputTags);
         var replaced = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        var dropped = new HashSet<string>(StringComparer.Ordinal) { MarkerKey };
         var added = new List<(string Key, byte[] Atom)>();
         foreach (var (name, tag) in source)
         {
-            if (written.TryGetValue(name, out var kept))
+            if (name is "track" or "disc")
             {
-                if (name is "track" or "disc" && WithTotal(tag.Value, kept.Value) is { } pair)
-                    replaced[name == "track" ? "trkn" : "disk"] = Mp4TagWriter.NumberPair(name == "track" ? "trkn" : "disk", pair.Number, pair.Total);
+                var atom = name == "track" ? "trkn" : "disk";
+                if (!FitsNumberAtom(tag.Value))
+                {
+                    // FFmpeg writes the number it reads from the start of the text, or none for zero;
+                    // either way the text itself is kept instead.
+                    dropped.Add(atom);
+                    added.Add(FreeformItem(tag.Name, tag.Value));
+                }
+                else if (written.TryGetValue(name, out var number) && WithTotal(tag.Value, number.Value) is { } pair)
+                {
+                    replaced[atom] = Mp4TagWriter.NumberPair(atom, pair.Number, pair.Total);
+                }
                 continue;
             }
-            if (name is "track" or "disc") continue;
-            if (AudioFormatTags.Mp4SortAtom(name) is { } atom)
-                added.Add((atom, Mp4TagWriter.Text(atom, tag.Value)));
+            if (written.ContainsKey(name)) continue;
+            if (AudioFormatTags.Mp4SortAtom(name) is { } sortAtom)
+                added.Add((sortAtom, Mp4TagWriter.Text(sortAtom, tag.Value)));
             else
-            {
-                var freeformName = AudioFormatTags.Mp4FreeformName(name) ?? tag.Name;
-                added.Add(($"----:{ItunesMean}:{freeformName}", Mp4TagWriter.Freeform(ItunesMean, freeformName, tag.Value)));
-            }
+                added.Add(FreeformItem(AudioFormatTags.Mp4FreeformName(name) ?? tag.Name, tag.Value));
         }
+        if (!string.IsNullOrWhiteSpace(sourceLanguage) && output.Items.All(item => item.Key != LanguageKey))
+            added.Add((LanguageKey, Mp4TagWriter.Freeform(ItunesMean, "LANGUAGE", sourceLanguage.Trim())));
         return
         [
-            .. items.Select(item => replaced.TryGetValue(item.Key, out var atom) ? (ReadOnlyMemory<byte>)atom : item.Atom),
+            .. output.Items.Where(item => !dropped.Contains(item.Key))
+                .Select(item => replaced.TryGetValue(item.Key, out var atom) ? (ReadOnlyMemory<byte>)atom : item.Atom),
             .. added.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => (ReadOnlyMemory<byte>)item.Atom),
         ];
     }
+
+    private static (string Key, byte[] Atom) FreeformItem(string name, string value) =>
+        ($"----:{ItunesMean}:{name}", Mp4TagWriter.Freeform(ItunesMean, name, value));
+
+    /// <summary>A number, and total if it has one, that a <c>trkn</c> or <c>disk</c> atom holds as the same text.</summary>
+    private static bool FitsNumberAtom(string value) =>
+        value.Split('/') is [var number, .. var total] && total.Length <= 1
+        && int.TryParse(number, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var position)
+        && position is > 0 and <= ushort.MaxValue
+        && (total is [] || int.TryParse(total[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var count)
+            && count is > 0 and <= ushort.MaxValue);
 
     /// <summary>The source's number and total when FFmpeg wrote the same number without the total.</summary>
     private static (int Number, int Total)? WithTotal(string source, string written) =>

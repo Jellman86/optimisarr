@@ -345,8 +345,11 @@ such as Navidrome, and taggers such as Picard read:
   the track and disc numbers with their totals use the standard atoms (`©nam`, `©ART`, `trkn`, and
   so on). Sort names use the sort atoms (`soaa`, `soar`, and so on).
 - MusicBrainz and AcoustID identifiers use the names Picard gives them, such as
-  `----:com.apple.iTunes:MusicBrainz Album Id`. Any other tag, such as ReplayGain or BPM, keeps its
-  own name as a `----:com.apple.iTunes:` item.
+  `----:com.apple.iTunes:MusicBrainz Album Id`, and the language tag (a FLAC `LANGUAGE` comment or an
+  MP3 `TLAN` frame) becomes Picard's `----:com.apple.iTunes:LANGUAGE`. Any other tag, such as
+  ReplayGain or BPM, keeps its own name as a `----:com.apple.iTunes:` item.
+- A track or disc "number" the number atoms can't hold, such as `A1` or `0`, is kept as text under
+  its own name instead of the number FFmpeg would read from it.
 - Cover art goes into the `covr` atom unchanged. M4A holds JPEG, PNG and BMP pictures, so a file
   with GIF or WebP cover art fails with that reason. Choose MP3 for such a library, or replace the
   art first.

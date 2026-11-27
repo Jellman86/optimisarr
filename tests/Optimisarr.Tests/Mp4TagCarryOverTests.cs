@@ -20,10 +20,22 @@ public sealed class Mp4TagCarryOverTests
     private static readonly byte[] FfmpegOutput = M4a(Text("©nam", "Title"), Text("©too", "Lavf61.7.103"),
         Box("trkn", DataBox(0, [0, 0, 0, 3, 0, 0, 0, 0])), Box("disk", DataBox(0, [0, 0, 0, 1, 0, 0])));
 
+    // As the probe reports them: the container's tags, then the audio stream's, which every M4A
+    // FFmpeg writes has, with no language of its own.
     private static readonly Dictionary<string, string> FfmpegOutputTags = new()
     {
-        ["major_brand"] = "M4A ", ["title"] = "Title", ["encoder"] = "Lavf61.7.103", ["track"] = "3", ["disc"] = "1",
+        ["major_brand"] = "M4A ", ["minor_version"] = "512", ["compatible_brands"] = "M4A isomiso2",
+        ["title"] = "Title", ["encoder"] = "Lavf61.7.103", ["track"] = "3", ["disc"] = "1",
+        ["language"] = "und", ["handler_name"] = "SoundHandler", ["vendor_id"] = "[0][0][0][0]",
     };
+
+    private static readonly Dictionary<string, string> StreamTagsOnly = new()
+    {
+        ["major_brand"] = "M4A ", ["title"] = "Title", ["encoder"] = "Lavf61.7.103",
+        ["language"] = "und", ["handler_name"] = "SoundHandler", ["vendor_id"] = "[0][0][0][0]",
+    };
+
+    private static readonly byte[] FfmpegOutputWithoutNumbers = M4a(Text("©nam", "Title"), Text("©too", "Lavf61.7.103"));
 
     [Fact]
     public void Tags_from_another_format_that_ffmpeg_has_no_atom_for_become_freeform_items()
@@ -34,7 +46,7 @@ public sealed class Mp4TagCarryOverTests
             ["ALBUMARTISTSORT"] = "Sort", ["LANGUAGE"] = "eng", ["encoder"] = "Lavf61.7.103",
         };
 
-        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, "eng", "1.2.3"));
 
         Assert.Equal([
             Item(Text("©nam", "Title")), Item(Text("©too", "Lavf61.7.103")),
@@ -52,7 +64,7 @@ public sealed class Mp4TagCarryOverTests
     {
         var source = new Dictionary<string, string> { ["track"] = "3", ["TRACKTOTAL"] = "12", ["disc"] = "1", ["DISCTOTAL"] = "2" };
 
-        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, null, "1.2.3"));
 
         Assert.Contains(Item(Box("trkn", DataBox(0, [0, 0, 0, 3, 0, 12, 0, 0]))), items);
         Assert.Contains(Item(Box("disk", DataBox(0, [0, 0, 0, 1, 0, 2]))), items);
@@ -63,13 +75,71 @@ public sealed class Mp4TagCarryOverTests
     [Fact]
     public void A_tag_ffmpeg_wrote_with_another_value_is_left_for_verification_to_refuse()
     {
-        var source = new Dictionary<string, string> { ["TITLE"] = "Source title", ["track"] = "A1" };
+        var source = new Dictionary<string, string> { ["TITLE"] = "Source title", ["track"] = "3" };
 
-        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, null, "1.2.3"));
 
         Assert.Contains(Item(Text("©nam", "Title")), items);
         Assert.Contains(Item(Box("trkn", DataBox(0, [0, 0, 0, 3, 0, 0, 0, 0]))), items);
         Assert.Equal(5, items.Count);
+    }
+
+    [Fact]
+    public void Only_a_language_the_source_s_tags_state_is_carried_never_its_track_s_language()
+    {
+        // A Matroska or MP4 source's audio track says "und"; the probe merges that into its tags.
+        var source = new Dictionary<string, string> { ["TITLE"] = "Title", ["language"] = "und" };
+
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, null, "1.2.3"));
+
+        Assert.DoesNotContain(items, item => item.Key.EndsWith(":LANGUAGE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void A_language_item_already_in_the_new_file_is_not_written_again()
+    {
+        var output = Tags(M4a(Text("©nam", "Title"), Freeform("com.apple.iTunes", "LANGUAGE", "eng")));
+
+        var items = Planned(Mp4TagCarryOver.Plan(output, null, new Dictionary<string, string> { ["TITLE"] = "Title" },
+            StreamTagsOnly, "eng", "1.2.3"));
+
+        Assert.Single(items, item => item.Key == Mp4TagCarryOver.LanguageKey);
+    }
+
+    [Fact]
+    public void A_track_or_disc_number_the_number_atoms_cannot_hold_is_kept_as_text()
+    {
+        // FFmpeg writes no number atom for a number it reads as zero.
+        var source = new Dictionary<string, string> { ["TITLE"] = "Title", ["track"] = "A1", ["disc"] = "0" };
+
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutputWithoutNumbers), null, source, StreamTagsOnly, null, "1.2.3"));
+
+        Assert.Contains(Item(Freeform("com.apple.iTunes", "track", "A1")), items);
+        Assert.Contains(Item(Freeform("com.apple.iTunes", "disc", "0")), items);
+        Assert.DoesNotContain(items, item => item.Key is "trkn" or "disk");
+    }
+
+    [Fact]
+    public void A_number_ffmpeg_read_only_the_start_of_is_kept_as_the_source_s_text()
+    {
+        // FFmpeg reads "3abc" as track 3.
+        var source = new Dictionary<string, string> { ["TITLE"] = "Title", ["track"] = "3abc", ["disc"] = "1" };
+
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), null, source, FfmpegOutputTags, null, "1.2.3"));
+
+        Assert.Contains(Item(Freeform("com.apple.iTunes", "track", "3abc")), items);
+        Assert.DoesNotContain(items, item => item.Key == "trkn");
+        Assert.Contains(items, item => item.Key == "disk");
+    }
+
+    [Fact]
+    public void A_tag_whose_name_holds_a_colon_is_kept_under_that_name()
+    {
+        var source = new Dictionary<string, string> { ["TITLE"] = "Title", ["FOO:BAR"] = "baz" };
+
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutputWithoutNumbers), null, source, StreamTagsOnly, null, "1.2.3"));
+
+        Assert.Contains(Item(Freeform("com.apple.iTunes", "FOO:BAR", "baz")), items);
     }
 
     [Fact]
@@ -83,7 +153,7 @@ public sealed class Mp4TagCarryOverTests
         // FFmpeg turned the numbered genre into text and wrote its own encoder name.
         var output = Tags(M4a(Text("©nam", "Title"), Text("©gen", "Pop"), Text("©too", "Lavf61.7.103")));
 
-        var items = Planned(Mp4TagCarryOver.Plan(output, source, null, null, "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(output, source, null, null, null, "1.2.3"));
 
         Assert.Equal([
             Item(Text("©nam", "Title")), Item(gnre), Item(Freeform("com.apple.iTunes", "iTunNORM", " 00000100")), Item(covr),
@@ -97,7 +167,7 @@ public sealed class Mp4TagCarryOverTests
         var source = Tags([.. Ftyp, .. Mdat, .. Moov(QuickTimeKeysMeta(("TITLE", "Title"), ("MUSICBRAINZ_ALBUMID", "abc")))]);
         var sourceTags = new Dictionary<string, string> { ["TITLE"] = "Title", ["MUSICBRAINZ_ALBUMID"] = "abc" };
 
-        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), source, sourceTags, FfmpegOutputTags, "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(Tags(FfmpegOutput), source, sourceTags, FfmpegOutputTags, null, "1.2.3"));
 
         Assert.Contains(Item(Freeform("com.apple.iTunes", "MusicBrainz Album Id", "abc")), items);
     }
@@ -107,7 +177,7 @@ public sealed class Mp4TagCarryOverTests
     {
         var output = Tags(M4a(Text("©nam", "Title"), Freeform("com.optimisarr", "optimisarr", "0.1.0")));
 
-        var items = Planned(Mp4TagCarryOver.Plan(output, null, new Dictionary<string, string>(), new Dictionary<string, string>(), "1.2.3"));
+        var items = Planned(Mp4TagCarryOver.Plan(output, null, new Dictionary<string, string>(), new Dictionary<string, string>(), null, "1.2.3"));
 
         Assert.Equal([Item(Text("©nam", "Title")), Marker], items);
     }

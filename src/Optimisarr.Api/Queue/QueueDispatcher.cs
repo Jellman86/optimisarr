@@ -1245,56 +1245,7 @@ public sealed partial class QueueDispatcher(
 
             if (run.ExitCode == 0)
             {
-                if (FfmpegCommandBuilder.WritesTagsAfterEncode(spec))
-                    await WriteMp4TagsAsync(jobId, work.Value.Original.Path, spec.OutputPath, cancellationToken);
-
-                // Stamp the portable marker on an image *before* verification, so the file that is
-                // verified and replaced is the final, marked file. ffmpeg drops -metadata for
-                // stills, so this is done out-of-band with exiftool; a failure only loses marker
-                // portability (the DB history still prevents re-optimisation), so it never blocks.
-                if (spec.Kind == MediaKind.Image)
-                {
-                    if (!await imageMarker.CopyMetadataAsync(
-                            work.Value.Original.Path, spec.OutputPath, cancellationToken))
-                    {
-                        logger.LogWarning(
-                            "Job {JobId}: could not copy source EXIF/ICC metadata; the default metadata " +
-                            "verification gate will reject the output if the source carried either.", jobId);
-                    }
-
-                    if (!await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
-                    {
-                        logger.LogWarning(
-                            "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
-                            "re-optimisation is still prevented by the database.", jobId);
-                    }
-
-                    if (work.Value.IsCalibration)
-                    {
-                        var referencePath = Path.Combine(
-                            Path.GetDirectoryName(spec.OutputPath)!,
-                            ".optimisarr-comparison-reference.png");
-                        var reference = await imageReference.CreateAsync(
-                            work.Value.Original.Path,
-                            referencePath,
-                            cancellationToken);
-                        if (!reference.Created)
-                        {
-                            throw new InvalidOperationException(
-                                $"Could not create the lossless image comparison reference: {reference.Error}");
-                        }
-
-                        if (!await imageMarker.CopyMetadataAsync(
-                                work.Value.Original.Path,
-                                referencePath,
-                                cancellationToken))
-                        {
-                            logger.LogWarning(
-                                "Job {JobId}: could not copy source colour metadata to the PNG comparison reference.",
-                                jobId);
-                        }
-                    }
-                }
+                await PrepareOutputForVerificationAsync(jobId, preparedWork, cancellationToken);
 
                 var disposition = await VerifyAndFinishAsync(
                     jobId,
@@ -1508,6 +1459,64 @@ public sealed partial class QueueDispatcher(
                 MinimumImagePerceptualScore: library?.MinimumImagePerceptualScore));
 
     /// <summary>
+    /// Finishes a successful encode's file before it is verified, so the file verified is the file
+    /// kept: an M4A's tags and marker (#593), and an image's metadata and marker.
+    /// </summary>
+    internal async Task PrepareOutputForVerificationAsync(int jobId, JobWork work, CancellationToken cancellationToken)
+    {
+        if (FfmpegCommandBuilder.WritesTagsAfterEncode(work.Spec))
+            await WriteMp4TagsAsync(jobId, work.Original.Path, work.Spec.OutputPath, cancellationToken);
+
+        // Stamp the portable marker on an image *before* verification, so the file that is
+        // verified and replaced is the final, marked file. ffmpeg drops -metadata for
+        // stills, so this is done out-of-band with exiftool; a failure only loses marker
+        // portability (the DB history still prevents re-optimisation), so it never blocks.
+        if (work.Spec.Kind == MediaKind.Image)
+        {
+            if (!await imageMarker.CopyMetadataAsync(
+                    work.Original.Path, work.Spec.OutputPath, cancellationToken))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: could not copy source EXIF/ICC metadata; the default metadata " +
+                    "verification gate will reject the output if the source carried either.", jobId);
+            }
+
+            if (!await imageMarker.WriteAsync(work.Spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
+                    "re-optimisation is still prevented by the database.", jobId);
+            }
+
+            if (work.IsCalibration)
+            {
+                var referencePath = Path.Combine(
+                    Path.GetDirectoryName(work.Spec.OutputPath)!,
+                    ".optimisarr-comparison-reference.png");
+                var reference = await imageReference.CreateAsync(
+                    work.Original.Path,
+                    referencePath,
+                    cancellationToken);
+                if (!reference.Created)
+                {
+                    throw new InvalidOperationException(
+                        $"Could not create the lossless image comparison reference: {reference.Error}");
+                }
+
+                if (!await imageMarker.CopyMetadataAsync(
+                        work.Original.Path,
+                        referencePath,
+                        cancellationToken))
+                {
+                    logger.LogWarning(
+                        "Job {JobId}: could not copy source colour metadata to the PNG comparison reference.",
+                        jobId);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// FFmpeg writes an M4A's tags as the iTunes atoms it has, and drops the rest; the marker and the
     /// dropped tags are added here, before verification, so the file verified is the file kept (#593).
     /// A failure only warns: verification refuses the file if a source tag is then missing, and a
@@ -1522,7 +1531,7 @@ public sealed partial class QueueDispatcher(
         var problem = !source.Success || !output.Success
             ? $"the files could not be probed: {source.Error ?? output.Error}"
             : await scope.ServiceProvider.GetRequiredService<MusicTagService>().CarryOverMp4TagsAsync(
-                sourcePath, outputPath, source.FormatTags, output.FormatTags, OptimisedMarkerValue, cancellationToken);
+                sourcePath, outputPath, source.FormatTags, output.FormatTags, source.TagLanguage, OptimisedMarkerValue, cancellationToken);
         if (problem is not null)
             logger.LogWarning("Job {JobId}: could not write the M4A's tags and marker: {Problem}", jobId, problem);
     }

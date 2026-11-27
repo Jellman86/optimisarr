@@ -59,6 +59,12 @@ public sealed record MediaProbeResult(
     public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
     /// <summary>The shape of the primary video's pixels; null when ffprobe reports none, which plays square.</summary>
     public SampleAspectRatio? PixelAspect { get; init; }
+    /// <summary>
+    /// The language a music file's own tags state, such as a FLAC's LANGUAGE comment or an MP3's
+    /// TLAN; null when they state none. <see cref="FormatTags"/> also holds the audio track's
+    /// language, which an MP4 or Matroska file records for every track, usually as "und".
+    /// </summary>
+    public string? TagLanguage { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RawJson { get; init; }
 
@@ -243,6 +249,8 @@ public sealed class MediaProbeService : IMediaProbeService
             }
         }
 
+        var tagLanguage = formatTags.GetValueOrDefault("language");
+
         string? videoCodec = null;
         double? videoDuration = null;
         int? width = null;
@@ -354,6 +362,9 @@ public sealed class MediaProbeService : IMediaProbeService
                                     && !string.IsNullOrWhiteSpace(tag.Value.GetString()))
                                 {
                                     formatTags.TryAdd(tag.Name, tag.Value.GetString()!);
+                                    // Ogg has no track language: a language on its stream is one of the file's comments.
+                                    if (container == "ogg" && tag.Name.Equals("language", StringComparison.OrdinalIgnoreCase))
+                                        tagLanguage ??= tag.Value.GetString();
                                 }
                             }
                         }
@@ -434,7 +445,11 @@ public sealed class MediaProbeService : IMediaProbeService
             videoFrameRate,
             containerStart,
             colorRange,
-            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, PixelAspect = pixelAspect, RawJson = json };
+            fieldOrder)
+        {
+            SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, PixelAspect = pixelAspect,
+            TagLanguage = tagLanguage?.Trim(), RawJson = json,
+        };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still

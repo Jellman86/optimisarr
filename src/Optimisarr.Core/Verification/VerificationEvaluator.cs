@@ -272,10 +272,10 @@ public static class VerificationEvaluator
             return $"The new file's tags could not be read: {evidence.Output?.Problem ?? "not measured"}.";
         if (output.Layout == Mp4TagLayout.QuickTimeKeys)
             return "The new file's tags are stored as QuickTime keys, which many music players can't read, instead of iTunes tags.";
-        if (evidence.Source is not { } sourceRead) return null;
+        if (evidence.Source is not { } sourceRead) return LanguageProblem(output, evidence.SourceLanguage);
         if (sourceRead.Tags is not { } source)
             return $"The original's tags could not be read: {sourceRead.Problem}.";
-        if (source.Layout != Mp4TagLayout.Itunes) return null;
+        if (source.Layout != Mp4TagLayout.Itunes) return LanguageProblem(output, evidence.SourceLanguage);
 
         var sourceItems = source.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
         var outputItems = output.Items.Where(item => !Mp4TagCarryOver.Regenerated(item.Key)).ToList();
@@ -294,6 +294,21 @@ public static class VerificationEvaluator
 
         static string Names(List<string> keys) =>
             string.Join(", ", keys.Take(8).Select(key => key.Length > 40 ? key[..40] + "…" : key)) + (keys.Count > 8 ? $" and {keys.Count - 8} more" : "");
+    }
+
+    /// <summary>
+    /// Why a converted M4A does not hold the language its source's tags state, or null. ffprobe
+    /// shows every M4A's audio track as language "und", and the comparison of ffprobe's tags leaves
+    /// language out, so the iTunes item itself is compared. An M4A source's items are compared whole.
+    /// </summary>
+    private static string? LanguageProblem(Mp4Tags output, string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLanguage)) return null;
+        var languages = output.Items.Where(item => item.Key == Mp4TagCarryOver.LanguageKey).ToList();
+        if (languages.Count == 0) return "Audio metadata tag 'LANGUAGE' was lost.";
+        return languages is [var language] && Mp4TagCarryOver.HoldsText(language, sourceLanguage.Trim())
+            ? null
+            : "Audio metadata tag 'LANGUAGE' changed during conversion.";
     }
 
     private static bool SameItems(IEnumerable<Mp4TagItem> source, IEnumerable<Mp4TagItem> output)
