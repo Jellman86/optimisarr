@@ -2012,7 +2012,7 @@ export const zh: Messages = {
     video_dolby_vision: "重新编码 Dolby Vision 文件，这会丢失 Dolby Vision。",
     video_deinterlace: "对隔行扫描视频进行去隔行处理。",
     video_noise: "降低噪点（{level}）。",
-    video_keyframes: "至少每 {seconds} 秒一个关键帧。",
+    video_keyframes: "关键帧间隔不超过 {seconds} 秒。",
     video_upscale: "在检查之前用 AI 放大。",
     video_container_source: "MKV 和 MP4 文件保留容器和名称。其他类型会被重命名：AVI、TS 和 WMV 变为 MKV，M4V 和 MOV 变为 MP4。含有 MP4 无法容纳内容的 MP4 会变为 MKV。",
     video_container_fixed: "文件会写为 {container}。其他容器的文件会得到新的文件名。",

@@ -146,7 +146,7 @@ test('a keyframe interval is named in the plan without tagging a picture change'
   await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, keyframeIntervalSeconds: 10 } } })
   await page.goto('/#/inventory/optimise/7')
 
-  await expect(row(page, 'video')).toContainText('Keyframes at least every 10 s.')
+  await expect(row(page, 'video')).toContainText('Keyframes no more than 10 s apart.')
   await expect(row(page, 'video').locator('[data-plan-tag]')).toHaveCount(0)
 })
 
