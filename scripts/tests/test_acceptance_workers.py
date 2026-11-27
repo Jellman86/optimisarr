@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -9,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report
 from acceptance.workers import Workers
 from acceptance.runner import Harness
-from acceptance.container_workers import ContainerWorkers
+from acceptance.container_workers import ContainerWorkers, work_listing
 
 
 class WorkerAvailabilityTests(unittest.TestCase):
@@ -227,3 +228,22 @@ class WorkerAvailabilityTests(unittest.TestCase):
         self.assertNotIn(call("/api/workers/2/drain", "DELETE"), api.request.call_args_list)
         self.assertIn(call("/api/workers/4/drain", "DELETE"), api.request.call_args_list)
         self.assertEqual(call("/api/settings", "PUT", {"original": True}), api.request.call_args_list[-1])
+
+
+class WorkListingTests(unittest.TestCase):
+    def result(self, code, stdout="", stderr=""):
+        return subprocess.CompletedProcess([], code, stdout, stderr)
+
+    def test_a_job_directory_removed_mid_walk_reads_as_empty(self):
+        listing = work_listing(self.result(1, "", "find: '/work/job-49': No such file or directory\n"))
+        self.assertEqual("", listing)
+
+    def test_files_found_before_the_race_are_kept(self):
+        listing = work_listing(self.result(1, "a.mkv 10\n", "find: '/work/job-49': No such file or directory\n"))
+        self.assertEqual("a.mkv 10\n", listing)
+
+    def test_any_other_find_error_is_raised(self):
+        with self.assertRaises(RuntimeError):
+            work_listing(self.result(1, "", "find: '/work': Permission denied\n"))
+        with self.assertRaises(RuntimeError):
+            work_listing(self.result(125, "", "Error response from daemon: container not running\n"))
