@@ -11,6 +11,11 @@ from .monitor import LinuxObserver
 from .workers import Workers, free_port
 
 
+# Only a job directory, never /work itself: a missing scratch root must still fail. Any job's
+# directory may vanish, because find walks every job under /work, not only the one asked for.
+VANISHED_JOB = re.compile(r"find: \W?/work/job-\d+(/[^\n]*?)?\W?: No such file or directory")
+
+
 def work_listing(result):
     """The files find printed, treating a job directory that vanished mid-walk as empty.
 
@@ -20,7 +25,7 @@ def work_listing(result):
     if result.returncode == 0:
         return result.stdout
     errors = [line for line in result.stderr.splitlines() if line.strip()]
-    if result.returncode == 1 and errors and all(line.startswith("find: ") and line.endswith("No such file or directory") for line in errors):
+    if result.returncode == 1 and errors and all(VANISHED_JOB.fullmatch(line) for line in errors):
         return result.stdout
     raise RuntimeError(f"find exited {result.returncode}: {result.stderr[-8000:]}")
 

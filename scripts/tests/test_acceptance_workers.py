@@ -247,3 +247,11 @@ class WorkListingTests(unittest.TestCase):
             work_listing(self.result(1, "", "find: '/work': Permission denied\n"))
         with self.assertRaises(RuntimeError):
             work_listing(self.result(125, "", "Error response from daemon: container not running\n"))
+        with self.assertRaises(RuntimeError):
+            work_listing(self.result(1, "", "find: '/work': No such file or directory\n"))
+        with self.assertRaises(RuntimeError):
+            work_listing(self.result(1, "", "Error response from daemon: No such container: w\n"))
+
+    def test_another_jobs_folder_vanishing_keeps_the_listing(self):
+        listing = work_listing(self.result(1, "source.mkv 5\n", "find: '/work/job-50': No such file or directory\n"))
+        self.assertEqual("source.mkv 5\n", listing)
