@@ -45,6 +45,7 @@ public static class RuleResolver
             OptimiseDolbyVision = overrides.OptimiseDolbyVision ?? settings.OptimiseDolbyVision,
             DeinterlaceVideo = overrides.DeinterlaceVideo ?? settings.DeinterlaceVideo,
             NoiseReduction = overrides.NoiseReduction ?? settings.NoiseReduction,
+            KeyframeIntervalSeconds = overrides.KeyframeIntervalSeconds ?? settings.KeyframeIntervalSeconds,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
             ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
             SkipSourceCodecs = overrides.SkipSourceCodecs ?? settings.SkipSourceCodecs,

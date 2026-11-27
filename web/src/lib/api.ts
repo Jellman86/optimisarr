@@ -150,6 +150,8 @@ export type LibraryRules = {
   deinterlaceVideo: boolean
   /** How strongly video re-encodes reduce noise, such as tape grain. */
   noiseReduction: NoiseReduction
+  /** The longest gap between keyframes, in whole seconds; null keeps the encoder default. Absent from servers before it existed. */
+  keyframeIntervalSeconds?: number | null
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -1254,6 +1256,8 @@ export type MediaPlan = {
     noiseReduction: NoiseReduction
     /** The job would run through AI upscaling, which copies its sound. */
     upscales: boolean
+    /** Seconds, as the library sets it; null keeps the encoder default. Absent from servers before it existed. */
+    keyframeIntervalSeconds?: number | null
   } | null
   /** Null unless the file is an image. */
   image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null

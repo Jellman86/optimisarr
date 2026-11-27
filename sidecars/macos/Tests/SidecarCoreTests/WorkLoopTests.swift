@@ -93,6 +93,18 @@ struct AssignmentCommandTests {
         }
     }
 
+    @Test("keyframe intervals within the server bounds are accepted", arguments: ["1", "240", "20000"])
+    func keyframeInterval(_ frames: String) throws {
+        _ = try AssignmentCommand.validate(["-i", "{{input}}", "-c:v:0", "hevc_videotoolbox", "-g", frames, "{{output}}.mkv"], outputExtension: "mkv")
+    }
+
+    @Test("malformed keyframe intervals are refused", arguments: ["0", "-1", "20001", "0240", "+240", "240.0", "240/x"])
+    func malformedKeyframeInterval(_ frames: String) {
+        #expect(throws: AssignmentCommandError.invalidKeyframeInterval(frames)) {
+            _ = try AssignmentCommand.validate(["-i", "{{input}}", "-c:v:0", "hevc_videotoolbox", "-g", frames, "{{output}}.mkv"], outputExtension: "mkv")
+        }
+    }
+
     @Test("a command shaped like the server's is accepted and both tokens are substituted")
     func acceptsServerShape() throws {
         let command = try AssignmentCommand.validate(serverCommand, outputExtension: "mp4")

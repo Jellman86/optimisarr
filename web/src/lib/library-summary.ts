@@ -238,6 +238,8 @@ function videoLine(library: SaveLibrary, { m, locale, preset, upscalingOn }: Sum
     if (library.vmafQualityGateEnabled !== true) sentences.push(fill(s.video_quality_fixed_unchecked, { crf }))
     else if (library.videoQualityStrategy === 'AdaptiveVmaf') sentences.push(fill(s.video_quality_target, { target }))
     else sentences.push(fill(s.video_quality_fixed_checked, { crf, target }))
+    // An encoder setting, not a picture change: it moves where a player can seek, not what it shows.
+    if (library.keyframeIntervalSeconds) sentences.push(fill(s.video_keyframes, { seconds: library.keyframeIntervalSeconds }))
 
     const picture: string[] = []
     if (library.videoDownscaleHeight) picture.push(fill(s.video_shrink, { height: library.videoDownscaleHeight }))

@@ -218,6 +218,40 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_keyframe_interval_travels_with_its_backup_and_an_older_backup_means_the_encoder_default()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Films", Path = "/data/films", MediaType = MediaType.Film, RuleProfile = RuleProfile.ConservativeHevc,
+                KeyframeIntervalSeconds = 10,
+            });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal(10, snapshot.Libraries.Single(library => library.Path == "/data/films").KeyframeIntervalSeconds);
+
+        var older = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { KeyframeIntervalSeconds = null }).ToArray(),
+        };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Null((await restored.Libraries.SingleAsync(library => library.Path == "/data/films")).KeyframeIntervalSeconds);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(10, (await restored.Libraries.SingleAsync(library => library.Path == "/data/films")).KeyframeIntervalSeconds);
+
+        var invalid = snapshot with
+        {
+            Libraries = snapshot.Libraries.Select(library => library with { KeyframeIntervalSeconds = 240 }).ToArray(),
+        };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
     public async Task A_minimum_track_removal_saving_travels_with_its_backup_and_an_older_backup_means_none()
     {
         await using (var db = CreateDb())

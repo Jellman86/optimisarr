@@ -6,6 +6,27 @@ namespace Optimisarr.Tests;
 public sealed class LibraryRequestParserTests
 {
     [Fact]
+    public void A_keyframe_interval_is_saved_and_defaults_to_the_encoder_default()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var plain, out _));
+        Assert.Null(plain.KeyframeIntervalSeconds);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with { KeyframeIntervalSeconds = 10 }, out var parsed, out _));
+        Assert.Equal(10, parsed.KeyframeIntervalSeconds);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-2)]
+    [InlineData(21)]
+    [InlineData(240)]
+    public void A_keyframe_interval_out_of_range_is_refused(int seconds)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with { KeyframeIntervalSeconds = seconds }, out _, out var error));
+        Assert.Contains("Keyframe interval must be between 1 and 20 seconds", error);
+    }
+
+    [Fact]
     public void Audio_quality_search_requires_an_enabled_explicit_target()
     {
         var request = Request() with { MediaType = "Music", AdaptiveAudioQuality = true };

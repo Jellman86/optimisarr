@@ -54,6 +54,7 @@ export function newLibraryDefaults(): SaveLibrary {
     optimiseDolbyVision: false,
     deinterlaceVideo: false,
     noiseReduction: 'Off',
+    keyframeIntervalSeconds: null,
     excludePaths: null,
     excludeHardLinkedFiles: false,
     skipSourceCodecs: null,

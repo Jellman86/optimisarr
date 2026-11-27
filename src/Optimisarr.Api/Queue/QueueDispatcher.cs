@@ -1953,16 +1953,19 @@ public sealed partial class QueueDispatcher(
         }
         // A frame-rate cap is planned from the source's average rate, which the inventory does not
         // keep. The fresh probe is authoritative; without one the cap would have to be guessed,
-        // and a guessed rate decimates the wrong frames, so the job stops here instead.
-        if (isVideoJob && rules.MaxFrameRate is not null && rules.TargetVideoCodec is not null)
+        // and a guessed rate decimates the wrong frames, so the job stops here instead. A keyframe
+        // interval is counted in frames of the same rate, so it asks for the same probe.
+        if (isVideoJob && (rules.MaxFrameRate is not null || rules.KeyframeIntervalSeconds is not null)
+            && rules.TargetVideoCodec is not null)
         {
             freshSourceProbe ??= await scope.ServiceProvider
                 .GetRequiredService<IMediaProbeService>()
                 .ProbeAsync(media.Path, cancellationToken);
             if (!freshSourceProbe.Success)
             {
-                throw new InvalidOperationException(
-                    $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}");
+                throw new InvalidOperationException(rules.MaxFrameRate is not null
+                    ? $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}"
+                    : $"Fresh source probe required to apply the keyframe interval failed: {freshSourceProbe.Error ?? "no detail available"}");
             }
         }
         // The eligibility check before encoding only judges a probed inventory row, so a known
@@ -2132,6 +2135,12 @@ public sealed partial class QueueDispatcher(
             adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true,
             sourceAudioChannelLayout: sourceAudioChannelLayout,
             audioTrimOnly: audioTrimOnly) with { TrimOnlyId3 = trimOnlyId3 };
+        if (spec.VideoCodec is not null && rules.KeyframeIntervalSeconds is { } keyframeSeconds && spec.KeyframeIntervalFrames is null)
+        {
+            logger.LogInformation(
+                "Job {JobId} keeps the encoder's default keyframe interval instead of {Seconds} s: the source's frame rate could not be read",
+                job.Id, keyframeSeconds);
+        }
         // The probe just made is the authority when there is one, as it is for the other source facts.
         var sourceFieldOrder = freshSourceProbe is { Success: true, FieldOrder: { } probedOrder } ? probedOrder : media.FieldOrder;
         spec = spec with

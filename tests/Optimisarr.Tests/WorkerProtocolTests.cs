@@ -134,4 +134,15 @@ public class WorkerProtocolTests
         Assert.Equal(WorkerProtocol.SoundtrackTimingVersion, WorkerProtocol.MinimumForAssignment([], Optimisarr.Core.Domain.MediaKind.Video,
             "vmaf_v0.6.1", false, measuresDownmixedSoundtracks: true, countsVideoFrames: true, perceptualSearch: true));
     }
+
+    [Fact]
+    public void A_keyframe_interval_is_offered_only_to_workers_that_accept_a_gop_length()
+    {
+        // Older sidecars refuse -g as an unknown option, so they would hand the job straight back.
+        Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.MinimumForEncodeCommand(["-c:v:0", "hevc_qsv", "-g", "240"]));
+        Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.MinimumForAssignment(["-c:v:0", "libx265", "-g", "240"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true, measuresSoundtracks: true));
+        Assert.Equal(WorkerProtocol.KeyframeIntervalVersion, WorkerProtocol.Current);
+        Assert.True(WorkerProtocol.KeyframeIntervalVersion > WorkerProtocol.SoundtrackTimingVersion);
+    }
 }

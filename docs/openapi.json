@@ -3043,6 +3043,15 @@
               "string"
             ]
           },
+          "keyframeIntervalSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "maxBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -3698,6 +3707,15 @@
               "string"
             ]
           },
+          "keyframeIntervalSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "noiseReduction": {
             "type": "string"
           },
@@ -3737,7 +3755,8 @@
           "deinterlace",
           "cropBlackBars",
           "noiseReduction",
-          "upscales"
+          "upscales",
+          "keyframeIntervalSeconds"
         ],
         "type": "object"
       },
@@ -5866,6 +5885,15 @@
           "keepSubtitleLanguages": {
             "type": [
               "null",
+              "string"
+            ]
+          },
+          "keyframeIntervalSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
               "string"
             ]
           },

@@ -103,10 +103,12 @@ public sealed class OptimisationPlannerTests
             CropBlackBars = true,
             DeinterlaceVideo = true,
             NoiseReduction = NoiseReduction.Strong,
+            KeyframeIntervalSeconds = 10,
         });
 
         var picture = OptimisationPlanner.Plan(hdr, rules, crf: 22).Picture!;
 
+        Assert.Equal(10, picture.KeyframeIntervalSeconds);
         Assert.True(picture.TonemapToSdr);
         // Black bars are still to be measured, so the exact new size is not known: only its limit is.
         Assert.Null(picture.Width);

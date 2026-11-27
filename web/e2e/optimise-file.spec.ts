@@ -142,6 +142,14 @@ test('a picture change is tagged where it is described', async ({ page }) => {
   await expect(row(page, 'video').locator('[data-plan-tag]')).toHaveText('Changes the picture')
 })
 
+test('a keyframe interval is named in the plan without tagging a picture change', async ({ page }) => {
+  await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, keyframeIntervalSeconds: 10 } } })
+  await page.goto('/#/inventory/optimise/7')
+
+  await expect(row(page, 'video')).toContainText('Keyframes no more than 10 s apart.')
+  await expect(row(page, 'video').locator('[data-plan-tag]')).toHaveCount(0)
+})
+
 test('what only the job can measure is said as a rule, not as a fact about this file', async ({ page }) => {
   // With black bars still to be measured, the server sends the height limit and no exact size.
   await mockPlan(page, { plan: { ...plan, picture: { ...plan.picture, shrinkToHeight: 1080, frameRateCap: 30, cropBlackBars: true } } })

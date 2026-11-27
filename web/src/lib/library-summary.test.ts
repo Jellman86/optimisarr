@@ -75,6 +75,16 @@ test('every setting that changes the picture adds its own sentence and one tag t
   }
 })
 
+test('a keyframe interval is named without claiming the picture changes', () => {
+  const set = line('video', { keyframeIntervalSeconds: 10 })
+
+  assert.ok(set.text.includes('Keyframes no more than 10 s apart.'), set.text)
+  assert.ok(set.text.includes('Picture size, frame rate and colour are kept.'))
+  assert.deepEqual(set.tags.map((tag) => tag.text), ['Renames some files'])
+  assert.ok(!line('video').text.includes('Keyframes'))
+  assert.ok(!line('video', { ruleProfile: 'RemuxCleanup', keyframeIntervalSeconds: 10 }).text.includes('Keyframes'))
+})
+
 test('upscaling is not claimed while it is switched off for the whole server', () => {
   const off = line('video', { superResolutionEnabled: true }, { upscalingOn: false })
 

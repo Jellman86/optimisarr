@@ -1622,4 +1622,48 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void Without_the_choice_no_deinterlace_filter_is_added() =>
         Assert.DoesNotContain(FfmpegCommandBuilder.Build(Reencode(crf: 24)), argument => argument.Contains("bwdif"));
+
+    // --- Keyframe interval ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("libx264")]
+    [InlineData("libx265")]
+    [InlineData("libsvtav1")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("av1_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("av1_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("hevc_videotoolbox")]
+    public void A_keyframe_interval_reaches_every_encoder_family_as_its_gop_length(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { KeyframeIntervalFrames = 240 }, videoEncoder: encoder).ToList();
+
+        Assert.Equal("240", args[args.IndexOf("-g") + 1]);
+        Assert.Single(args, argument => argument == "-g");
+        Assert.True(args.IndexOf("-g") > args.IndexOf("-c:v:0"), "an output option of the re-encoded stream");
+    }
+
+    [Fact]
+    public void The_encoder_default_sends_no_gop_length_and_no_minimum()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24));
+
+        Assert.DoesNotContain("-g", args);
+        Assert.DoesNotContain("-keyint_min", args);
+    }
+
+    [Fact]
+    public void A_keyframe_interval_never_sets_a_minimum_or_touches_scene_cut_detection()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc", crf: 24) with { KeyframeIntervalFrames = 240 });
+
+        Assert.DoesNotContain("-keyint_min", args);
+        Assert.DoesNotContain("-sc_threshold", args);
+        Assert.DoesNotContain(args, argument => argument.Contains("keyint", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_remux_has_no_encoder_to_give_a_keyframe_interval() =>
+        Assert.DoesNotContain("-g", FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { KeyframeIntervalFrames = 240 }));
 }
