@@ -23,6 +23,7 @@ const exact: Record<string, keyof Labels> = {
   'Compression ceiling': 'not_too_small',
   'Colour metadata': 'colour',
   'HDR signal': 'hdr',
+  'Dolby Vision kept': 'dolby_vision',
   'Picture retention': 'picture_count',
   'A/V sync': 'sync',
   Dimensions: 'picture_size',

@@ -7,6 +7,7 @@ public sealed class DiagnosticSafeFieldsTests
     [Theory]
     [InlineData("Decode health", "Decode health")]
     [InlineData("File identity", "File identity")]
+    [InlineData("Dolby Vision kept", "Dolby Vision kept")]
     [InlineData("Authorization: Bearer secret", "Other verification check")]
     [InlineData("secret-token", "Other verification check")]
     public void Only_known_verification_check_names_enter_bundles(string value, string expected) =>

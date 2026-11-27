@@ -26,6 +26,10 @@ test('quality, sound and retained content outrank the size rule', () => {
   assert.equal(primaryFailureCause([fail('Size saving'), fail('Subtitle tracks')]), 'lost_content')
 })
 
+test('a copy that dropped Dolby Vision reads as lost content', () => {
+  assert.equal(primaryFailureCause([pass('Decode health'), fail('Dolby Vision kept')]), 'lost_content')
+})
+
 test('the size rule alone reads as not small enough, and a predicted miss keeps its own story', () => {
   assert.equal(primaryFailureCause([pass('Decode health'), fail('Size saving')]), 'too_big')
   assert.equal(primaryFailureCause(null, 'Size saving prediction: samples predict 112%.'), 'size_predicted')

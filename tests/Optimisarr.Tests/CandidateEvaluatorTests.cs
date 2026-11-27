@@ -882,6 +882,105 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4")]
+    [InlineData("Movies/Example (2020)/Example.M4V")]
+    [InlineData("Movies/Example (2020)/Example.mov")]
+    public void Track_cleanup_leaves_dolby_vision_in_an_mp4_family_file_untouched(string relativePath)
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+        Assert.Contains("MP4", decision.Reason);
+    }
+
+    [Fact]
+    public void A_dolby_vision_mp4_with_nothing_to_remove_keeps_that_reason()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with { KeepSubtitleLanguages = new[] { "eng" } };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with { SubtitleLanguages = new string?[] { "eng" } };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("No removable tracks", decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("Movies/Example (2020)/Example.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.m4v", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mov", "mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("Movies/Example (2020)/Example.mkv", "matroska,webm", true)]
+    [InlineData("Movies/Example (2020)/Example.ts", "mpegts", true)]
+    public void A_same_as_source_remux_refuses_dolby_vision_only_where_the_copy_stays_mp4(string relativePath, string container, bool eligible)
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            TargetContainer = "source",
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: container, isHdr: true, isDolbyVision: true, relativePath: relativePath) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, remux);
+
+        if (eligible) Assert.False(decision.Reason.StartsWith("Dolby Vision", StringComparison.Ordinal), decision.Reason);
+        else Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_into_mp4_leaves_dolby_vision_untouched()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with { TargetContainer = "mp4" };
+
+        var decision = CandidateEvaluator.Evaluate(File(isHdr: true, isDolbyVision: true), remux);
+
+        Assert.False(decision.IsEligible);
+        Assert.StartsWith("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void A_remux_of_dolby_vision_into_matroska_stays_eligible()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true, isDolbyVision: true,
+                relativePath: "Movies/Example (2020)/Example.mp4"),
+            remux);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void An_mp4_without_dolby_vision_still_gets_track_cleanup()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(container: "mov,mp4,m4a,3gp,3g2,mj2", isHdr: true,
+            relativePath: "Movies/Example (2020)/Example.mp4") with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        Assert.True(CandidateEvaluator.Evaluate(media, rules).IsEligible);
+    }
+
+    [Theory]
     [InlineData("tt")]
     [InlineData("bb")]
     [InlineData("tb")]

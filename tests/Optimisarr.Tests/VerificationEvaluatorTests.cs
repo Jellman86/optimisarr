@@ -2326,6 +2326,107 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio codecs unchanged"));
     }
 
+    private static readonly DolbyVisionConfiguration ProfileEightOne = new(1, 0, 8, 6,
+        RpuPresent: true, EnhancementLayerPresent: false, BaseLayerPresent: true, BaseLayerCompatibilityId: 1);
+
+    // Track cleanup of a Dolby Vision file: the video is copied, so VMAF does not run.
+    private static VerificationInput CopiedDolbyVision() => Healthy() with
+    {
+        VideoReencoded = false,
+        ExpectedVideoCodec = null,
+        OriginalVideoCodec = "hevc",
+        OriginalVideoProfile = "Main 10",
+        OutputVideoProfile = "Main 10",
+        OriginalPixelFormat = "yuv420p10le",
+        OutputPixelFormat = "yuv420p10le",
+        OriginalBitsPerRawSample = 10,
+        OutputBitsPerRawSample = 10,
+        QualityMeasured = false,
+        QualityScores = null,
+        OriginalIsDolbyVision = true,
+        OriginalDolbyVision = ProfileEightOne,
+        OutputDolbyVision = ProfileEightOne
+    };
+
+    [Fact]
+    public void A_copied_dolby_vision_stream_that_keeps_its_configuration_passes()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision(), VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join("; ", report.Checks.Where(c => c.Outcome == CheckOutcome.Failed).Select(c => c.Detail)));
+        var check = report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+        Assert.Equal("Dolby Vision kept", check.Name);
+        Assert.Contains("Profile 8.1", check.Detail);
+    }
+
+    [Fact]
+    public void A_copied_dolby_vision_stream_that_lost_its_configuration_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OutputDolbyVision = null },
+            VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, VerificationEvaluator.DolbyVisionKeptCheckName));
+    }
+
+    public static TheoryData<DolbyVisionConfiguration> AlteredConfigurations() =>
+    [
+        ProfileEightOne with { VersionMajor = 2 },
+        ProfileEightOne with { VersionMinor = 1 },
+        ProfileEightOne with { Profile = 5 },
+        ProfileEightOne with { Level = 5 },
+        ProfileEightOne with { RpuPresent = false },
+        ProfileEightOne with { EnhancementLayerPresent = true },
+        ProfileEightOne with { BaseLayerPresent = false },
+        ProfileEightOne with { BaseLayerCompatibilityId = 4 },
+    ];
+
+    [Theory]
+    [MemberData(nameof(AlteredConfigurations))]
+    public void A_copied_dolby_vision_stream_whose_configuration_changed_fails(DolbyVisionConfiguration output)
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OutputDolbyVision = output },
+            VerificationPolicy.Default);
+
+        var check = report.Checks.Single(c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+        Assert.Equal(CheckOutcome.Failed, check.Outcome);
+        Assert.Contains(ProfileEightOne.Describe(), check.Detail);
+        Assert.Contains(output.Describe(), check.Detail);
+    }
+
+    [Fact]
+    public void A_dolby_vision_source_whose_configuration_cannot_be_read_fails_closed()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with { OriginalDolbyVision = null },
+            VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, VerificationEvaluator.DolbyVisionKeptCheckName));
+    }
+
+    [Fact]
+    public void The_dolby_vision_check_is_absent_for_a_source_without_dolby_vision()
+    {
+        var report = VerificationEvaluator.Evaluate(CopiedDolbyVision() with
+        {
+            OriginalIsDolbyVision = false, OriginalDolbyVision = null, OutputDolbyVision = null
+        }, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+    }
+
+    [Fact]
+    public void The_dolby_vision_check_is_absent_when_the_video_was_reencoded()
+    {
+        // A re-encode only reaches a Dolby Vision source when the library opted in to losing the layer.
+        var report = VerificationEvaluator.Evaluate(Healthy() with
+        {
+            OriginalIsDolbyVision = true, OriginalDolbyVision = ProfileEightOne, OutputDolbyVision = null
+        }, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == VerificationEvaluator.DolbyVisionKeptCheckName);
+    }
+
     [Fact]
     public void The_container_gate_is_absent_unless_the_job_promised_it()
     {

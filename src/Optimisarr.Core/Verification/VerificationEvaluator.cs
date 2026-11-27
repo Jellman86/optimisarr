@@ -13,6 +13,7 @@ namespace Optimisarr.Core.Verification;
 public static class VerificationEvaluator
 {
     public const string SourceVideoTimelineCheckName = "Source video timeline";
+    public const string DolbyVisionKeptCheckName = "Dolby Vision kept";
     // Half a percent covers the rounding between a planned rate (59.94 / 2) and ffprobe's rational
     // for the same cadence (30000/1001), while staying far under the factor of two a missed
     // decimation would show.
@@ -131,6 +132,14 @@ public static class VerificationEvaluator
         if (isVideo && input.OriginalIsHdr)
         {
             checks.Add(HdrPreserved(input));
+        }
+
+        // A stream copy keeps the Dolby Vision RPU in the video packets, but the configuration record
+        // that tells a player to use it lives in the container, and a muxer can leave it out without
+        // an error. A re-encode reaches Dolby Vision only when the library opted in to losing the layer.
+        if (isVideo && !input.VideoReencoded && (input.OriginalIsDolbyVision || input.OriginalDolbyVision is not null))
+        {
+            checks.Add(DolbyVisionKept(input));
         }
 
         // Audio fidelity (no silent downmix or sample-rate drop) is checked when audio
@@ -608,6 +617,26 @@ public static class VerificationEvaluator
         return input.OutputIsHdr
             ? Pass("HDR signal", "HDR signal preserved in the output.")
             : Fail("HDR signal", "Original is HDR but the output lost its HDR signal.");
+    }
+
+    private static VerificationCheck DolbyVisionKept(VerificationInput input)
+    {
+        if (input.OriginalDolbyVision is not { } source)
+        {
+            return Fail(DolbyVisionKeptCheckName,
+                "The original is recorded as Dolby Vision, but no Dolby Vision configuration could be read from it, so the output cannot be shown to keep it. If the file was replaced since the last scan, scan the library again.");
+        }
+
+        if (input.OutputDolbyVision is not { } output)
+        {
+            return Fail(DolbyVisionKeptCheckName,
+                $"The original is Dolby Vision ({source.Describe()}), but the output has no Dolby Vision configuration, so players would not show it as Dolby Vision.");
+        }
+
+        return source == output
+            ? Pass(DolbyVisionKeptCheckName, $"The output keeps the original's Dolby Vision configuration ({source.Describe()}).")
+            : Fail(DolbyVisionKeptCheckName,
+                $"The output's Dolby Vision configuration ({output.Describe()}) differs from the original's ({source.Describe()}).");
     }
 
     private static VerificationCheck PerceptualQuality(VerificationInput input, VerificationPolicy policy)

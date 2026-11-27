@@ -537,6 +537,33 @@ Audio assessment accepts finite decoded samples up to an absolute magnitude of 4
 +12 dBFS, to accommodate lossy decoder overs. Larger or non-finite samples remain invalid. This does
 not relax a configured clipping gate.
 
+### Dolby Vision
+
+A library that re-encodes video **skips Dolby Vision files as a whole by default**, whatever its HDR
+setting, and the inventory says why. A re-encode cannot carry the Dolby Vision layer: the file
+becomes HDR10 or SDR at best, and a Profile 5 file comes out green and pink. Because the whole file
+is skipped, a re-encode library that also removes tracks by language leaves the tracks of a Dolby
+Vision file alone too. **Video → Picture → Dolby Vision files → Re-encode and lose Dolby Vision**
+opts a library in.
+
+A **Track cleanup** library processes Dolby Vision files without that setting, because it copies the
+video stream unchanged. So does a remux clean-up, which copies the video too, unless its
+**HDR files** setting skips them. To clean the tracks of Dolby Vision files that a re-encode library
+skips, put them in a Track cleanup library.
+
+When the video is copied, verification adds a **Dolby Vision kept** check for a Dolby Vision
+original. The Dolby Vision information a player relies on is the stream's configuration record,
+which the container carries beside the video. The check compares the original's record with the
+output's: version, profile, level, the RPU, base-layer and enhancement-layer flags, and the
+base-layer compatibility. If the output has no record, any of them differs, or the original's record
+cannot be read, the check fails and the original is kept.
+
+FFmpeg keeps the record when it copies into Matroska (`.mkv`). As Optimisarr runs it, FFmpeg writes
+no record into MP4 or MOV, so a copy that would produce an `.mp4`, `.m4v` or `.mov` file is not
+started: the file is skipped with *Dolby Vision — copying it into an MP4 file would drop its Dolby
+Vision information*. This covers Track cleanup of an MP4 file and a remux into MP4. A remux into
+Matroska is still offered.
+
 ### Interlaced video
 
 A source that ffprobe reports as interlaced is **left untouched by default**, and the inventory says
@@ -838,7 +865,10 @@ file is skipped with a clear reason. Removing a track always rewrites the file �
 FFmpeg stream-copies every kept stream bit-identically into a new file, which then
 passes the usual verify-and-replace gates (including container, retained-language,
 and retained-audio-codec checks)
-before the original is touched.
+before the original is touched. Dolby Vision files are included without the re-encode library's
+Dolby Vision setting, because the video is copied unchanged, and the **Dolby Vision kept** check
+proves the copy still carries its Dolby Vision information. An `.mp4`, `.m4v` or `.mov` Dolby Vision
+file is skipped, because FFmpeg would drop that information there (see [Dolby Vision](#dolby-vision)).
 
 Because removing even a small track rewrites the whole file, a library can set a
 **Minimum saving** under **Libraries → Configure → Which files** (track cleanup and
