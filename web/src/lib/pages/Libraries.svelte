@@ -1408,7 +1408,8 @@
       deinterlaceVideo: form.deinterlaceVideo,
       noiseReduction: form.noiseReduction,
       // A cleared number input binds as null or ''; either means the encoder default.
-      keyframeIntervalSeconds: keyframeIntervalSet ? Number(form.keyframeIntervalSeconds) : null,
+      // A profile that never re-encodes has no keyframes to space; a hidden value is not sent.
+      keyframeIntervalSeconds: keyframeIntervalSet && !isNoEncodeProfile ? Number(form.keyframeIntervalSeconds) : null,
       superResolutionEnabled: form.superResolutionEnabled,
       superResolutionQualityCheck: form.superResolutionQualityCheck,
       superResolutionEngine: form.superResolutionEngine,
