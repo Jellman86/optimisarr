@@ -14,6 +14,7 @@ public static class VerificationEvaluator
 {
     public const string SourceVideoTimelineCheckName = "Source video timeline";
     public const string DolbyVisionKeptCheckName = "Dolby Vision kept";
+    public const string EmbeddedArtworkCheckName = "Embedded artwork";
     // Half a percent covers the rounding between a planned rate (59.94 / 2) and ffprobe's rational
     // for the same cadence (30000/1001), while staying far under the factor of two a missed
     // decimation would show.
@@ -124,6 +125,14 @@ public static class VerificationEvaluator
             if (input.RequirePixelShapeRetained)
             {
                 checks.Add(PixelShapePreserved(input));
+            }
+
+            // Cover art is part of the file, not decoration. FFmpeg can leave an MP4's covr out, or copy a
+            // Matroska cover in as an ordinary video track, without an error, and a super-resolution
+            // output carries only the upscaled picture (#598).
+            if (input.OriginalAttachedPictureCount > 0)
+            {
+                checks.Add(VideoArtworkPreserved(input));
             }
         }
 
@@ -829,6 +838,14 @@ public static class VerificationEvaluator
             ? Pass("Picture shape", $"Source and output pixels have the same shape ({original}).")
             : Fail("Picture shape", $"Source pixels have shape {original}; output pixels have {output}. "
                 + "The output would display squashed or stretched.");
+    }
+
+    private static VerificationCheck VideoArtworkPreserved(VerificationInput input)
+    {
+        return input.OutputAttachedPictureCount < input.OriginalAttachedPictureCount
+            ? Fail(EmbeddedArtworkCheckName, $"The original has {input.OriginalAttachedPictureCount} embedded cover picture(s); the output has "
+                + $"{input.OutputAttachedPictureCount}. The cover art was dropped or is no longer marked as cover art.")
+            : Pass(EmbeddedArtworkCheckName, $"Kept {input.OriginalAttachedPictureCount} embedded picture(s).");
     }
 
     private static VerificationCheck VideoStructurePreserved(VerificationInput input)

@@ -26,6 +26,10 @@ test('quality, sound and retained content outrank the size rule', () => {
   assert.equal(primaryFailureCause([fail('Size saving'), fail('Subtitle tracks')]), 'lost_content')
 })
 
+test('a video that dropped its cover art reads as lost content', () => {
+  assert.equal(primaryFailureCause([pass('Decode health'), fail('Embedded artwork')]), 'lost_content')
+})
+
 test('a copy that dropped Dolby Vision reads as lost content', () => {
   assert.equal(primaryFailureCause([pass('Decode health'), fail('Dolby Vision kept')]), 'lost_content')
 })

@@ -1540,6 +1540,9 @@
         updated: summary.updated,
         settling: summary.skippedUnsettled,
       })
+      if (summary.unavailableFolders?.length) {
+        message += ' ' + t(i18n.m.libraries.scan_unavailable, { folders: summary.unavailableFolders.join(', ') })
+      }
       await load()
       // A scan changes what's probed, so refresh the open library's candidate list too.
       if (editingId === library.id) await loadEditorCandidates(library.id)

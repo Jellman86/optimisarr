@@ -4,6 +4,7 @@ using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Scheduling;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -68,6 +69,33 @@ public sealed class MissingSourceDispatchTests(AdminTokenAuthEndpointTests.Token
         Assert.Equal(MissingSource.LibraryUnavailableMessage(library), job.ErrorMessage);
     }
 
+    [Fact]
+    public async Task A_nested_mount_outage_fails_without_counting_against_the_file()
+    {
+        var (jobId, attempt, library, source) = await StartAJobAsync(Path.Combine("share", "Show"));
+        await File.WriteAllBytesAsync(Path.Combine(library, "other show.mkv"), [1, 2, 3]);
+        Directory.Delete(Path.GetDirectoryName(source)!, recursive: true);
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = await db.MediaFiles.SingleAsync(file => file.Path == source);
+            media.FailureCount = AutoExclusionPolicy.DefaultFailureThreshold - 1;
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync(jobId, attempt);
+
+        var job = await ReadJobAsync(jobId);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Equal(FailureCategory.SourceMissing, job.FailureCategory);
+        Assert.Equal(MissingSource.LibraryUnavailableMessage(Path.Combine(library, "share")), job.ErrorMessage);
+        using var check = api.Services.CreateScope();
+        var read = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(AutoExclusionPolicy.DefaultFailureThreshold - 1,
+            (await read.MediaFiles.AsNoTracking().SingleAsync(file => file.Path == source)).FailureCount);
+        Assert.False(await read.Exclusions.AnyAsync(exclusion => exclusion.Path == source));
+    }
+
     private async Task RunAsync(int jobId, int attempt)
     {
         using var dispatcher = ActivatorUtilities.CreateInstance<QueueDispatcher>(api.Services);
@@ -82,7 +110,7 @@ public sealed class MissingSourceDispatchTests(AdminTokenAuthEndpointTests.Token
     }
 
     /// <summary>A queued episode the local dispatcher has just claimed, as it would be when it starts.</summary>
-    private async Task<(int JobId, int Attempt, string Library, string Source)> StartAJobAsync()
+    private async Task<(int JobId, int Attempt, string Library, string Source)> StartAJobAsync(string directory = "")
     {
         using var scope = api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -96,14 +124,15 @@ public sealed class MissingSourceDispatchTests(AdminTokenAuthEndpointTests.Token
         await db.SaveChangesAsync();
         _createdLibraries.Add(library.Id);
 
-        Directory.CreateDirectory(library.Path);
-        var source = Path.Combine(library.Path, "Episode WEBDL-720p.mkv");
+        var sourceDirectory = Path.Combine(library.Path, directory);
+        Directory.CreateDirectory(sourceDirectory);
+        var source = Path.Combine(sourceDirectory, "Episode WEBDL-720p.mkv");
         await File.WriteAllBytesAsync(source, [1, 2, 3, 4]);
         var file = new MediaFile
         {
             LibraryId = library.Id,
             Path = source,
-            RelativePath = Path.GetFileName(source),
+            RelativePath = Path.GetRelativePath(library.Path, source),
             SizeBytes = 4,
             MediaKind = MediaKind.Video,
             VideoCodec = "h264",

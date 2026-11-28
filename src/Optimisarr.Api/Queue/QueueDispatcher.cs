@@ -853,7 +853,8 @@ public sealed partial class QueueDispatcher(
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed while verifying a delivered candidate", jobId);
-            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt))
+            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt,
+                countFailure: ex is not LibraryUnavailableException))
                 await NotifyJobFailedAsync(jobId, ex.Message);
         }
         finally
@@ -1019,9 +1020,9 @@ public sealed partial class QueueDispatcher(
         {
             work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         }
-        catch (JobNoLongerEligibleException)
+        catch (Exception ex) when (ex is JobNoLongerEligibleException or LibraryUnavailableException)
         {
-            // The file went mid-search; the caller refuses the report rather than failing the request.
+            // The file disappeared or became unreachable mid-search; the caller refuses the report.
             return null;
         }
 
@@ -1337,7 +1338,8 @@ public sealed partial class QueueDispatcher(
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed", jobId);
-            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt))
+            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt,
+                countFailure: ex is not LibraryUnavailableException))
                 await NotifyJobFailedAsync(jobId, ex.Message);
         }
         finally
@@ -3254,6 +3256,9 @@ public sealed partial class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
+    private sealed class LibraryUnavailableException(string? folder)
+        : InvalidOperationException(MissingSource.LibraryUnavailableMessage(folder));
+
     /// <summary>
     /// A source a media manager upgraded, renamed or removed while its job waited ends the job as
     /// skipped, without a failure notification. A library folder that cannot be seen is an outage
@@ -3261,12 +3266,13 @@ public sealed partial class QueueDispatcher(
     /// </summary>
     private static void ThrowIfSourceMissing(string sourcePath, string? libraryRoot)
     {
-        switch (MissingSource.Inspect(sourcePath, libraryRoot))
+        var (verdict, unavailableFolder) = MissingSource.Inspect(sourcePath, libraryRoot);
+        switch (verdict)
         {
             case MissingSourceVerdict.Replaced:
                 throw new JobNoLongerEligibleException(MissingSource.SkipReason);
             case MissingSourceVerdict.LibraryUnavailable:
-                throw new InvalidOperationException(MissingSource.LibraryUnavailableMessage(libraryRoot));
+                throw new LibraryUnavailableException(unavailableFolder);
         }
     }
 
@@ -3675,7 +3681,8 @@ public sealed partial class QueueDispatcher(
         ImmediateAutoExclusionReason immediateAutoExclusion = ImmediateAutoExclusionReason.None,
         int? executionAttempt = null,
         bool discardStoppedOutput = false,
-        string? expectedOutputPath = null)
+        string? expectedOutputPath = null,
+        bool countFailure = true)
     {
         await _dbLock.WaitAsync(CancellationToken.None);
         try
@@ -3718,7 +3725,8 @@ public sealed partial class QueueDispatcher(
             else job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
-            await ApplyFailureTrackingAsync(db, job, status, immediateAutoExclusion);
+            if (status != JobStatus.Failed || countFailure)
+                await ApplyFailureTrackingAsync(db, job, status, immediateAutoExclusion);
             await db.SaveChangesAsync(CancellationToken.None);
             await write.CommitAsync();
             return true;

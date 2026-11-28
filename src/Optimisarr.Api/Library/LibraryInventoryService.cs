@@ -7,7 +7,10 @@ using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
-public sealed record ScanSummary(int Discovered, int Added, int Updated, int Removed, int SkippedUnsettled);
+public sealed record ScanSummary(int Discovered, int Added, int Updated, int Removed, int SkippedUnsettled)
+{
+    public IReadOnlyList<string> UnavailableFolders { get; init; } = [];
+}
 
 /// <summary>
 /// One writer at a time per library's inventory. A scan reads the library's rows, then adds what is new;
@@ -65,6 +68,7 @@ public sealed class LibraryInventoryService(
             .ToListAsync(cancellationToken);
 
         var total = new ScanSummary(0, 0, 0, 0, 0);
+        var unavailableFolders = new List<string>();
         foreach (var library in libraries)
         {
             var summary = await ScanAsync(library, cancellationToken);
@@ -74,18 +78,30 @@ public sealed class LibraryInventoryService(
                 total.Updated + summary.Updated,
                 total.Removed + summary.Removed,
                 total.SkippedUnsettled + summary.SkippedUnsettled);
+            unavailableFolders.AddRange(summary.UnavailableFolders);
         }
 
-        return total;
+        return total with { UnavailableFolders = unavailableFolders };
     }
 
     public async Task<ScanSummary> ScanAsync(Data.Library library, CancellationToken cancellationToken)
     {
         using var held = await _locks.AcquireAsync(library.Id, cancellationToken);
+        if (!CanList(library.Path)) return UnavailableRoot(library.Path);
+
         // Discover the file types this library's media type actually holds (audio for Music,
         // images for Photo, video for Film/TV, all for Other), not just video.
         var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(library.MediaType) };
-        var result = scanner.Scan(library.Path, options, DateTimeOffset.UtcNow);
+        LibraryScanResult result;
+        try
+        {
+            result = scanner.Scan(library.Path, options, DateTimeOffset.UtcNow);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            if (CanList(library.Path)) throw;
+            return UnavailableRoot(library.Path);
+        }
 
         var existingByPath = await db.MediaFiles
             .Where(file => file.LibraryId == library.Id)
@@ -108,12 +124,26 @@ public sealed class LibraryInventoryService(
             }
         }
 
-        var removed = await PruneVanishedFilesAsync(existingByPath, result.Files, library.Path, cancellationToken);
+        var unavailableFolders = new HashSet<string>(StringComparer.Ordinal);
+        var removed = 0;
+        if (CanList(library.Path))
+            removed = await PruneVanishedFilesAsync(existingByPath, result.Files, library.Path, unavailableFolders, cancellationToken);
+        else
+            unavailableFolders.Add(library.Path);
 
         await db.SaveChangesAsync(cancellationToken);
 
-        return new ScanSummary(result.Files.Count, added, updated, removed, result.SkippedUnsettled);
+        return new ScanSummary(result.Files.Count, added, updated, removed, result.SkippedUnsettled)
+        {
+            UnavailableFolders = [.. unavailableFolders.Order(StringComparer.Ordinal)]
+        };
     }
+
+    private static bool CanList(string path) =>
+        LibraryPathSafety.IsSafeDirectory(path) && MissingSource.InspectLibraryRoot(path) == LibraryRootState.Listed;
+
+    private static ScanSummary UnavailableRoot(string path) =>
+        new(0, 0, 0, 0, 0) { UnavailableFolders = [path] };
 
     /// <summary>
     /// Records one settled file exactly as a scan of <paramref name="library"/> would, so a file a manager
@@ -235,13 +265,13 @@ public sealed class LibraryInventoryService(
         IReadOnlyDictionary<string, MediaFile> existingByPath,
         IReadOnlyList<ScannedFile> scannedFiles,
         string libraryRoot,
+        HashSet<string> unavailableFolders,
         CancellationToken cancellationToken)
     {
         var scannedPaths = scannedFiles.Select(file => file.AbsolutePath).ToHashSet(StringComparer.Ordinal);
 
         var candidates = existingByPath.Values
-            .Where(file => !scannedPaths.Contains(file.Path)
-                && LibraryPathSafety.IsSafeToPruneMissingFile(file.Path, libraryRoot))
+            .Where(file => !scannedPaths.Contains(file.Path) && !File.Exists(file.Path))
             .ToList();
         if (candidates.Count == 0)
         {
@@ -254,7 +284,23 @@ public sealed class LibraryInventoryService(
             .Distinct()
             .ToHashSetAsync(cancellationToken);
 
-        var prunable = candidates.Where(file => !protectedIds.Contains(file.Id)).ToList();
+        // The share can disappear while the database is returning the history.
+        if (!CanList(libraryRoot))
+        {
+            unavailableFolders.Add(libraryRoot);
+            return 0;
+        }
+
+        var prunable = new List<MediaFile>();
+        foreach (var file in candidates)
+        {
+            if (!LibraryPathSafety.IsSafeToPruneMissingFile(file.Path, libraryRoot))
+                continue;
+            if (MissingSource.FindUnavailableParent(file.Path, libraryRoot) is { } unavailable)
+                unavailableFolders.Add(unavailable);
+            else if (!protectedIds.Contains(file.Id))
+                prunable.Add(file);
+        }
         if (prunable.Count == 0)
         {
             return 0;

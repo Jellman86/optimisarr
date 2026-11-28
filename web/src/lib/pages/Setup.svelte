@@ -64,7 +64,10 @@
   let formError = $state<string | null>(null)
   let savingLibrary = $state(false)
   let pickingFolder = $state(false)
-  type Scan = { state: 'scanning' | 'done' | 'failed'; found: number; error: string | null }
+  type Scan =
+    | { state: 'scanning' }
+    | { state: 'done'; found: number; notice: string | null }
+    | { state: 'failed'; error: string }
   let scans = $state<Record<number, Scan>>({})
 
   // Step 3.
@@ -382,19 +385,23 @@
   }
 
   async function scanLibrary(id: number) {
-    scans[id] = { state: 'scanning', found: 0, error: null }
+    scans[id] = { state: 'scanning' }
     try {
       const summary = await api.scanLibrary(id)
-      scans[id] = { state: 'done', found: summary.discovered, error: null }
+      const notice = summary.unavailableFolders?.length
+        ? t(i18n.m.libraries.scan_unavailable, { folders: summary.unavailableFolders.join(', ') })
+        : null
+      scans[id] = { state: 'done', found: summary.discovered, notice }
     } catch (err) {
-      scans[id] = { state: 'failed', found: 0, error: err instanceof Error ? err.message : i18n.m.setup.scan_error }
+      scans[id] = { state: 'failed', error: err instanceof Error ? err.message : i18n.m.setup.scan_error }
     }
   }
 
   function scanText(scan: Scan): string {
     if (scan.state === 'scanning') return w.scan_reading
-    if (scan.state === 'failed') return t(w.scan_failed, { error: scan.error ?? '' })
-    return scan.found === 0 ? w.scan_none : plural(scan.found, w.scan_found_one, w.scan_found_other, scan.found.toLocaleString())
+    if (scan.state === 'failed') return t(w.scan_failed, { error: scan.error })
+    const result = scan.found === 0 ? w.scan_none : plural(scan.found, w.scan_found_one, w.scan_found_other, scan.found.toLocaleString())
+    return scan.notice ? result + ' ' + scan.notice : result
   }
 
   async function loadApps() {

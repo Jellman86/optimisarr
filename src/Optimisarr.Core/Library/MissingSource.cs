@@ -1,6 +1,6 @@
 namespace Optimisarr.Core.Library;
 
-/// <summary>What a library's folder looked like when one of its queued files was found missing.</summary>
+/// <summary>Whether a library folder can show what it contains.</summary>
 public enum LibraryRootState
 {
     Missing,
@@ -28,17 +28,9 @@ public static class MissingSource
     public const string SkipReason =
         "The file is no longer there. A media manager may have upgraded or renamed it; the new file is picked up by the next scan or import.";
 
-    // An empty library counts as unavailable: an unmounted network share usually leaves its
-    // mount point behind as an empty folder, and a real library is never empty while it has a
-    // queued file in it.
-    public static MissingSourceVerdict Classify(bool sourceExists, LibraryRootState libraryRoot) =>
-        sourceExists ? MissingSourceVerdict.Present
-        : libraryRoot == LibraryRootState.Listed ? MissingSourceVerdict.Replaced
-        : MissingSourceVerdict.LibraryUnavailable;
-
     public static LibraryRootState InspectLibraryRoot(string? libraryRoot)
     {
-        if (string.IsNullOrWhiteSpace(libraryRoot) || !Directory.Exists(libraryRoot))
+        if (string.IsNullOrWhiteSpace(libraryRoot))
         {
             return LibraryRootState.Missing;
         }
@@ -48,16 +40,46 @@ public static class MissingSource
             using var entries = Directory.EnumerateFileSystemEntries(libraryRoot).GetEnumerator();
             return entries.MoveNext() ? LibraryRootState.Listed : LibraryRootState.Empty;
         }
+        catch (DirectoryNotFoundException)
+        {
+            return LibraryRootState.Missing;
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return LibraryRootState.Unreadable;
         }
     }
 
-    public static MissingSourceVerdict Inspect(string sourcePath, string? libraryRoot) =>
-        File.Exists(sourcePath)
-            ? MissingSourceVerdict.Present
-            : Classify(sourceExists: false, InspectLibraryRoot(libraryRoot));
+    public static (MissingSourceVerdict Verdict, string? UnavailableFolder) Inspect(string sourcePath, string? libraryRoot)
+    {
+        if (File.Exists(sourcePath)) return (MissingSourceVerdict.Present, null);
+        // An unmounted share can leave an empty mount point where a previously scanned file lived.
+        if (libraryRoot is null || !LibraryPathSafety.IsSafeDirectory(libraryRoot)
+            || InspectLibraryRoot(libraryRoot) != LibraryRootState.Listed)
+            return (MissingSourceVerdict.LibraryUnavailable, libraryRoot);
+
+        var folder = LibraryPathSafety.IsSafeToPruneMissingFile(sourcePath, libraryRoot)
+            ? FindUnavailableParent(sourcePath, libraryRoot)
+            : Path.GetDirectoryName(sourcePath) ?? libraryRoot;
+        return folder is null ? (MissingSourceVerdict.Replaced, null) : (MissingSourceVerdict.LibraryUnavailable, folder);
+    }
+
+    /// <summary>
+    /// Checks the first existing parent of a safely missing path below a root already known to list.
+    /// A missing season folder can sit below a mount point that still exists but is empty.
+    /// </summary>
+    public static string? FindUnavailableParent(string sourcePath, string libraryRoot)
+    {
+        for (var folder = Path.GetDirectoryName(sourcePath);
+            folder is not null && Path.GetRelativePath(libraryRoot, folder) != ".";
+            folder = Path.GetDirectoryName(folder))
+        {
+            var state = InspectLibraryRoot(folder);
+            if (state != LibraryRootState.Missing)
+                return state == LibraryRootState.Listed ? null : folder;
+        }
+        return null;
+    }
 
     public static string LibraryUnavailableMessage(string? libraryRoot) =>
         $"The library folder {libraryRoot ?? "(none recorded)"} is missing, empty or cannot be read, so this file could not be reached. "

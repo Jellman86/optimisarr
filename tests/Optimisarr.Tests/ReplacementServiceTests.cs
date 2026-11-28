@@ -1,6 +1,8 @@
+using System.Data.Common;
 using Optimisarr.Api.Deduplication;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
@@ -634,6 +636,229 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal("ALREADY-OPTIMISED-BMP", File.ReadAllText(occupied));
         Assert.Equal("NEW-FROM-TIF", File.ReadAllText(outputPath));   // verified output retained
         Assert.Empty(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    // --- An inventory row can already hold the path a replacement or rollback commits (#589) ---
+
+    [Fact]
+    public async Task Replace_defers_before_quarantine_when_another_inventory_row_records_the_destination()
+    {
+        // Movie.mkv vanished from disk, but its row still owns the destination until the next scan.
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var occupantId = await SeedInventoryRowAsync(Path.Combine(_dataDir, "Movie.mkv"), withHistory: true);
+
+        var result = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.False(result.Permanent);
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Equal("NEW", File.ReadAllText(outputPath));
+        Assert.False(File.Exists(Path.Combine(_dataDir, "Movie.mkv")));
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal(Path.Combine(_dataDir, "Movie.mkv"), (await db.MediaFiles.SingleAsync(f => f.Id == occupantId)).Path);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Replacement_of_a_video_with_known_cover_art_requires_passing_artwork_evidence(bool checkedArtwork)
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var job = await db.Jobs.Include(row => row.MediaFile).SingleAsync(row => row.Id == jobId);
+            job.MediaFile!.MediaKind = MediaKind.Video;
+            job.MediaFile.AttachedPictureCount = 1;
+            job.VerificationReportJson = checkedArtwork
+                ? """{"checks":[{"name":"Embedded artwork","outcome":"Passed","detail":"Kept a cover."}]}"""
+                : """{"checks":[{"name":"Decode health","outcome":"Passed","detail":"Decoded."}]}""";
+            await db.SaveChangesAsync();
+        }
+
+        var result = await ReplaceAsync(jobId);
+
+        if (checkedArtwork)
+        {
+            Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        }
+        else
+        {
+            Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+            Assert.True(result.FailureAlreadyRecorded);
+            Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+            Assert.Equal("NEW", File.ReadAllText(outputPath));
+            await using var db = new OptimisarrDbContext(_options);
+            Assert.Equal(JobStatus.Failed, (await db.Jobs.SingleAsync()).Status);
+            Assert.Empty(await db.Replacements.ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Replace_commits_when_a_scan_records_the_placed_output_before_the_replacement_does()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var finalPath = Path.Combine(_dataDir, "Movie.mkv");
+
+        var commands = new InventoryClaimCommands();
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>(_options).AddInterceptors(commands).Options;
+        await using var db = new OptimisarrDbContext(options);
+        var result = await NewService(db, moveFile: (source, destination) =>
+        {
+            var moved = FileMover.Move(source, destination);
+            if (destination == finalPath)
+                SeedInventoryRowAsync(finalPath, withHistory: false).GetAwaiter().GetResult();
+            return moved;
+        }).ReplaceAsync(jobId, CancellationToken.None);
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.Equal("NEW", File.ReadAllText(finalPath));
+        var row = await db.MediaFiles.SingleAsync();
+        Assert.Equal(finalPath, row.Path);
+        Assert.Equal(result.Replacement!.MediaFileId, row.Id);
+        Assert.NotNull(commands.HistoryLookup);
+        Assert.Same(commands.HistoryLookup, commands.DuplicateRemoval);
+    }
+
+    private sealed class InventoryClaimCommands : DbCommandInterceptor
+    {
+        public DbTransaction? HistoryLookup { get; private set; }
+        public DbTransaction? DuplicateRemoval { get; private set; }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("FROM \"DedupeActionFiles\"", StringComparison.Ordinal)
+                && command.CommandText.Contains("FROM \"MediaFiles\"", StringComparison.Ordinal))
+                HistoryLookup = command.Transaction;
+            if (command.CommandText.Contains("DELETE FROM \"MediaFiles\"", StringComparison.Ordinal))
+                DuplicateRemoval = command.Transaction;
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    [Fact]
+    public async Task Recovery_finalizes_a_replacement_whose_placed_output_a_scan_recorded_as_a_new_row()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var (quarantinePath, finalPath) = MoveAsIfCrashedBeforeCommit(originalPath, outputPath);
+        await SeedPendingReplacementAsync(jobId, originalPath, finalPath, quarantinePath);
+        await SeedInventoryRowAsync(finalPath, withHistory: false);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        Assert.Equal(ReplacementStatus.Replaced, (await db.Replacements.SingleAsync()).Status);
+        Assert.Equal("NEW", File.ReadAllText(finalPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(quarantinePath));
+        var row = await db.MediaFiles.SingleAsync();
+        Assert.Equal(finalPath, row.Path);
+        Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Recovery_restores_the_original_when_a_row_with_history_holds_the_destination()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var (quarantinePath, finalPath) = MoveAsIfCrashedBeforeCommit(originalPath, outputPath);
+        await SeedPendingReplacementAsync(jobId, originalPath, finalPath, quarantinePath);
+        var occupantId = await SeedInventoryRowAsync(finalPath, withHistory: true);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.False(File.Exists(quarantinePath));
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal(originalPath, (await db.MediaFiles.SingleAsync(f => f.Id != occupantId)).Path);
+        Assert.Equal(finalPath, (await db.MediaFiles.SingleAsync(f => f.Id == occupantId)).Path);
+    }
+
+    [Fact]
+    public async Task Recovery_keeps_starting_when_one_pending_record_cannot_be_committed()
+    {
+        var (firstOriginal, firstOutput) = WriteFiles("First.avi", "First.mkv", "ORIGINAL", "NEW");
+        var firstJob = await SeedReadyJobAsync(firstOriginal, firstOutput, verificationPassed: true);
+        var (firstQuarantine, firstFinal) = MoveAsIfCrashedBeforeCommit(firstOriginal, firstOutput);
+        await SeedPendingReplacementAsync(firstJob, firstOriginal, firstFinal, firstQuarantine);
+        var (secondOriginal, secondOutput) = WriteFiles("Second.avi", "Second.mkv", "ORIGINAL", "NEW");
+        var secondJob = await SeedReadyJobAsync(secondOriginal, secondOutput, verificationPassed: true);
+        var (secondQuarantine, secondFinal) = MoveAsIfCrashedBeforeCommit(secondOriginal, secondOutput);
+        await SeedPendingReplacementAsync(secondJob, secondOriginal, secondFinal, secondQuarantine);
+        await using (var command = _connection.CreateCommand())
+        {
+            command.CommandText = "CREATE TRIGGER refuse_first BEFORE UPDATE ON Replacements WHEN OLD.JobId = "
+                + firstJob + " BEGIN SELECT RAISE(ABORT, 'simulated commit failure'); END;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        await using var check = new OptimisarrDbContext(_options);
+        Assert.Equal(ReplacementStatus.Pending, (await check.Replacements.SingleAsync(r => r.JobId == firstJob)).Status);
+        Assert.Equal(ReplacementStatus.Replaced, (await check.Replacements.SingleAsync(r => r.JobId == secondJob)).Status);
+        Assert.Equal(firstOriginal, (await check.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == firstJob)).MediaFile!.Path);
+        Assert.Equal("ORIGINAL", File.ReadAllText(firstQuarantine));
+        Assert.Equal("NEW", File.ReadAllText(firstFinal));
+    }
+
+    [Fact]
+    public async Task Rollback_commits_when_a_scan_records_the_restored_original_before_the_rollback_does()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replacement = (await ReplaceAsync(jobId)).Replacement!;
+
+        var result = await RollbackAsync(replacement.Id, (source, destination) =>
+        {
+            var moved = FileMover.Move(source, destination);
+            if (destination == originalPath)
+                SeedInventoryRowAsync(originalPath, withHistory: false).GetAwaiter().GetResult();
+            return moved;
+        });
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        await using var db = new OptimisarrDbContext(_options);
+        var row = await db.MediaFiles.SingleAsync();
+        Assert.Equal(originalPath, row.Path);
+        Assert.Equal(replacement.MediaFileId, row.Id);
+    }
+
+    private (string QuarantinePath, string FinalPath) MoveAsIfCrashedBeforeCommit(string originalPath, string outputPath)
+    {
+        var quarantinePath = Path.Combine(_trashDir, "pending-" + Path.GetFileName(originalPath), Path.GetFileName(originalPath));
+        var finalPath = Path.Combine(_dataDir, Path.GetFileName(outputPath));
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantinePath)!);
+        File.Move(originalPath, quarantinePath);
+        File.Move(outputPath, finalPath);
+        return (quarantinePath, finalPath);
+    }
+
+    private async Task<int> SeedInventoryRowAsync(string path, bool withHistory)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var media = new MediaFile
+        {
+            Path = path,
+            RelativePath = Path.GetFileName(path),
+            SizeBytes = 1,
+            Status = MediaFileStatus.Discovered
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+        if (withHistory)
+        {
+            db.Jobs.Add(new Job { MediaFileId = media.Id, Status = JobStatus.Completed });
+            await db.SaveChangesAsync();
+        }
+        return media.Id;
     }
 
     [Fact]

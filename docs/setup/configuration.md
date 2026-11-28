@@ -564,6 +564,18 @@ started: the file is skipped with *Dolby Vision — copying it into an MP4 file 
 Vision information*. This covers Track cleanup of an MP4 file and a remux into MP4. A remux into
 Matroska is still offered.
 
+#### Cover art in video files
+
+A video whose original has embedded cover art, such as an MP4's `covr` picture or a Matroska cover
+attachment, gets an **Embedded artwork** check. It fails, and the original is kept, if the output
+has fewer pictures marked as cover art than the original. As Optimisarr runs FFmpeg today, cover art
+does not come through an encode: an MP4, M4V or MOV output leaves it out, a Matroska output copies it
+in as an ordinary one-picture video track, a super-resolution output carries only the upscaled
+picture, and AV1 NVENC encodes leave it out on purpose. Such a file now fails this check instead of
+losing its cover art. An MP4 output also stores the source's iTunes tags, such as the title,
+description, show and episode, as QuickTime keys. FFmpeg and media servers read their values, but
+Apple's apps and iTunes-style taggers may not ([#598](https://github.com/Jellman86/optimisarr/issues/598)).
+
 ### Interlaced video
 
 A source that ffprobe reports as interlaced is **left untouched by default**, and the inventory says

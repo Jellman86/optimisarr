@@ -472,6 +472,47 @@ public sealed class VerificationEvaluatorTests
         Assert.False(report.Passed);
     }
 
+    // An MP4 output written with use_metadata_tags, a Matroska output that copied the cover in as a
+    // video track, and every super-resolution output lost their cover art while every check passed (#598).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_video_output_that_drops_embedded_cover_art_fails(bool videoReencoded)
+    {
+        var input = Healthy() with
+        {
+            VideoReencoded = videoReencoded,
+            OutputVideoCodec = videoReencoded ? "hevc" : "h264",
+            OriginalAttachedPictureCount = 1,
+            OutputAttachedPictureCount = 0
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Embedded artwork"));
+        Assert.Contains("has 1 embedded cover picture(s); the output has 0", report.Checks.Single(c => c.Name == "Embedded artwork").Detail);
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void A_video_output_that_keeps_its_cover_art_passes_the_artwork_check()
+    {
+        var input = Healthy() with { OriginalAttachedPictureCount = 2, OutputAttachedPictureCount = 2 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Embedded artwork"));
+        Assert.True(report.Passed);
+    }
+
+    [Fact]
+    public void A_video_without_cover_art_gets_no_artwork_check()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Embedded artwork");
+    }
+
     [Fact]
     public void An_audio_output_that_loses_cover_art_fails()
     {

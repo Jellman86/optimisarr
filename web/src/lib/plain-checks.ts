@@ -35,6 +35,7 @@ const exact: Record<string, keyof Labels> = {
   'Audio codecs unchanged': 'audio_untouched',
   'Audio fidelity': 'audio_fidelity',
   'Audio metadata and artwork': 'audio_tags',
+  'Embedded artwork': 'artwork',
   'Container unchanged': 'container',
   'Image format': 'image_format',
   'EXIF metadata': 'photo_details',
