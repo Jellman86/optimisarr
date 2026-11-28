@@ -475,6 +475,17 @@ public sealed class ReplacementService
                 permanent: true);
         }
 
+        // The inventory holds one row per path. A row whose file vanished but whose history keeps it
+        // through every scan still owns its path, so landing a new file there could never be recorded.
+        if (!string.Equals(plan.FinalPath, media.Path, StringComparison.Ordinal)
+            && await IsInventoryPathOwnedByAnotherRecordAsync(media.Id, plan.FinalPath, cancellationToken))
+        {
+            return ReplacementActionResult.Failed(
+                $"Replacement would land on {plan.FinalPath}, which the inventory still records for another file with job or "
+                + "replacement history. The original was left untouched.",
+                permanent: true);
+        }
+
         // Replacement moves the original into quarantine and the optimised file into the
         // original's folder, so that folder must be writable by the container's user. Check up
         // front and fail with a clear, actionable message rather than a raw 500 mid-move — the
@@ -599,6 +610,9 @@ public sealed class ReplacementService
             {
                 throw new IOException("The replaced file is missing or its size does not match the verified output.");
             }
+
+            if (!await TryClaimInventoryPathAsync(media.Id, plan.FinalPath, cancellationToken))
+                throw new IOException($"The inventory already records another file with history at {plan.FinalPath}.");
         }
         catch (Exception ex)
         {
@@ -700,6 +714,14 @@ public sealed class ReplacementService
                     ? await RecoverPendingRollbackAsync(replacement, cancellationToken) ? 1 : 0
                     : await RecoverPendingReplacementAsync(replacement, cancellationToken) ? 1 : 0;
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Recovery runs before the host starts. One record it cannot commit must not stop the
+                // server from starting: its files stay where they are and the record stays pending.
+                DiscardUnsavedChanges();
+                _logger.LogError(ex, "Recovery of pending operation {ReplacementId} could not be committed", replacement.Id);
+                LogUnrecoverablePending(replacement);
+            }
             finally { _coordinator.End(replacement.JobId, replacement.MediaFileId); }
         }
 
@@ -757,6 +779,14 @@ public sealed class ReplacementService
                 [replacement.OriginalPath, replacement.FinalPath, RollbackStagingPath(replacement)], cancellationToken))
             return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
 
+        if (!string.Equals(replacement.OriginalPath, replacement.FinalPath, StringComparison.Ordinal)
+            && await IsInventoryPathOwnedByAnotherRecordAsync(replacement.MediaFileId, replacement.OriginalPath, cancellationToken))
+        {
+            return ReplacementActionResult.Failed(
+                $"Rollback would restore {replacement.OriginalPath}, which the inventory now records for another file with job or "
+                + "replacement history. Both files were left where they are.");
+        }
+
         replacement.Status = ReplacementStatus.RollbackPending;
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -794,6 +824,14 @@ public sealed class ReplacementService
 
             _logger.LogError(ex, "Rollback of replacement {ReplacementId} failed", replacementId);
             return ReplacementActionResult.Failed($"Rollback failed: {ex.Message}");
+        }
+
+        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.OriginalPath, cancellationToken))
+        {
+            LogUnrecoverablePending(replacement);
+            return ReplacementActionResult.Failed(
+                $"The original was restored, but the inventory now records another file at {replacement.OriginalPath}. "
+                + "The rollback stays pending until that is resolved.");
         }
 
         var media = await _db.MediaFiles.FirstOrDefaultAsync(f => f.Id == replacement.MediaFileId, cancellationToken);
@@ -921,8 +959,12 @@ public sealed class ReplacementService
             && await FileContentIdentity.MatchesAsync(replacement.FinalPath, replacement.OutputSha256, cancellationToken)
             && await FileContentIdentity.MatchesAsync(replacement.QuarantinePath, replacement.OriginalSha256, cancellationToken))
         {
-            await FinalizeRecoveredReplacementAsync(replacement, cancellationToken);
-            return true;
+            if (await TryFinalizeRecoveredReplacementAsync(replacement, cancellationToken))
+                return true;
+            // The finished replacement can never be recorded, so put the original back instead.
+            _logger.LogWarning(
+                "Pending replacement {ReplacementId} landed on {Final}, which the inventory records for another file; restoring the original",
+                replacement.Id, replacement.FinalPath);
         }
 
         if (quarantineExists)
@@ -964,7 +1006,8 @@ public sealed class ReplacementService
 
         if (!quarantineExists && FileHasLength(replacement.OriginalPath, replacement.OriginalSizeBytes))
         {
-            await FinalizeRecoveredRollbackAsync(replacement, cancellationToken);
+            if (!await TryFinalizeRecoveredRollbackAsync(replacement, cancellationToken))
+                return false;
             TryDeleteStagedOutput(stagedOutputPath);
             return true;
         }
@@ -1014,8 +1057,7 @@ public sealed class ReplacementService
                 replacement.QuarantinePath);
             if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256, replacement.MediaFileId))
             {
-                await FinalizeRecoveredRollbackAsync(replacement, cancellationToken);
-                return true;
+                return await TryFinalizeRecoveredRollbackAsync(replacement, cancellationToken);
             }
         }
 
@@ -1023,10 +1065,16 @@ public sealed class ReplacementService
         return false;
     }
 
-    private async Task FinalizeRecoveredRollbackAsync(
+    private async Task<bool> TryFinalizeRecoveredRollbackAsync(
         ReplacementEntity replacement,
         CancellationToken cancellationToken)
     {
+        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.OriginalPath, cancellationToken))
+        {
+            LogUnrecoverablePending(replacement);
+            return false;
+        }
+
         var media = await _db.MediaFiles
             .FirstOrDefaultAsync(file => file.Id == replacement.MediaFileId, cancellationToken);
         if (media is not null)
@@ -1046,12 +1094,16 @@ public sealed class ReplacementService
         _logger.LogWarning(
             "Finalized interrupted rollback {ReplacementId}; original was already restored",
             replacement.Id);
+        return true;
     }
 
-    private async Task FinalizeRecoveredReplacementAsync(
+    private async Task<bool> TryFinalizeRecoveredReplacementAsync(
         ReplacementEntity replacement,
         CancellationToken cancellationToken)
     {
+        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.FinalPath, cancellationToken))
+            return false;
+
         var media = await _db.MediaFiles
             .FirstOrDefaultAsync(file => file.Id == replacement.MediaFileId, cancellationToken);
         if (media is not null)
@@ -1077,6 +1129,7 @@ public sealed class ReplacementService
         _logger.LogWarning(
             "Finalized interrupted replacement {ReplacementId}; verified output was already in place",
             replacement.Id);
+        return true;
     }
 
     private void RestoreStagedOutput(string? stagedOutputPath, string finalPath)
@@ -1145,6 +1198,46 @@ public sealed class ReplacementService
                 replacement.OriginalPath,
                 replacement.Id);
             return false;
+        }
+    }
+
+    // A row with work or replacement history describes another file's record, which is never removed.
+    private Task<bool> IsInventoryPathOwnedByAnotherRecordAsync(int mediaFileId, string path, CancellationToken cancellationToken) =>
+        _db.MediaFiles.AsNoTracking().AnyAsync(file => file.Path == path && file.Id != mediaFileId
+            && (_db.Jobs.Any(job => job.MediaFileId == file.Id)
+                || _db.Replacements.Any(replacement => replacement.MediaFileId == file.Id)
+                || _db.DedupeActionFiles.Any(dedupe => dedupe.MediaFileId == file.Id)), cancellationToken);
+
+    /// <summary>
+    /// Makes <paramref name="path"/> free for this record's row to take. A scan or an import notification can
+    /// record the file this operation just placed as a new row before the operation commits; that row has no
+    /// history and describes the same file, so it is folded away in the same save. False when a row with
+    /// history holds the path, which this operation must not take from it.
+    /// </summary>
+    private async Task<bool> TryClaimInventoryPathAsync(int mediaFileId, string path, CancellationToken cancellationToken)
+    {
+        if (await IsInventoryPathOwnedByAnotherRecordAsync(mediaFileId, path, cancellationToken))
+            return false;
+        var duplicate = await _db.MediaFiles.FirstOrDefaultAsync(file => file.Path == path && file.Id != mediaFileId, cancellationToken);
+        if (duplicate is not null)
+            _db.MediaFiles.Remove(duplicate);
+        return true;
+    }
+
+    private void DiscardUnsavedChanges()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries().ToList())
+        {
+            switch (entry.State)
+            {
+                case EntityState.Added:
+                    entry.State = EntityState.Detached;
+                    break;
+                case EntityState.Modified or EntityState.Deleted:
+                    entry.CurrentValues.SetValues(entry.OriginalValues);
+                    entry.State = EntityState.Unchanged;
+                    break;
+            }
         }
     }
 
