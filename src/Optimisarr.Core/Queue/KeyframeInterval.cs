@@ -5,8 +5,8 @@ namespace Optimisarr.Core.Queue;
 /// setting means the same at 24 and 60 fps; each encode receives it as a frame count (<c>-g</c>),
 /// which every supported encoder family reads as its GOP length.
 ///
-/// <para>Only a ceiling is set. Scene cuts may still add keyframes, and the encoder keeps its own
-/// minimum, so nothing here can force a keyframe onto a frame the encoder would not choose.</para>
+/// <para>Only a ceiling is set, and the encoder keeps its own minimum. Most encoders still add
+/// keyframes at scene cuts; VideoToolbox places them only at the interval.</para>
 /// </summary>
 public static class KeyframeInterval
 {
@@ -30,6 +30,14 @@ public static class KeyframeInterval
     /// Workers refuse anything larger, and it fits every encoder's own field (QSV's is 16-bit).
     /// </summary>
     public const int MaximumFrames = MaximumSeconds * MaximumFrameRate;
+
+    /// <summary>
+    /// The GOP length a VideoToolbox encode receives when the library leaves the interval to the
+    /// encoder. FFmpeg gives VideoToolbox only its generic default of 12 frames, a keyframe about
+    /// twice a second, which made Mac output far larger at the same quality (#612). 250 is the
+    /// default x264 and x265 use and FFmpeg gives NVENC and AMF.
+    /// </summary>
+    public const int VideoToolboxDefaultFrames = 250;
 
     public static bool IsValidSeconds(int seconds) => seconds is >= MinimumSeconds and <= MaximumSeconds;
 

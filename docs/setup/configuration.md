@@ -622,7 +622,9 @@ these files usually come out smaller.
 **Keyframe interval** sets the longest gap between keyframes when a library re-encodes video. A
 keyframe is a point a player can seek or resume from. Find it under **Configure → Video →
 Encoder**. It is blank, the **Encoder default**, unless you set it, and the encoder then keeps its
-own interval, as every library did before.
+own interval, as every library did before. The exception is Apple VideoToolbox: FFmpeg would give it
+a keyframe every 12 frames, about two a second, which makes files much larger, so with the Encoder
+default a VideoToolbox encode puts keyframes 250 frames apart, the default the other encoders use.
 
 Set a whole number of seconds from 1 to 20. A longer interval makes the file slightly smaller, but
 seeking and resuming are slower, and a media server that cuts streams at keyframes makes longer
@@ -632,16 +634,19 @@ frames at 24 fps (23.976 fps included). With a frame-rate cap it is counted at t
 A variable-frame-rate file is counted at its average rate, so its keyframes are about that far
 apart. If a file's frame rate can't be read, that job keeps the encoder default.
 
-- The interval is a maximum. Scene cuts still add keyframes, and Optimisarr sets no minimum and
-  leaves scene-cut detection as it is.
+- The interval is a maximum. Optimisarr sets no minimum and leaves scene-cut detection as it is.
+  Most encoders still add a keyframe at a scene cut; VideoToolbox does not, and places keyframes
+  only at the interval.
 - Every supported encoder takes it as its GOP length (FFmpeg's `-g`): x264, x265, SVT-AV1, NVIDIA
-  NVENC, Intel Quick Sync, VA-API and Apple VideoToolbox.
+  NVENC, Intel Quick Sync, VA-API, AMD AMF and Apple VideoToolbox.
 - It applies only when the library re-encodes video. Remux and track cleanup copy the video, so its
   keyframes stay where they are.
 - Every result goes through the same checks. The keyframe spacing is not itself checked.
 - **Optimise this file…** and the library's overview say when it is set, and backups carry it.
 - Remote workers need protocol 15 for these jobs. An older worker is not offered them, and says it
-  needs an update; a library set to **Only on workers** waits for an updated worker.
+  needs an update; a library set to **Only on workers** waits for an updated worker. Because every
+  VideoToolbox encode now sets an interval, a Mac worker older than protocol 15 is not given
+  VideoToolbox work and encodes with its other encoders, if it has any.
 
 ### Assess re-encoded video soundtracks
 

@@ -1665,6 +1665,7 @@ public sealed class FfmpegCommandBuilderTests
     [InlineData("av1_qsv")]
     [InlineData("hevc_vaapi")]
     [InlineData("hevc_videotoolbox")]
+    [InlineData("h264_videotoolbox")]
     [InlineData("hevc_amf")]
     [InlineData("h264_amf")]
     public void A_keyframe_interval_reaches_every_encoder_family_as_its_gop_length(string encoder)
@@ -1676,13 +1677,53 @@ public sealed class FfmpegCommandBuilderTests
         Assert.True(args.IndexOf("-g") > args.IndexOf("-c:v:0"), "an output option of the re-encoded stream");
     }
 
-    [Fact]
-    public void The_encoder_default_sends_no_gop_length_and_no_minimum()
+    [Theory]
+    [InlineData("libx264")]
+    [InlineData("libx265")]
+    [InlineData("libsvtav1")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("hevc_amf")]
+    public void The_encoder_default_sends_no_gop_length_and_no_minimum(string encoder)
     {
-        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24));
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder);
 
         Assert.DoesNotContain("-g", args);
         Assert.DoesNotContain("-keyint_min", args);
+    }
+
+    [Theory]
+    [InlineData("hevc_videotoolbox")]
+    [InlineData("h264_videotoolbox")]
+    public void VideoToolbox_left_at_the_encoder_default_keeps_keyframes_250_frames_apart(string encoder)
+    {
+        // FFmpeg hands VideoToolbox its generic GOP of 12 frames, two keyframes a second, which
+        // made Mac output far larger than the other encoders' at the same quality (#612).
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder).ToList();
+
+        Assert.Equal("250", args[args.IndexOf("-g") + 1]);
+        Assert.Single(args, argument => argument == "-g");
+        Assert.DoesNotContain("-keyint_min", args);
+        Assert.True(args.IndexOf("-g") > args.IndexOf("-c:v:0"), "an output option of the re-encoded stream");
+    }
+
+    [Fact]
+    public void A_library_keyframe_interval_replaces_the_videotoolbox_default()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { KeyframeIntervalFrames = 48 }, videoEncoder: "hevc_videotoolbox").ToList();
+
+        Assert.Equal("48", args[args.IndexOf("-g") + 1]);
+        Assert.Single(args, argument => argument == "-g");
+    }
+
+    [Fact]
+    public void The_software_fallback_of_a_videotoolbox_encode_keeps_the_encoder_default()
+    {
+        // The default belongs to VideoToolbox; x265's own default is already long.
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc", crf: 24));
+
+        Assert.DoesNotContain("-g", args);
     }
 
     [Fact]
@@ -1698,4 +1739,8 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void A_remux_has_no_encoder_to_give_a_keyframe_interval() =>
         Assert.DoesNotContain("-g", FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { KeyframeIntervalFrames = 240 }));
+
+    [Fact]
+    public void A_remux_on_videotoolbox_has_no_encoder_to_give_a_keyframe_interval() =>
+        Assert.DoesNotContain("-g", FfmpegCommandBuilder.Build(Reencode(videoCodec: null), videoEncoder: "hevc_videotoolbox"));
 }

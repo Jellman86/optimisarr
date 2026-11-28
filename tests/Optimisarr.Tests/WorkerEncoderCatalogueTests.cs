@@ -159,6 +159,27 @@ public sealed class WorkerEncoderCatalogueTests
     }
 
     [Fact]
+    public void A_mac_worker_before_the_keyframe_interval_protocol_keeps_encoding_with_its_cpu_encoder()
+    {
+        // Every VideoToolbox encode now carries a GOP length (#612), which a sidecar before
+        // protocol 15 refuses as an unknown option.
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_videotoolbox"], WorkerProtocol.KeyframeIntervalVersion - 1);
+
+        Assert.Equal("libx265", selection.EncoderName);
+    }
+
+    [Fact]
+    public void A_videotoolbox_only_worker_before_the_keyframe_interval_protocol_is_not_offered_the_job() =>
+        Assert.False(WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["hevc_videotoolbox"], WorkerProtocol.KeyframeIntervalVersion - 1).Succeeded);
+
+    [Fact]
+    public void A_mac_worker_on_the_keyframe_interval_protocol_is_given_videotoolbox() =>
+        Assert.Equal("hevc_videotoolbox", WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_videotoolbox"], WorkerProtocol.KeyframeIntervalVersion).EncoderName);
+
+    [Fact]
     public void An_amd_av1_encoder_is_not_offered_because_its_quantiser_scale_is_not_the_quality_scale()
     {
         // av1_amf reads -qp_i/-qp_p as a 0-255 quantiser index, not the 0-51 scale Optimisarr's
