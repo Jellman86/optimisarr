@@ -266,6 +266,15 @@ internal static class WorkerLeaseEndpoints
 
             var capabilities = worker.ToCapabilities();
             var encoderMode = (await settings.GetQueueSettingsAsync(cancellationToken)).EncoderMode;
+            // The encoder catalogue drops VideoToolbox below protocol 15, so such a Mac would move to
+            // software without a word. Say it on the worker's card, once, until it updates.
+            if (capabilities.ProtocolVersion < WorkerProtocol.KeyframeIntervalVersion
+                && capabilities.VideoEncoders.Any(encoder => encoder.EndsWith("_videotoolbox", StringComparison.Ordinal))
+                && worker.LastProblem != WorkerProblems.OlderVideoToolbox)
+            {
+                WorkerProblems.Record(worker, WorkerProblems.OlderVideoToolbox, now);
+                await db.SaveChangesAsync(cancellationToken);
+            }
             // Super-resolution work never leaves this server; one read per claim poll is enough
             // to keep it that way for every candidate below.
             var superResolutionEngineEnabled =

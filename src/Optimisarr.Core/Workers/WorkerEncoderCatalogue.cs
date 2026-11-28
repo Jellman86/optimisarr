@@ -41,8 +41,10 @@ public static class WorkerEncoderCatalogue
 
     /// <summary>
     /// Chooses a worker's encoder from the names it advertised, under the queue's mode. Sidecars
-    /// already advertised proved AMF encoders before they accepted AMF's quality options, so a
-    /// worker on an older protocol is chosen for as if it had none and keeps its other encoders.
+    /// already advertised proved AMF encoders before they accepted AMF's quality options, and
+    /// VideoToolbox encoders before they accepted the GOP length every VideoToolbox encode now
+    /// carries, so a worker on an older protocol is chosen for as if it had none of them and keeps
+    /// its other encoders.
     /// </summary>
     public static EncoderSelection Select(
         string targetCodec,
@@ -56,11 +58,14 @@ public static class WorkerEncoderCatalogue
             ModeForWorker(queueMode),
             Describe(advertised)
                 .Where(encoder => encoder.Mode != AmdAmf || protocolVersion >= WorkerProtocol.AmfConstantQualityVersion)
+                .Where(encoder => encoder.Mode != VideoToolbox || protocolVersion >= WorkerProtocol.KeyframeIntervalVersion)
                 .ToList(),
             sourceBitDepth,
             avoidIntelQsv);
 
     private const string AmdAmf = "AMD AMF";
+
+    private const string VideoToolbox = "VideoToolbox";
 
     // The mode strings are the ones the local hardware probe reports, so the selector's preference
     // order applies unchanged to a remote worker.
@@ -72,7 +77,7 @@ public static class WorkerEncoderCatalogue
         // quality number is on, so only the H.264 and HEVC encoders are taught.
         : name is "h264_amf" or "hevc_amf" ? AmdAmf
         : name.EndsWith("_vaapi", StringComparison.Ordinal) ? "VAAPI"
-        : name.EndsWith("_videotoolbox", StringComparison.Ordinal) ? "VideoToolbox"
+        : name.EndsWith("_videotoolbox", StringComparison.Ordinal) ? VideoToolbox
         : null;
 
     private static string? Codec(string name) => name switch

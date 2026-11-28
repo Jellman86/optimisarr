@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make Mac-encoded video much smaller at the same quality setting (#612). With **Keyframe interval** left at **Encoder default**, Apple VideoToolbox put a keyframe every 12 frames, about two a second, because FFmpeg gives it no default of its own. It now puts them 250 frames apart, in line with FFmpeg's defaults for NVIDIA and AMD. On a 1080p test clip that made the file about 38% smaller for under one VMAF point. A library's own keyframe interval still wins, and other encoders are unchanged. Adaptive VMAF libraries adjust by themselves, because their test encodes use the same spacing, and every result still goes through the same checks. The docs now say that VideoToolbox puts keyframes only at the interval, not at scene cuts. A Mac worker older than protocol 15 is no longer given VideoToolbox work and uses its other encoders instead; its card says it needs an update. The keyframe help in the library settings says the same in every language. Remote-worker protocol is unchanged. No migration.
+
 - Name the account that owns a refused Windows work folder (#611). When the Windows worker won't use its work folder because an ordinary account owns it, the message now names that account, such as `PICARD\scott (S-1-5-21-…-1001)`, instead of giving only its security ID. The ID is still shown alone if Windows can't name the account. The message is also logged once at start-up instead of twice in different words. Which folders are trusted is unchanged. No migration.
 
 ## 0.2.27 - 2026-11-27

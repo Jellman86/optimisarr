@@ -95,6 +95,18 @@ public sealed class AdaptiveSearchPlannerTests
     }
 
     [Fact]
+    public void A_videotoolbox_sample_left_at_the_encoder_default_uses_the_final_encode_s_250_frame_gop()
+    {
+        // Calibrating on VideoToolbox's 12-frame default and encoding with 250 would pick a
+        // quality for a file that is never made.
+        foreach (var sample in Plan()!.SampleCommands)
+        {
+            var command = sample.ToList();
+            Assert.Equal("250", command[command.IndexOf("-g") + 1]);
+        }
+    }
+
+    [Fact]
     public void Each_window_is_encoded_as_a_clip_of_video_alone()
     {
         var step = Plan();
