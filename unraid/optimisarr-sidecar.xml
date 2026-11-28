@@ -1,22 +1,22 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Optimisarr Sidecar</Name>
-  <Repository>ghcr.io/gnolnos/optimisarr-sidecar:dev</Repository>
-  <Registry>https://github.com/gnolnos/optimisarr/pkgs/container/optimisarr-sidecar</Registry>
+  <Repository>ghcr.io/Jellman86/optimisarr-sidecar:latest</Repository>
+  <Registry>https://github.com/Jellman86/optimisarr/pkgs/container/optimisarr-sidecar</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/gnolnos/optimisarr/issues</Support>
-  <Project>https://github.com/gnolnos/optimisarr</Project>
+  <Support>https://github.com/Jellman86/optimisarr/issues</Support>
+  <Project>https://github.com/Jellman86/optimisarr</Project>
   <Overview>Remote encoding and verification worker (sidecar) that pairs with an Optimisarr server. Runs video encoding and requested verification on a separate Linux x86-64 host: the worker downloads job copies to its own scratch space, so it needs no media-library mount. Only encoders and decoders that pass real hardware probes are advertised (CPU, Intel QSV/VA-API via /dev/dri; NVIDIA needs the host's GPU runtime). Pair it once from the main server under Settings → Remote workers → Pair a sidecar. The worker dashboard listens on port 8788.&#13;&#13;Keep /config persistent (it holds the private pairing credential) and give /work enough disposable scratch for at least twice the largest source you process. The worker image is separate from the main Optimisarr server image.</Overview>
   <Category>MediaApp:Video Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8788]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/gnolnos/optimisarr/main/unraid/optimisarr-sidecar.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/gnolnos/optimisarr/main/web/public/favicon-192.png</Icon>
-  <ReadMe>https://github.com/gnolnos/optimisarr/blob/main/docs/setup/linux-sidecar.md</ReadMe>
-  <License>https://github.com/gnolnos/optimisarr/blob/main/LICENSE</License>
-  <Screenshot>https://raw.githubusercontent.com/gnolnos/optimisarr/main/docs/images/optimisarr-sidecar-linux-pairing-dark.png</Screenshot>
+  <TemplateURL>https://raw.githubusercontent.com/Jellman86/optimisarr/main/unraid/optimisarr-sidecar.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jellman86/optimisarr/main/web/public/favicon-192.png</Icon>
+  <ReadMe>https://github.com/Jellman86/optimisarr/blob/main/docs/setup/linux-sidecar.md</ReadMe>
+  <License>https://github.com/Jellman86/optimisarr/blob/main/LICENSE</License>
+  <Screenshot>https://raw.githubusercontent.com/Jellman86/optimisarr/main/docs/images/optimisarr-sidecar-linux-pairing-dark.png</Screenshot>
   <ExtraSearchTerms>optimisarr sidecar worker remote encode ffmpeg qsv vaapi nvenc transcoding verification</ExtraSearchTerms>
   <Description>Optimisarr Sidecar is the distributed worker for an Optimisarr server. On a Linux x86-64 host with Docker and enough working storage, it downloads job copies to its own scratch space, runs the configured FFmpeg encoders and verification (progress, speed, VMAF, retained streams, timing and quality gates), then returns the candidate to the server for policy checks and replacement. No media-library mount is needed because the server keeps scheduling, transfers, quarantine and rollback authority.&#13;&#13;The image includes Jellyfin FFmpeg, the Intel iHD driver and oneVPL runtime. Only encoders and decoders that pass real probes are advertised; map /dev/dri for Intel QSV/VA-API or AMD VA-API (targets /dev/dri/renderD128), add NVIDIA through the host GPU runtime and --runtime=nvidia, or run CPU-only by leaving the device unmapped. The dashboard on port 8788 is used to pair with the main server once (Settings → Remote workers → Pair a sidecar) and to watch live work; it has no login, so keep it on a trusted network. Worker traffic to the server is outbound HTTP(S) and the server never calls back to port 8788, so that port can be omitted for a headless worker. Keep /config persistent (it stores the private pairing credential; protect its backups) and provide /work with scratch space for at least twice the largest source size. Each worker needs its own config and scratch; do not scale replicas against the same volumes.</Description>
   <Config Name="Worker WebUI Port" Target="8788" Default="8788" Mode="tcp" Description="Host port mapped to the worker dashboard + pairing page (container listens on 8788)." Type="Port" Display="always" Required="true" Mask="false">8788</Config>
