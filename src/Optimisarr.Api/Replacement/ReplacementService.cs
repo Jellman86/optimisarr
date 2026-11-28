@@ -9,6 +9,7 @@ using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.IO;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Replacement;
 using Optimisarr.Data;
 using ReplacementEntity = Optimisarr.Data.Replacement;
@@ -248,22 +249,16 @@ public sealed class ReplacementService
         }
     }
 
-    private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, bool automatic, CancellationToken token)
+    private async Task<ReplacementActionResult> RecordVerificationRefusalAsync(
+        Job job, string checkName, string message, bool countFailure, CancellationToken token)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         { Converters = { new JsonStringEnumConverter() } };
-        var check = new VerificationCheck("File identity", CheckOutcome.Failed, message);
-        var report = new VerificationReport([check]);
-        if (job.VerificationReportJson is { } json)
-        {
-            try
-            {
-                var previous = JsonSerializer.Deserialize<VerificationReport>(json, options);
-                if (previous is not null && previous.HasValidStructure())
-                    report = previous with { Checks = [.. previous.Checks, check] };
-            }
-            catch (JsonException) { } // The new identity refusal is valid evidence on its own.
-        }
+        var check = new VerificationCheck(checkName, CheckOutcome.Failed, message);
+        var previous = BelowTargetEligibility.ReadReport(job.VerificationReportJson);
+        var report = previous?.HasValidStructure() == true
+            ? previous with { Checks = [.. previous.Checks, check] }
+            : new VerificationReport([check]);
         var reportJson = JsonSerializer.Serialize(report, options);
         var now = DateTimeOffset.UtcNow;
         // Make manual refusal retryable too. A concurrent cancel or newer attempt must not be
@@ -284,9 +279,9 @@ public sealed class ReplacementService
                 .SetProperty(row => row.UpdatedAt, now), token);
         await _db.Entry(job).ReloadAsync(token);
         if (written == 0)
-            return ReplacementActionResult.Invalid("The job changed during the identity check. No replacement was made.");
+            return ReplacementActionResult.Invalid("The job changed during the replacement check. No replacement was made.");
         await DiagnosticEventCapture.AppendJobTransitionAsync(_db, job, JobStatus.ReadyToReplace, now, token);
-        if (automatic) await QueueDispatcher.ApplyFailureTrackingAsync(_db, job, JobStatus.Failed);
+        if (countFailure) await QueueDispatcher.ApplyFailureTrackingAsync(_db, job, JobStatus.Failed);
         await _db.SaveChangesAsync(token);
         await write.CommitAsync(token);
         return ReplacementActionResult.Failed(message, permanent: true, failureAlreadyRecorded: true);
@@ -480,10 +475,9 @@ public sealed class ReplacementService
         if (!string.Equals(plan.FinalPath, media.Path, StringComparison.Ordinal)
             && await IsInventoryPathOwnedByAnotherRecordAsync(media.Id, plan.FinalPath, cancellationToken))
         {
-            return ReplacementActionResult.Failed(
+            return ReplacementActionResult.Deferred(
                 $"Replacement would land on {plan.FinalPath}, which the inventory still records for another file with job or "
-                + "replacement history. The original was left untouched.",
-                permanent: true);
+                + "replacement history. The verified output is ready when that path is released.");
         }
 
         // Replacement moves the original into quarantine and the optimised file into the
@@ -523,7 +517,7 @@ public sealed class ReplacementService
             return ReplacementActionResult.Invalid("This output has no verified file identity, so it cannot be accepted. Try the file again.");
 
         if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
-            return await RefuseIdentityAsync(job,
+            return await RecordVerificationRefusalAsync(job, "File identity",
                 "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", automatic, cancellationToken);
 
         await using var sourceGuard = FileContentIdentity.OpenGuard(media.Path);
@@ -532,8 +526,18 @@ public sealed class ReplacementService
             || !await FileContentIdentity.MatchesAsync(job.WorkOutputPath, job.VerifiedOutputSha256, cancellationToken))
             return request.AcceptsBelowTarget
                 ? await RefuseChangedBelowTargetAsync(job, cancellationToken)
-                : await RefuseIdentityAsync(job,
+                : await RecordVerificationRefusalAsync(job, "File identity",
                 "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", automatic, cancellationToken);
+
+        if (media.MediaKind == MediaKind.Video && media.AttachedPictureCount > 0
+            && !HasVerifiedEmbeddedArtwork(job.VerificationReportJson))
+        {
+            const string reason = "This output has no verification of the original's embedded cover art. Retry the job to check the artwork before replacing.";
+            return request.AcceptsBelowTarget
+                ? ReplacementActionResult.Invalid(reason)
+                : await RecordVerificationRefusalAsync(job, VerificationEvaluator.EmbeddedArtworkCheckName,
+                    reason, countFailure: false, cancellationToken);
+        }
 
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;
@@ -582,6 +586,7 @@ public sealed class ReplacementService
         await _db.SaveChangesAsync(cancellationToken);
         await intent.CommitAsync(cancellationToken);
 
+        DiagnosticWriteScope finalization;
         try
         {
             if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
@@ -611,8 +616,8 @@ public sealed class ReplacementService
                 throw new IOException("The replaced file is missing or its size does not match the verified output.");
             }
 
-            if (!await TryClaimInventoryPathAsync(media.Id, plan.FinalPath, cancellationToken))
-                throw new IOException($"The inventory already records another file with history at {plan.FinalPath}.");
+            finalization = await TryBeginInventoryClaimAsync(media.Id, plan.FinalPath, cancellationToken)
+                ?? throw new IOException($"The inventory already records another file with history at {plan.FinalPath}.");
         }
         catch (Exception ex)
         {
@@ -637,20 +642,20 @@ public sealed class ReplacementService
             return ReplacementActionResult.Failed($"Replacement failed and {recovery}: {ex.Message}");
         }
 
-        replacement.Status = ReplacementStatus.Replaced;
+        await using (finalization)
+        {
+            replacement.Status = ReplacementStatus.Replaced;
+            media.Path = plan.FinalPath;
+            media.SizeBytes = outputSize;
+            media.UpdatedAt = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.Completed;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+            ClearFailureOnceAccepted(job);
 
-        media.Path = plan.FinalPath;
-        media.SizeBytes = outputSize;
-        media.UpdatedAt = DateTimeOffset.UtcNow;
-
-        job.Status = JobStatus.Completed;
-        job.UpdatedAt = DateTimeOffset.UtcNow;
-        ClearFailureOnceAccepted(job);
-
-        // Accrue the durable lifetime savings tally in the same transaction as the replacement,
-        // so the Dashboard headline reflects this file and survives later row/history changes.
-        await _lifetime.ApplyReplacementAsync(originalSize, outputSize, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+            // Accrue the lifetime savings in the same write as the replacement.
+            await _lifetime.ApplyReplacementAsync(originalSize, outputSize, cancellationToken);
+            await CommitInventoryClaimAsync(finalization, cancellationToken);
+        }
 
         // The verified output moved out of /work into the original's place; tidy the now-empty
         // per-media-file scratch directory it came from.
@@ -826,7 +831,9 @@ public sealed class ReplacementService
             return ReplacementActionResult.Failed($"Rollback failed: {ex.Message}");
         }
 
-        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.OriginalPath, cancellationToken))
+        await using var finalization = await TryBeginInventoryClaimAsync(
+            replacement.MediaFileId, replacement.OriginalPath, cancellationToken);
+        if (finalization is null)
         {
             LogUnrecoverablePending(replacement);
             return ReplacementActionResult.Failed(
@@ -848,7 +855,7 @@ public sealed class ReplacementService
         // The original is back in place, so this replacement saved nothing: reverse its
         // contribution to the lifetime tally in the same transaction.
         await _lifetime.ApplyRollbackAsync(replacement.OriginalSizeBytes, replacement.NewSizeBytes, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+        await CommitInventoryClaimAsync(finalization, cancellationToken);
         TryDeleteStagedOutput(stagedOutputPath);
 
         if (media is not null)
@@ -1069,7 +1076,9 @@ public sealed class ReplacementService
         ReplacementEntity replacement,
         CancellationToken cancellationToken)
     {
-        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.OriginalPath, cancellationToken))
+        await using var finalization = await TryBeginInventoryClaimAsync(
+            replacement.MediaFileId, replacement.OriginalPath, cancellationToken);
+        if (finalization is null)
         {
             LogUnrecoverablePending(replacement);
             return false;
@@ -1090,7 +1099,7 @@ public sealed class ReplacementService
             replacement.OriginalSizeBytes,
             replacement.NewSizeBytes,
             cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+        await CommitInventoryClaimAsync(finalization, cancellationToken);
         _logger.LogWarning(
             "Finalized interrupted rollback {ReplacementId}; original was already restored",
             replacement.Id);
@@ -1101,7 +1110,9 @@ public sealed class ReplacementService
         ReplacementEntity replacement,
         CancellationToken cancellationToken)
     {
-        if (!await TryClaimInventoryPathAsync(replacement.MediaFileId, replacement.FinalPath, cancellationToken))
+        await using var finalization = await TryBeginInventoryClaimAsync(
+            replacement.MediaFileId, replacement.FinalPath, cancellationToken);
+        if (finalization is null)
             return false;
 
         var media = await _db.MediaFiles
@@ -1125,7 +1136,7 @@ public sealed class ReplacementService
             replacement.OriginalSizeBytes,
             replacement.NewSizeBytes,
             cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+        await CommitInventoryClaimAsync(finalization, cancellationToken);
         _logger.LogWarning(
             "Finalized interrupted replacement {ReplacementId}; verified output was already in place",
             replacement.Id);
@@ -1208,20 +1219,48 @@ public sealed class ReplacementService
                 || _db.Replacements.Any(replacement => replacement.MediaFileId == file.Id)
                 || _db.DedupeActionFiles.Any(dedupe => dedupe.MediaFileId == file.Id)), cancellationToken);
 
-    /// <summary>
-    /// Makes <paramref name="path"/> free for this record's row to take. A scan or an import notification can
-    /// record the file this operation just placed as a new row before the operation commits; that row has no
-    /// history and describes the same file, so it is folded away in the same save. False when a row with
-    /// history holds the path, which this operation must not take from it.
-    /// </summary>
-    private async Task<bool> TryClaimInventoryPathAsync(int mediaFileId, string path, CancellationToken cancellationToken)
+    private static bool HasVerifiedEmbeddedArtwork(string? reportJson)
     {
-        if (await IsInventoryPathOwnedByAnotherRecordAsync(mediaFileId, path, cancellationToken))
-            return false;
-        var duplicate = await _db.MediaFiles.FirstOrDefaultAsync(file => file.Path == path && file.Id != mediaFileId, cancellationToken);
-        if (duplicate is not null)
-            _db.MediaFiles.Remove(duplicate);
-        return true;
+        var report = BelowTargetEligibility.ReadReport(reportJson);
+        return report?.HasValidStructure() == true && report.Checks.Any(check =>
+            check.Name == VerificationEvaluator.EmbeddedArtworkCheckName && check.Outcome == CheckOutcome.Passed);
+    }
+
+    /// <summary>
+    /// Reserves a write while the caller takes over the path of a history-free row recorded by a scan.
+    /// Holding the reservation across the history check and save prevents a new job from being attached
+    /// to the duplicate just before it is removed. A row with history keeps its ownership.
+    /// </summary>
+    private async Task<DiagnosticWriteScope?> TryBeginInventoryClaimAsync(
+        int mediaFileId, string path, CancellationToken cancellationToken)
+    {
+        var write = await _db.BeginDiagnosticWriteAsync(cancellationToken);
+        try
+        {
+            if (!await IsInventoryPathOwnedByAnotherRecordAsync(mediaFileId, path, cancellationToken))
+            {
+                var duplicate = await _db.MediaFiles.FirstOrDefaultAsync(
+                    file => file.Path == path && file.Id != mediaFileId, cancellationToken);
+                if (duplicate is not null)
+                    _db.MediaFiles.Remove(duplicate);
+                return write;
+            }
+        }
+        catch
+        {
+            await write.DisposeAsync();
+            throw;
+        }
+
+        await write.DisposeAsync();
+        return null;
+    }
+
+    private async Task CommitInventoryClaimAsync(DiagnosticWriteScope write, CancellationToken cancellationToken)
+    {
+        await _db.SaveChangesAsync(acceptAllChangesOnSuccess: false, cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        _db.ChangeTracker.AcceptAllChanges();
     }
 
     private void DiscardUnsavedChanges()

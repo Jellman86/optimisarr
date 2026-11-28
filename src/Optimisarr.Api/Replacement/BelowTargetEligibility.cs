@@ -43,7 +43,7 @@ public static class BelowTargetEligibility
         _ => "Only a job whose sole failed check is the picture-quality score can be accepted below target."
     };
 
-    private static VerificationReport? ReadReport(string? json)
+    internal static VerificationReport? ReadReport(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try { return JsonSerializer.Deserialize<VerificationReport>(json, ReportJson); }
