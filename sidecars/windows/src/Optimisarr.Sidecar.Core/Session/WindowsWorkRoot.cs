@@ -280,7 +280,10 @@ public sealed class WindowsWorkRoot : IDisposable
     {
         if (!_volumeHasAccessControl) return new(true, VolumeHasAccessControl: false);
         var (owner, access) = WindowsFileApi.ReadAccess(root);
-        return new(true, Owner: owner, Access: access, Entries: withEntries ? Entries(root) : null);
+        // Named only when it will be refused for its owner: this runs before every check-in, and a
+        // name lookup can wait on a domain controller.
+        var ownerName = WorkAccess.IsTrusted(owner) ? null : WindowsFileApi.AccountName(owner);
+        return new(true, Owner: owner, Access: access, Entries: withEntries ? Entries(root) : null, OwnerName: ownerName);
     }
 
     /// <summary>

@@ -112,7 +112,9 @@ public static class Program
                 report: status => Log(logger, status),
                 reportJob: line => logger.LogInformation("{Line}", line),
                 monitor: services.GetRequiredService<WorkerMonitor>(),
-                warn: warn);
+                warn: warn,
+                // Named by the start-up line just below: logged there once, not again at the first check-in.
+                reportedWorkFolderProblem: _workRoot?.Problem);
             var (line, sound) = DescribeScratchLocationAtStart();
             logger.Log(sound ? LogLevel.Information : LogLevel.Warning, "{Line}", line);
             return session;
@@ -402,6 +404,8 @@ public static class Program
     /// <param name="location">Where work goes, or why it cannot go anywhere.</param>
     /// <param name="workFolderProblem">The work folder's check, repeated before every check-in and
     /// job: null while it is sound. Its first refusal is logged, as is its recovery.</param>
+    /// <param name="reportedWorkFolderProblem">The refusal the start-up line already reports, so the
+    /// first check does not log it a second time. A different refusal, or a recovery, still is.</param>
     internal static SidecarSession Build(
         WorkLocationChoice location,
         Func<string?> workFolderProblem,
@@ -410,7 +414,8 @@ public static class Program
         Action<string>? reportJob = null,
         WorkerMonitor? monitor = null,
         Action<string>? warn = null,
-        BuildSeams? seams = null)
+        BuildSeams? seams = null,
+        string? reportedWorkFolderProblem = null)
     {
         warn ??= Console.Error.WriteLine;
         var prober = new CapabilityProber(new ProcessCommandRunner());
@@ -424,7 +429,7 @@ public static class Program
             warn(concurrencyProblem);
         }
 
-        string? lastProblem = null;
+        var lastProblem = reportedWorkFolderProblem;
         var gate = new Lock();
         string? WorkFolderProblem()
         {
@@ -433,7 +438,7 @@ public static class Program
             {
                 if (problem != lastProblem)
                 {
-                    if (problem is not null) warn($"Work folder {scratch} cannot be used: {problem} No jobs are taken until it is corrected.");
+                    if (problem is not null) warn(WorkLocation.Describe(location, memoryBacked: null, problem));
                     else if (lastProblem is not null) reportJob?.Invoke($"Work folder {scratch} is usable again.");
                     lastProblem = problem;
                 }
