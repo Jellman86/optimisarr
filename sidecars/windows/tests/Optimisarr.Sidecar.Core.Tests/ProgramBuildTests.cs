@@ -147,6 +147,23 @@ public sealed class ProgramBuildTests : IDisposable
     }
 
     [Fact]
+    public async Task A_work_folder_that_recovers_after_the_start_up_refusal_says_so_and_a_new_refusal_is_logged()
+    {
+        var server = new Server();
+        var usable = new WorkLocationChoice(_scratch, WorkLocationSource.Default, null);
+        var warnings = new List<string>();
+        var lines = new List<string>();
+        var problems = new Queue<string?>(["Owned by somebody else.", null, "Owned by somebody else."]);
+        string? Next() => problems.Count > 1 ? problems.Dequeue() : problems.Peek();
+
+        await Run(Program.Build(usable, workFolderProblem: Next, out _, reportJob: lines.Add, warn: warnings.Add,
+            seams: Seams(server, beats: 4), reportedWorkFolderProblem: "Owned by somebody else."));
+
+        Assert.Single(lines, line => line.EndsWith("is usable again.", StringComparison.Ordinal));
+        Assert.Single(warnings, line => line.Contains("Owned by somebody else.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_usable_work_folder_offers_its_slots_and_asks_for_work()
     {
         // The control for the two above: without it they could pass because nothing ever claims.
