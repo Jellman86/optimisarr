@@ -940,6 +940,12 @@ public sealed partial class QueueDispatcher(
             // which leaves it to be searched and encoded here.
             return null;
         }
+        catch (JobNoLongerEligibleException)
+        {
+            // The file went while the worker was searching, for example a media manager's upgrade.
+            // The caller refuses the report, and the next dispatch skips the job with its reason.
+            return null;
+        }
 
         // A deinterlaced or denoised job stays here, so a search already out on a worker stops rather than
         // measure samples against a reference the worker cannot filter the same way.
@@ -1008,7 +1014,17 @@ public sealed partial class QueueDispatcher(
     {
         // Use the same encoder placement that planned the sample commands. A worker may support
         // HEVC even when this server has no local HEVC encoder, and quality scales differ.
-        var work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (JobNoLongerEligibleException)
+        {
+            // The file went mid-search; the caller refuses the report rather than failing the request.
+            return null;
+        }
+
         return work is { VideoQuality: { } quality }
             ? (work.Value.VerificationPolicy, quality.Effective, work.Value.BypassSizePreflight)
             : null;
@@ -3131,7 +3147,7 @@ public sealed partial class QueueDispatcher(
         {
             work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         }
-        catch (InvalidOperationException)
+        catch (Exception error) when (error is InvalidOperationException or JobNoLongerEligibleException)
         {
             return null;
         }

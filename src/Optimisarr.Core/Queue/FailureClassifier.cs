@@ -54,7 +54,8 @@ public static class FailureClassifier
             return FailureCategory.ReplacementCollision;
         }
 
-        if (Has("no longer exists") || Has("missing from the work directory") || Has("No such file"))
+        if (Has("no longer exists") || Has("missing from the work directory") || Has("No such file")
+            || Has("could not be reached"))
         {
             return FailureCategory.SourceMissing;
         }

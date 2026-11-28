@@ -14,6 +14,7 @@ public sealed class FailureClassifierTests
     [InlineData("Replacement would collide with an existing file at /data/x.mp4", FailureCategory.ReplacementCollision)]
     [InlineData("The verified output is missing from the work directory.", FailureCategory.SourceMissing)]
     [InlineData("The original file no longer exists: /data/x.mkv", FailureCategory.SourceMissing)]
+    [InlineData("The library folder /data/tv is missing, empty or cannot be read, so this file could not be reached. Check that its drive or network share is mounted, then retry.", FailureCategory.SourceMissing)]
     [InlineData("Invalid encoder effort 'very slow'. Choose encoder default.", FailureCategory.InvalidConfiguration)]
     [InlineData("Encoder effort 'efficient' cannot be resolved for encoder 'future'.", FailureCategory.InvalidConfiguration)]
     [InlineData("ffmpeg exited with code 1: something unrecognised", FailureCategory.Other)]

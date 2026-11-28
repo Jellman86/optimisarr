@@ -2268,6 +2268,24 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_search_whose_file_a_media_manager_replaced_is_refused_not_an_error()
+    {
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Replaced mid-search", 97);
+        var source = await SourcePathOf(jobId);
+        File.Delete(source);
+        await File.WriteAllBytesAsync(Path.Combine(Path.GetDirectoryName(source)!, "film 1080p.mkv"), SourceBytes);
+
+        using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        {
+            quality,
+            encodedBytes = 30_000_000L,
+            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, report.StatusCode);
+    }
+
+    [Fact]
     public async Task A_worker_sample_that_misses_vmaf_and_cannot_fit_ends_the_search_at_once()
     {
         // The fixed source spent 100 MB per window on its picture. These samples are 100%, 110%
