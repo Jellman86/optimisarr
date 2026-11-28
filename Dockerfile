@@ -71,7 +71,7 @@ RUN bash scripts/build_image_quality.sh /image-build /image-install
 # Real-CUGAN super-resolution engine (experimental, off by default). The official x86-64 release
 # is pinned by checksum and verified before extraction; it carries the binary and its three model
 # sets. Other architectures get no engine, which the settings report as not installed.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS realcugan-fetch
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS realcugan-fetch
 ARG TARGETARCH
 ARG REALCUGAN_VERSION=20220728
 ARG REALCUGAN_SHA256=d745174bd04c0232c89d935b74799311008fda06bea4195f61be5f0f3cc087cb
@@ -92,7 +92,7 @@ RUN mkdir -p /opt/realcugan /licenses \
 
 # Real-ESRGAN super-resolution engine, for the live action Real-CUGAN is not trained for. Pinned and
 # verified the same way. The release carries no licence file; docker/licenses/realesrgan has them.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS realesrgan-fetch
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS realesrgan-fetch
 ARG TARGETARCH
 ARG REALESRGAN_RELEASE=v0.2.5.0
 ARG REALESRGAN_BUILD=20220424
@@ -110,7 +110,7 @@ RUN mkdir -p /opt/realesrgan \
         && chmod 0555 /opt/realesrgan/realesrgan-ncnn-vulkan; \
     fi
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS media-runtime
 WORKDIR /app
 
 # jellyfin-ffmpeg drives transcoding and hardware detection. It supplies NVENC and, crucially, the
