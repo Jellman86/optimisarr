@@ -624,7 +624,9 @@ keyframe is a point a player can seek or resume from. Find it under **Configure 
 Encoder**. It is blank, the **Encoder default**, unless you set it, and the encoder then keeps its
 own interval, as every library did before. The exception is Apple VideoToolbox: FFmpeg would give it
 a keyframe every 12 frames, about two a second, which makes files much larger, so with the Encoder
-default a VideoToolbox encode puts keyframes 250 frames apart, the default the other encoders use.
+default a VideoToolbox encode puts keyframes 250 frames apart, in line with FFmpeg's defaults for
+x264, x265, NVIDIA and AMD. A Mac worker needs protocol 15 for this, so an older one is given only its
+other encoders, and its card says it needs an update.
 
 Set a whole number of seconds from 1 to 20. A longer interval makes the file slightly smaller, but
 seeking and resuming are slower, and a media server that cuts streams at keyframes makes longer

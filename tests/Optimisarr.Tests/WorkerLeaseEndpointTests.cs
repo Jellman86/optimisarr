@@ -1006,6 +1006,37 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_mac_worker_before_protocol_15_is_told_videotoolbox_needs_an_update()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Older Mac", 1, ["libx265", "hevc_videotoolbox"], [],
+            operatingSystem: "macos", protocolMaximum: 14);
+        await QueueAJob(placement: WorkPlacement.WorkerOnly);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        using var check = _api.Services.CreateScope();
+        var workerId = await WorkerIdNamed("Older Mac");
+        var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
+        Assert.Equal(Optimisarr.Api.Workers.WorkerProblems.OlderVideoToolbox, savedWorker.LastProblem);
+    }
+
+    [Fact]
+    public async Task A_current_mac_worker_is_not_told_videotoolbox_needs_an_update()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Current Mac", 1, ["libx265", "hevc_videotoolbox"], [], operatingSystem: "macos");
+        await QueueAJob(placement: WorkPlacement.WorkerOnly);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        using var check = _api.Services.CreateScope();
+        var workerId = await WorkerIdNamed("Current Mac");
+        var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
+        Assert.NotEqual(Optimisarr.Api.Workers.WorkerProblems.OlderVideoToolbox, savedWorker.LastProblem);
+    }
+
+    [Fact]
     public async Task A_current_worker_receives_the_keyframe_interval_in_frames_of_the_source_rate()
     {
         await EnableRemoteWorkers();

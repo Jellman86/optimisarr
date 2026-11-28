@@ -12,6 +12,13 @@ internal static class WorkerProblems
 {
     public const int MaxLength = 512;
 
+    /// <summary>
+    /// A Mac sidecar before protocol 15 refuses the GOP length every VideoToolbox encode now carries,
+    /// so it is offered only its other encoders. Said on its card, or it moves to software quietly.
+    /// </summary>
+    public const string OlderVideoToolbox =
+        "VideoToolbox encoding needs an updated sidecar (protocol 15). Until then this worker uses its other encoders.";
+
     public static void Record(Worker worker, string message, DateTimeOffset nowUtc)
     {
         worker.LastProblem = message.Length > MaxLength ? message[..MaxLength] : message;
