@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Optimisarr Sidecar</Name>
+  <Repository>ghcr.io/gnolnos/optimisarr-sidecar:dev</Repository>
+  <Registry>https://github.com/gnolnos/optimisarr/pkgs/container/optimisarr-sidecar</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/gnolnos/optimisarr/issues</Support>
+  <Project>https://github.com/gnolnos/optimisarr</Project>
+  <Overview>Remote encoding and verification worker (sidecar) that pairs with an Optimisarr server. Runs video encoding and requested verification on a separate Linux x86-64 host: the worker downloads job copies to its own scratch space, so it needs no media-library mount. Only encoders and decoders that pass real hardware probes are advertised (CPU, Intel QSV/VA-API via /dev/dri; NVIDIA needs the host's GPU runtime). Pair it once from the main server under Settings → Remote workers → Pair a sidecar. The worker dashboard listens on port 8788.&#13;&#13;Keep /config persistent (it holds the private pairing credential) and give /work enough disposable scratch for at least twice the largest source you process. The worker image is separate from the main Optimisarr server image.</Overview>
+  <Category>MediaApp:Video Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:8788]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/gnolnos/optimisarr/main/unraid/optimisarr-sidecar.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/gnolnos/optimisarr/main/web/public/favicon-192.png</Icon>
+  <ReadMe>https://github.com/gnolnos/optimisarr/blob/main/docs/setup/linux-sidecar.md</ReadMe>
+  <License>https://github.com/gnolnos/optimisarr/blob/main/LICENSE</License>
+  <Screenshot>https://raw.githubusercontent.com/gnolnos/optimisarr/main/docs/images/optimisarr-sidecar-linux-pairing-dark.png</Screenshot>
+  <ExtraSearchTerms>optimisarr sidecar worker remote encode ffmpeg qsv vaapi nvenc transcoding verification</ExtraSearchTerms>
+  <Description>Optimisarr Sidecar is the distributed worker for an Optimisarr server. On a Linux x86-64 host with Docker and enough working storage, it downloads job copies to its own scratch space, runs the configured FFmpeg encoders and verification (progress, speed, VMAF, retained streams, timing and quality gates), then returns the candidate to the server for policy checks and replacement. No media-library mount is needed because the server keeps scheduling, transfers, quarantine and rollback authority.&#13;&#13;The image includes Jellyfin FFmpeg, the Intel iHD driver and oneVPL runtime. Only encoders and decoders that pass real probes are advertised; map /dev/dri for Intel QSV/VA-API or AMD VA-API (targets /dev/dri/renderD128), add NVIDIA through the host GPU runtime and --runtime=nvidia, or run CPU-only by leaving the device unmapped. The dashboard on port 8788 is used to pair with the main server once (Settings → Remote workers → Pair a sidecar) and to watch live work; it has no login, so keep it on a trusted network. Worker traffic to the server is outbound HTTP(S) and the server never calls back to port 8788, so that port can be omitted for a headless worker. Keep /config persistent (it stores the private pairing credential; protect its backups) and provide /work with scratch space for at least twice the largest source size. Each worker needs its own config and scratch; do not scale replicas against the same volumes.</Description>
+  <Config Name="Worker WebUI Port" Target="8788" Default="8788" Mode="tcp" Description="Host port mapped to the worker dashboard + pairing page (container listens on 8788)." Type="Port" Display="always" Required="true" Mask="false">8788</Config>
+  <Config Name="Config directory" Target="/config" Default="/mnt/user/appdata/optimisarr-sidecar" Mode="rw" Description="Persistent private state: the pairing credential and transient health state. Keep it. Protect backups." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/optimisarr-sidecar</Config>
+  <Config Name="Work directory (scratch)" Target="/work" Default="/mnt/user/appdata/optimisarr-sidecar/work" Mode="rw" Description="Disposable job storage; needs at least twice the largest source free. Use a fast disk, or remove this mount and add a /work tmpfs via Extra Parameters for RAM scratch." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/optimisarr-sidecar/work</Config>
+  <Config Name="Worker name" Target="OPTIMISARR_WORKER_NAME" Default="Linux worker" Mode="" Description="How this worker appears on the main server." Type="Variable" Display="always" Required="false" Mask="false">Linux worker</Config>
+  <Config Name="Concurrency" Target="OPTIMISARR_CONCURRENCY" Default="1" Mode="" Description="Concurrent jobs (1–4). Budget CPU, GPU and scratch for every slot." Type="Variable" Display="always" Required="false" Mask="false">1</Config>
+  <Config Name="Server URL" Target="OPTIMISARR_SERVER" Default="" Mode="" Description="Optional HTTP(S) address of the main Optimisarr server, reachable from inside this container (not localhost). Locks browser pairing to that server." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Pairing code" Target="OPTIMISARR_PAIRING_CODE" Default="" Mode="" Description="Optional one-time pairing code from the server's 'Pair a sidecar' (expires in 5 minutes). Requires Server URL. Prefer pairing via the dashboard or a mounted secret." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Encoder restriction" Target="OPTIMISARR_ENCODER" Default="" Mode="" Description="Optional: restrict to one proven FFmpeg encoder name (e.g. hevc_qsv). Leave blank to advertise every encoder that passes its real probe." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Timezone (TZ)" Target="TZ" Default="Asia/Ho_Chi_Minh" Mode="" Description="Container timezone." Type="Variable" Display="always" Required="false" Mask="false">Asia/Ho_Chi_Minh</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the worker runs as after dropping privileges (Unraid 'nobody' is 99)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the worker runs as (Unraid 'users' is 100)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="077" Mode="" Description="Permissions mask for files the worker creates." Type="Variable" Display="advanced" Required="false" Mask="false">077</Config>
+  <Config Name="Intel/AMD GPU (/dev/dri)" Target="/dev/dri" Default="/dev/dri" Mode="" Description="Optional. Map the render node for Intel QSV/VA-API or AMD VA-API hardware encoding (targets /dev/dri/renderD128). Remove if the host has no /dev/dri; only proved encoders are advertised. For NVIDIA NVENC add the host GPU runtime via Extra Parameters instead." Type="Device" Display="advanced" Required="false" Mask="false">/dev/dri</Config>
+</Container>
