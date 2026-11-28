@@ -25,6 +25,16 @@ public sealed class WindowsWorkRootTests : IDisposable
         return outside;
     }
 
+    [WindowsFact]
+    public void An_owner_is_named_by_account_when_windows_knows_it_and_left_unnamed_when_it_does_not()
+    {
+        // The name is localised, so only its DOMAIN\name shape is checked.
+        Assert.Contains('\\', WindowsFileApi.AccountName(WorkAccess.LocalSystem));
+        Assert.Null(WindowsFileApi.AccountName("S-1-5-21-1-2-3-999999"));
+        Assert.Null(WindowsFileApi.AccountName("not a security id"));
+        Assert.Null(WindowsFileApi.AccountName(null));
+    }
+
     [WindowsElevatedFact]
     public void A_missing_work_folder_is_created_for_system_and_administrators_only()
     {

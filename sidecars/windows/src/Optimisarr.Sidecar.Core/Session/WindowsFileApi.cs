@@ -170,7 +170,28 @@ internal static class WindowsFileApi
     {
         if (!HasAccessControl(handle)) return null;
         var (owner, access) = ReadAccess(handle);
-        return WorkAccess.AdoptionProblem(path, owner, access, CurrentUser);
+        // Named only when it will be refused for its owner: a name lookup can wait on a domain controller.
+        var ownerName = WorkAccess.IsTrusted(owner, CurrentUser) ? null : AccountName(owner);
+        return WorkAccess.AdoptionProblem(path, owner, access, CurrentUser, ownerName);
+    }
+
+    /// <summary>
+    /// The account a SID names, as <c>DOMAIN\name</c>, for messages; null when Windows cannot name
+    /// it, as for an account since deleted or a domain it cannot reach.
+    /// </summary>
+    public static string? AccountName(string? sid)
+    {
+        if (sid is null) return null;
+        try
+        {
+            return new SecurityIdentifier(sid).Translate(typeof(NTAccount)).Value;
+        }
+        catch (SystemException)
+        {
+            // IdentityNotMappedException for an unknown account; ArgumentException for text that
+            // is not a SID; and the lookup's own failures. The SID alone is still shown.
+            return null;
+        }
     }
 
     public static WindowsFileIdentity Identify(SafeFileHandle handle)

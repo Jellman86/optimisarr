@@ -106,6 +106,47 @@ public sealed class ProgramBuildTests : IDisposable
     }
 
     [Fact]
+    public async Task A_work_folder_refusal_is_logged_once_in_the_start_up_lines_words()
+    {
+        var server = new Server();
+        var usable = new WorkLocationChoice(_scratch, WorkLocationSource.Default, null);
+        var warnings = new List<string>();
+
+        await Run(Program.Build(usable, workFolderProblem: () => "Owned by somebody else.", out _, warn: warnings.Add,
+            seams: Seams(server, beats: 3)));
+
+        Assert.Equal([WorkLocation.Describe(usable, memoryBacked: null, workFolderProblem: "Owned by somebody else.")],
+            warnings.Where(line => line.Contains("Owned by somebody else.", StringComparison.Ordinal)));
+        Assert.EndsWith("This worker takes no jobs until it is corrected.", warnings.Single());
+    }
+
+    [Fact]
+    public async Task A_work_folder_refusal_the_start_up_line_already_reported_is_not_logged_again()
+    {
+        var server = new Server();
+        var usable = new WorkLocationChoice(_scratch, WorkLocationSource.Default, null);
+        var warnings = new List<string>();
+
+        await Run(Program.Build(usable, workFolderProblem: () => "Owned by somebody else.", out _, warn: warnings.Add,
+            seams: Seams(server, beats: 3), reportedWorkFolderProblem: "Owned by somebody else."));
+
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public async Task A_work_folder_refusal_that_differs_from_the_start_up_one_is_still_logged()
+    {
+        var server = new Server();
+        var usable = new WorkLocationChoice(_scratch, WorkLocationSource.Default, null);
+        var warnings = new List<string>();
+
+        await Run(Program.Build(usable, workFolderProblem: () => "It became a junction.", out _, warn: warnings.Add,
+            seams: Seams(server), reportedWorkFolderProblem: "Owned by somebody else."));
+
+        Assert.Contains(warnings, line => line.Contains("It became a junction.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_usable_work_folder_offers_its_slots_and_asks_for_work()
     {
         // The control for the two above: without it they could pass because nothing ever claims.
