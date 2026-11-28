@@ -346,6 +346,43 @@ public sealed class WorkRootTests
             JobFolderPolicy.Decide(@"R:\w\job-5", new(false, true, Owner: null, VolumeHasAccessControl: false)).Action);
     }
 
+    private const string Scott = "S-1-5-21-1-2-3-1001";
+
+    [Fact]
+    public void A_refusal_names_the_owning_account_with_its_security_id_in_brackets()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: Scott, OwnerName: @"PICARD\scott", Access: AdminOnly), false);
+
+        Assert.Equal(WorkRootAction.Refuse, verdict.Action);
+        Assert.Contains($@"{Root} is owned by PICARD\scott ({Scott}), not SYSTEM or Administrators", verdict.Problem);
+    }
+
+    [Fact]
+    public void A_refusal_names_the_owner_by_security_id_alone_when_windows_cannot_name_the_account()
+    {
+        var verdict = WorkRootPolicy.Decide(Root, new(true, Owner: Scott, OwnerName: null, Access: AdminOnly), false);
+
+        Assert.Contains($"{Root} is owned by {Scott}, not SYSTEM or Administrators", verdict.Problem);
+    }
+
+    [Fact]
+    public void The_owners_account_name_never_decides_whether_the_folder_is_trusted()
+    {
+        // The name is for the message only: trust is decided by the security ID alone.
+        Assert.Equal(WorkRootAction.Refuse,
+            WorkRootPolicy.Decide(Root, new(true, Owner: Scott, OwnerName: @"BUILTIN\Administrators", Access: AdminOnly), false).Action);
+        Assert.Equal(WorkRootAction.Use,
+            WorkRootPolicy.Decide(Root, new(true, Owner: Administrators, OwnerName: @"PICARD\scott", Access: AdminOnly), false).Action);
+    }
+
+    [Fact]
+    public void Something_the_service_will_not_adopt_names_its_owning_account()
+    {
+        Assert.Contains($@"is owned by PICARD\scott ({Scott}), not SYSTEM",
+            WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", Scott, AdminOnly, self: null, ownerName: @"PICARD\scott"));
+        Assert.Null(WorkAccess.AdoptionProblem(@"D:\w\.optimisarr-native", System, AdminOnly, self: null, ownerName: @"PICARD\scott"));
+    }
+
     [Fact]
     public void Something_the_service_adopts_must_be_owned_and_changeable_only_by_trusted_accounts()
     {
