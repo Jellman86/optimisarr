@@ -510,7 +510,7 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
-        AppendKeyframeInterval(args, spec);
+        AppendKeyframeInterval(args, encoder!, spec);
 
         // Advanced encoder options, resolved for this exact encoder. A family with no equivalent
         // contributes nothing here, so an Auto-mode library that lands on QSV simply encodes as it
@@ -986,12 +986,15 @@ public static class FfmpegCommandBuilder
 
     /// <summary>
     /// The GOP length, as <c>-g</c>, which libx264, libx265, SVT-AV1, NVENC, QSV, VA-API,
-    /// VideoToolbox and AMD AMF each read as their maximum keyframe distance. No minimum and no scene-cut
-    /// option go with it, so each encoder keeps adding keyframes at cuts as it always has.
+    /// VideoToolbox and AMD AMF each read as their maximum keyframe distance. No minimum and no
+    /// scene-cut option go with it, so each encoder handles cuts as it always has: most add a
+    /// keyframe there, VideoToolbox does not and places them only at the interval. With the
+    /// encoder default, VideoToolbox alone still receives a length, because FFmpeg would give it 12
+    /// frames (see <see cref="KeyframeInterval.VideoToolboxDefaultFrames"/>).
     /// </summary>
-    internal static void AppendKeyframeInterval(List<string> args, TranscodeSpec spec)
+    internal static void AppendKeyframeInterval(List<string> args, string encoder, TranscodeSpec spec)
     {
-        if (spec.KeyframeIntervalFrames is not { } frames)
+        if ((spec.KeyframeIntervalFrames ?? EncoderDefaultFrames(encoder)) is not { } frames)
         {
             return;
         }
@@ -1004,6 +1007,9 @@ public static class FfmpegCommandBuilder
         args.Add("-g");
         args.Add(frames.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
+
+    private static int? EncoderDefaultFrames(string encoder) =>
+        FamilyOf(encoder) == EncoderFamily.VideoToolbox ? KeyframeInterval.VideoToolboxDefaultFrames : null;
 
     // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;
     // the hardware encoders each name constant quality differently and reject -crf.

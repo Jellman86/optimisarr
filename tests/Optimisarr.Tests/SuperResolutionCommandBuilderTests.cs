@@ -308,4 +308,12 @@ public sealed class SuperResolutionCommandBuilderTests
     [Fact]
     public void An_upscale_without_a_keyframe_interval_keeps_the_encoder_default() =>
         Assert.DoesNotContain("-g", Encoder(Spec()));
+
+    [Fact]
+    public void An_upscale_on_videotoolbox_without_a_keyframe_interval_keeps_keyframes_250_frames_apart()
+    {
+        var args = SuperResolutionCommandBuilder.BuildEncoder(Spec(), "hevc_videotoolbox", 25, 4, "optimisarr-1", 0, 8, Hd);
+
+        Assert.Equal("250", After(args, "-g"));
+    }
 }

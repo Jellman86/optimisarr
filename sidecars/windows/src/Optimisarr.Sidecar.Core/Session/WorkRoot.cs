@@ -52,15 +52,29 @@ public static class WorkAccess
     public static IReadOnlyList<AccessEntry> OrEveryone(IReadOnlyList<AccessEntry>? access) => access ?? [new(Everyone, 0x1F01FF)];
 
     /// <summary>
+    /// An owner as a message names it: the account with its SID in brackets, since few people
+    /// recognise their own account's SID, or the SID alone when Windows could not name it.
+    /// </summary>
+    /// <param name="name">The account, as <c>DOMAIN\name</c>, for the message only: trust is
+    /// decided by the SID, never by a name.</param>
+    public static string DescribeOwner(string? sid, string? name) => sid switch
+    {
+        null => "an unknown account",
+        _ when string.IsNullOrWhiteSpace(name) => sid,
+        _ => $"{name} ({sid})",
+    };
+
+    /// <summary>
     /// Why something already on disk must not be used as it stands, or null when it may. Anything
     /// the service opens again by name, rather than creating fresh, has to be owned and changeable
     /// only by accounts it trusts: otherwise its owner could swap what is inside for a link.
     /// </summary>
-    public static string? AdoptionProblem(string path, string? owner, IReadOnlyList<AccessEntry>? access, string? self)
+    /// <param name="ownerName">The owner's account name, for the message: see <see cref="DescribeOwner"/>.</param>
+    public static string? AdoptionProblem(string path, string? owner, IReadOnlyList<AccessEntry>? access, string? self, string? ownerName = null)
     {
         if (!IsTrusted(owner, self))
         {
-            return $"{path} is owned by {owner ?? "an unknown account"}, not SYSTEM or Administrators, so it was not used.";
+            return $"{path} is owned by {DescribeOwner(owner, ownerName)}, not SYSTEM or Administrators, so it was not used.";
         }
 
         var writers = UntrustedWriters(OrEveryone(access), self);
@@ -78,6 +92,8 @@ public sealed record WorkRootEntry(string Name, bool IsLink, string? Owner, IRea
 /// <summary>What the work folder looks like, as read through handles that do not follow links.</summary>
 /// <param name="LinkedComponent">The first folder on the path, the work folder included, that is
 /// a junction, symbolic link or mounted folder; null when there is none.</param>
+/// <param name="Owner">The folder's owner, as a SID string: what trust is decided by.</param>
+/// <param name="OwnerName">The owner's account name, read only to name it in a refusal.</param>
 /// <param name="Access">The folder's access list; null when it has none, which Windows reads as
 /// full access for everyone.</param>
 /// <param name="Entries">What is directly inside it; null when that was not read, as on the cheap
@@ -88,7 +104,8 @@ public sealed record WorkRootFacts(
     bool VolumeHasAccessControl = true,
     string? Owner = null,
     IReadOnlyList<AccessEntry>? Access = null,
-    IReadOnlyList<WorkRootEntry>? Entries = null);
+    IReadOnlyList<WorkRootEntry>? Entries = null,
+    string? OwnerName = null);
 
 public enum WorkRootAction
 {
@@ -183,7 +200,7 @@ public static partial class WorkRootPolicy
 
         if (!WorkAccess.IsTrusted(facts.Owner))
         {
-            return Refuse($"{root} is owned by {facts.Owner ?? "an unknown account"}, not SYSTEM or Administrators, so it was not trusted. {Fix(root)}");
+            return Refuse($"{root} is owned by {WorkAccess.DescribeOwner(facts.Owner, facts.OwnerName)}, not SYSTEM or Administrators, so it was not trusted. {Fix(root)}");
         }
 
         var writers = WorkAccess.UntrustedWriters(WorkAccess.OrEveryone(facts.Access));
