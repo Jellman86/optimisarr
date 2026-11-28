@@ -699,6 +699,7 @@ public sealed partial class QueueDispatcher(
         {
             string? candidatePath;
             string? sourceSha256;
+            string? libraryRoot;
             JobLease? deliveredLease;
             await using (var scope = scopeFactory.CreateAsyncScope())
             {
@@ -749,6 +750,7 @@ public sealed partial class QueueDispatcher(
                 var library = await db.Libraries.AsNoTracking()
                     .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
                     .SingleOrDefaultAsync(cancellationToken);
+                libraryRoot = library?.Path;
                 work = work.Value with
                 {
                     // The worker's byte limit and verification contract were fixed together at
@@ -761,10 +763,9 @@ public sealed partial class QueueDispatcher(
                 };
             }
 
-            if (!File.Exists(work.Value.Original.Path))
-            {
-                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
-            }
+            // Stops before verification, so a vanished source can never lead to a replacement. The
+            // delivered candidate is kept in the work directory either way.
+            ThrowIfSourceMissing(work.Value.Original.Path, libraryRoot);
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
 
@@ -1013,7 +1014,7 @@ public sealed partial class QueueDispatcher(
             : null;
     }
 
-    private async Task RunJobAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
+    internal async Task RunJobAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
     {
         var nativeReservations = new List<IDisposable>();
         try
@@ -1025,14 +1026,9 @@ public sealed partial class QueueDispatcher(
                 return;
             }
 
-            // The source can vanish between scan/enqueue and now — e.g. Radarr/Sonarr upgraded and
-            // renamed the file. Fail fast with a clear, actionable message instead of a raw ffmpeg
-            // "No such file or directory" (and skip a pointless hardware-encoder init). The next
-            // library scan prunes the stale inventory row.
-            if (!File.Exists(work.Value.Original.Path))
-            {
-                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
-            }
+            // Planning checked the source too; this closes the moment between planning and
+            // starting the encode, before a pointless hardware-encoder init.
+            await ThrowIfSourceMissingAsync(jobId, work.Value.Original.Path, cancellationToken);
 
             // Pre-flight eligibility re-check: a job can sit in a long backlog while the library's
             // rules tighten (e.g. the already-efficient-source floor) or the file gains an optimised
@@ -1848,8 +1844,10 @@ public sealed partial class QueueDispatcher(
 
         var media = job.MediaFile;
         var library = media.Library;
-        // Offline/missing files retain the existing planning/error behavior. An existing path
-        // must be checked before preparation can pass it to any probe or decoder.
+        // Before any fresh probe, so a file a media manager replaced while it waited ends with a
+        // plain reason rather than a raw probe error.
+        ThrowIfSourceMissing(media.Path, library?.Path);
+        // An existing path must be checked before preparation can pass it to any probe or decoder.
         if (File.Exists(media.Path) && !LibraryPathSafety.IsSafeFile(media.Path, library?.Path))
             throw new JobNoLongerEligibleException(LibraryPathSafety.Refusal);
         var rules = LibraryRuleResolution.Resolve(library);
@@ -3239,6 +3237,34 @@ public sealed partial class QueueDispatcher(
     }
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
+
+    /// <summary>
+    /// A source a media manager upgraded, renamed or removed while its job waited ends the job as
+    /// skipped, without a failure notification. A library folder that cannot be seen is an outage
+    /// and fails loudly instead, so a dropped share is never mistaken for a run of upgrades (#610).
+    /// </summary>
+    private static void ThrowIfSourceMissing(string sourcePath, string? libraryRoot)
+    {
+        switch (MissingSource.Inspect(sourcePath, libraryRoot))
+        {
+            case MissingSourceVerdict.Replaced:
+                throw new JobNoLongerEligibleException(MissingSource.SkipReason);
+            case MissingSourceVerdict.LibraryUnavailable:
+                throw new InvalidOperationException(MissingSource.LibraryUnavailableMessage(libraryRoot));
+        }
+    }
+
+    private async Task ThrowIfSourceMissingAsync(int jobId, string sourcePath, CancellationToken cancellationToken)
+    {
+        if (File.Exists(sourcePath)) return;
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var libraryRoot = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => job.MediaFile!.Library!.Path)
+            .FirstOrDefaultAsync(cancellationToken);
+        ThrowIfSourceMissing(sourcePath, libraryRoot);
+    }
 
     internal sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 

@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
@@ -159,6 +160,51 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(JobStatus.Failed, job.Status);
         Assert.StartsWith("Not encoded.", job.ErrorMessage);
         Assert.Equal(0, await checkDb.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_file_a_media_manager_replaced_before_a_worker_claims_it_is_skipped_not_offered()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Replaced source");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var source = await SourcePathOf(id);
+        File.Delete(source);
+        await File.WriteAllBytesAsync(Path.Combine(Path.GetDirectoryName(source)!, "film 1080p.mkv"), SourceBytes);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Equal($"Skipped before encoding: {MissingSource.SkipReason}", job.ErrorMessage);
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_worker_job_whose_library_folder_has_gone_is_not_offered_and_is_not_skipped()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Missing library");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        Directory.Delete(Path.GetDirectoryName(await SourcePathOf(id))!, recursive: true);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Queued, (await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    private async Task<string> SourcePathOf(int jobId)
+    {
+        using var scope = _api.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs
+            .Where(job => job.Id == jobId).Select(job => job.MediaFile!.Path).SingleAsync();
     }
 
     [Theory]
