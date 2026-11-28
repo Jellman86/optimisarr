@@ -9,6 +9,7 @@ test('the checks a person meets most are said in plain words', () => {
   assert.equal(plainCheckName('Size saving', en.checkNames), 'Smaller than the original')
   assert.equal(plainCheckName('Audio languages', en.checkNames), 'The audio languages you asked to keep')
   assert.equal(plainCheckName('Dolby Vision kept', en.checkNames), 'Dolby Vision kept')
+  assert.equal(plainCheckName('Embedded artwork', en.checkNames), 'Cover art kept')
 })
 
 test('a check name with a suffix is still recognised', () => {

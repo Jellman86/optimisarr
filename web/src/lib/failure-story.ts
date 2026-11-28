@@ -18,7 +18,7 @@ const SOURCE = ['Source video timeline']
 const BROKEN = ['Decode health', 'Output readable', 'Video stream', 'Video structure', 'Timestamp integrity', 'Tail integrity', 'Duration', 'Silence trimmed']
 const LOST = [
   'Audio tracks', 'Subtitle tracks', 'Audio languages', 'Subtitle languages', 'Audio fidelity', 'Audio codec',
-  'Audio codecs unchanged', 'Audio metadata and artwork', 'Colour metadata', 'HDR signal', 'Dolby Vision kept', 'A/V sync', 'Dimensions', 'Picture shape',
+  'Audio codecs unchanged', 'Audio metadata and artwork', 'Embedded artwork', 'Colour metadata', 'HDR signal', 'Dolby Vision kept', 'A/V sync', 'Dimensions', 'Picture shape',
   'Container unchanged', 'Picture retention', 'EXIF metadata', 'ICC colour profile', 'Image metadata (EXIF/ICC)',
 ]
 

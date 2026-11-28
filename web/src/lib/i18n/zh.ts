@@ -2389,6 +2389,7 @@ export const zh: Messages = {
     audio_untouched: "音频保持原样",
     audio_fidelity: "保留声音细节",
     audio_tags: "保留标签和封面",
+    artwork: "保留封面",
     container: "文件类型相同",
     image_format: "图像格式符合要求",
     photo_details: "保留照片信息",

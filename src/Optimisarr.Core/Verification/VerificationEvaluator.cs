@@ -125,6 +125,14 @@ public static class VerificationEvaluator
             {
                 checks.Add(PixelShapePreserved(input));
             }
+
+            // Cover art is part of the file, not decoration. FFmpeg can leave an MP4's covr out, or copy a
+            // Matroska cover in as an ordinary video track, without an error, and a super-resolution
+            // output carries only the upscaled picture (#598).
+            if (input.OriginalAttachedPictureCount > 0)
+            {
+                checks.Add(VideoArtworkPreserved(input));
+            }
         }
 
         // HDR preservation only matters when the original carries an HDR signal, so
@@ -829,6 +837,15 @@ public static class VerificationEvaluator
             ? Pass("Picture shape", $"Source and output pixels have the same shape ({original}).")
             : Fail("Picture shape", $"Source pixels have shape {original}; output pixels have {output}. "
                 + "The output would display squashed or stretched.");
+    }
+
+    private static VerificationCheck VideoArtworkPreserved(VerificationInput input)
+    {
+        const string name = "Embedded artwork";
+        return input.OutputAttachedPictureCount < input.OriginalAttachedPictureCount
+            ? Fail(name, $"The original has {input.OriginalAttachedPictureCount} embedded cover picture(s); the output has "
+                + $"{input.OutputAttachedPictureCount}. The cover art was dropped or is no longer marked as cover art.")
+            : Pass(name, $"Kept {input.OriginalAttachedPictureCount} embedded picture(s).");
     }
 
     private static VerificationCheck VideoStructurePreserved(VerificationInput input)
