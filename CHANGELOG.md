@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Name the account that owns a refused Windows work folder (#611). The Windows worker's message for a work folder it will not use now names the owning account with its security ID in brackets, such as `PICARD\scott (S-1-5-21-…-1001)`, rather than the security ID alone, which is still shown alone when Windows cannot name the account; the message is logged once at start-up instead of twice in different words. Which folders are trusted is unchanged. No migration.
+- Name the account that owns a refused Windows work folder (#611). When the Windows worker won't use its work folder because an ordinary account owns it, the message now names that account, such as `PICARD\scott (S-1-5-21-…-1001)`, instead of giving only its security ID. The ID is still shown alone if Windows can't name the account. The message is also logged once at start-up instead of twice in different words. Which folders are trusted is unchanged. No migration.
 
 ## 0.2.27 - 2026-11-27
 
