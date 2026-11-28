@@ -15,24 +15,35 @@ public sealed class MissingSourceTests : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 
-    [Theory]
-    [InlineData(LibraryRootState.Listed)]
-    [InlineData(LibraryRootState.Empty)]
-    [InlineData(LibraryRootState.Missing)]
-    [InlineData(LibraryRootState.Unreadable)]
-    public void A_source_that_is_still_there_is_present_whatever_its_library_looks_like(LibraryRootState root) =>
-        Assert.Equal(MissingSourceVerdict.Present, MissingSource.Classify(sourceExists: true, root));
-
     [Fact]
-    public void A_missing_file_in_a_library_that_still_lists_its_contents_was_replaced_by_a_media_manager() =>
-        Assert.Equal(MissingSourceVerdict.Replaced, MissingSource.Classify(sourceExists: false, LibraryRootState.Listed));
+    public void A_source_that_is_still_there_is_present_even_without_a_library()
+    {
+        Directory.CreateDirectory(_root);
+        var source = Path.Combine(_root, "film.mkv");
+        File.WriteAllText(source, "content");
 
-    [Theory]
-    [InlineData(LibraryRootState.Missing)]
-    [InlineData(LibraryRootState.Unreadable)]
-    [InlineData(LibraryRootState.Empty)]
-    public void A_missing_file_in_a_library_that_cannot_be_seen_is_an_outage(LibraryRootState root) =>
-        Assert.Equal(MissingSourceVerdict.LibraryUnavailable, MissingSource.Classify(sourceExists: false, root));
+        Assert.Equal((MissingSourceVerdict.Present, (string?)null), MissingSource.Inspect(source, null));
+    }
+
+    [PosixFact]
+    public void An_unreadable_subfolder_is_reported_even_if_the_library_still_lists()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var folder = Path.Combine(_root, "unreadable");
+        Directory.CreateDirectory(folder);
+        var previousMode = File.GetUnixFileMode(folder);
+        try
+        {
+            File.SetUnixFileMode(folder, UnixFileMode.None);
+
+            Assert.Equal((MissingSourceVerdict.LibraryUnavailable, folder),
+                MissingSource.Inspect(Path.Combine(folder, "film.mkv"), _root));
+        }
+        finally
+        {
+            File.SetUnixFileMode(folder, previousMode);
+        }
+    }
 
     [Fact]
     public void A_library_folder_that_does_not_exist_is_missing() =>

@@ -1,5 +1,7 @@
+using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -170,17 +172,99 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_empty_or_missing_library_mount_keeps_inventory_and_jobs(bool removeMountPoint)
+    {
+        var source = WriteMediaFile("movie.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var file = await db.MediaFiles.SingleAsync();
+            db.Jobs.AddRange(new Job { MediaFileId = file.Id, Status = JobStatus.Queued },
+                new Job { MediaFileId = file.Id, Status = JobStatus.Failed });
+            await db.SaveChangesAsync();
+        }
+
+        File.Delete(source);
+        if (removeMountPoint) Directory.Delete(_root);
+
+        var summary = await ScanAsync(library);
+
+        Assert.Equal(0, summary.Removed);
+        Assert.Equal([_root], summary.UnavailableFolders);
+        await using var read = new OptimisarrDbContext(_options);
+        Assert.Single(await read.MediaFiles.ToListAsync());
+        Assert.Equal(2, await read.Jobs.CountAsync());
+    }
+
+    [Fact]
+    public async Task A_scan_keeps_missing_files_under_an_empty_subfolder_and_prunes_other_vanished_files()
+    {
+        var unavailable = WriteMediaFile("share/Show/episode.mkv");
+        var vanished = WriteMediaFile("local/old.mkv");
+        WriteMediaFile("local/new.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+
+        Directory.Delete(Path.GetDirectoryName(unavailable)!, recursive: true);
+        File.Delete(vanished);
+
+        var summary = await ScanAsync(library);
+
+        Assert.Equal(1, summary.Removed);
+        Assert.Equal([Path.Combine(_root, "share")], summary.UnavailableFolders);
+        await using var read = new OptimisarrDbContext(_options);
+        Assert.Contains(await read.MediaFiles.ToListAsync(), file => file.Path == unavailable);
+        Assert.DoesNotContain(await read.MediaFiles.ToListAsync(), file => file.Path == vanished);
+    }
+
+    [Fact]
+    public async Task A_scan_keeps_missing_rows_if_the_mount_empties_while_looking_up_replacement_history()
+    {
+        var vanished = WriteMediaFile("old.mkv");
+        var surviving = WriteMediaFile("still-there.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+        File.Delete(vanished);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>(_options)
+            .AddInterceptors(new BeforeReadingReplacementHistory(() => File.Delete(surviving))).Options;
+        await using var db = new OptimisarrDbContext(options);
+        var service = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService(), new ImageMarkerService());
+
+        var summary = await service.ScanAsync(library, CancellationToken.None);
+
+        Assert.False(File.Exists(surviving));
+        Assert.Equal(0, summary.Removed);
+        Assert.Equal([_root], summary.UnavailableFolders);
+        Assert.Equal(2, await db.MediaFiles.CountAsync());
+    }
+
+    private sealed class BeforeReadingReplacementHistory(Action onRead) : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("FROM \"Replacements\"", StringComparison.Ordinal))
+                onRead();
+            return ValueTask.FromResult(result);
+        }
+    }
+
     [Fact]
     public async Task Scan_keeps_a_vanished_row_that_has_replacement_history()
     {
         WriteMediaFile("Movie.mkv");
+        WriteMediaFile("Other.mkv");
         var library = await CreateLibraryAsync();
         await ScanAsync(library);
 
         int mediaId;
         await using (var db = new OptimisarrDbContext(_options))
         {
-            var media = await db.MediaFiles.SingleAsync();
+            var media = await db.MediaFiles.SingleAsync(file => file.RelativePath == "Movie.mkv");
             mediaId = media.Id;
             var job = new Job { MediaFileId = mediaId, Status = JobStatus.Completed };
             db.Jobs.Add(job);
@@ -443,6 +527,6 @@ public sealed class LibraryInventoryServiceTests : IDisposable
     public void Dispose()
     {
         _connection.Dispose();
-        Directory.Delete(_root, recursive: true);
+        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 }

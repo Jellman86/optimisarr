@@ -49,6 +49,11 @@ public sealed class LibraryScanWorker(
         var interval = (await settings.GetQueueSettingsAsync(cancellationToken)).LibraryScanIntervalHours;
 
         var summary = await inventory.ScanEnabledAsync(cancellationToken);
+        if (summary.UnavailableFolders.Count > 0)
+        {
+            logger.LogWarning("Scheduled scan kept inventory and jobs for empty, missing or unreadable folders: {Folders}",
+                string.Join(", ", summary.UnavailableFolders));
+        }
         if (summary.Added > 0 || summary.Updated > 0 || summary.Removed > 0)
         {
             logger.LogInformation(

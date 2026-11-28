@@ -344,6 +344,19 @@ test('the library list leads with the count, one Scan button, and the rest in a 
   await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
 })
 
+test('Scan reports where inventory and jobs were kept during a storage outage', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/libraries/1/scan', route => json(route, {
+    discovered: 1, added: 0, updated: 0, removed: 0, skippedUnsettled: 0,
+    unavailableFolders: ['/media/films/share'],
+  }))
+  await page.goto('/#/libraries')
+
+  await page.locator('[data-library-card="1"]').getByRole('button', { name: 'Scan' }).click()
+
+  await expect(page.getByText(/Kept inventory and jobs for \/media\/films\/share/)).toBeVisible()
+})
+
 test('the library list says how many files are ready when some are', async ({ page }) => {
   await mockLibraries(page)
   await page.route('**/api/candidates/summary', (route) => json(route, [{ libraryId: 1, eligible: 12, skipped: 3 }]))

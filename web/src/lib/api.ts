@@ -1324,6 +1324,7 @@ export type ScanSummary = {
   added: number
   updated: number
   skippedUnsettled: number
+  unavailableFolders?: string[]
 }
 
 export type Exclusion = {

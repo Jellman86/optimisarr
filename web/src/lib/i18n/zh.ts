@@ -1556,6 +1556,7 @@ export const zh: Messages = {
     updated: "更新了媒体库“{name}”。",
     deleted: "已删除媒体库“{name}”。",
     scan_result: "“{name}”：发现 {discovered} 个，新增 {added} 个，更新 {updated} 个，仍在稳定中 {settling} 个。",
+    scan_unavailable: "{folders} 为空或无法访问，已保留这些文件夹的清单和任务。请检查存储后重新扫描。",
     enqueue_result: "“{name}”：已排队的 {enqueued} 处理任务（{alreadyQueued} 已排队，{ineligible} 不符合条件",
     enqueue_importing: ", {importing} 在 Sonarr/Radarr 进口时被阻止",
     enqueue_close: ").",
